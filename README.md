@@ -1,6 +1,6 @@
 # CVE-2026-43499-root-KernelSU
 
-基于内核漏洞的本地提权适配，集成嵌入式 KernelSU 。编译生成`preload.so`；触发成功后会以 `late-load` 模式(越狱模式)启动 KernelSU。支持(xbl_config.img / vendor_boot.img) + boot.img 生成target.h
+基于内核漏洞CVE-2026-43499的本地提权适配，集成嵌入式 KernelSU 。编译生成`preload.so`；触发成功后会以 `late-load` 模式(越狱模式)启动 KernelSU。支持(xbl_config.img / vendor_boot.img) + boot.img 生成target.h
 
 Local privilege escalation adaptation based on a kernel vulnerability, integrating embedded KernelSU.
 Compiles and generates `preload.so`; upon successful exploitation, KernelSU will be started in `late-load` mode (jailbreak mode).
@@ -19,13 +19,15 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 
 ## 影响范围
 
-Linux Kernel < commit **3bfdc63936dd4773109b7b8c280c0f3b5ae7d349**
+**当您的内核版本为 {Linux Kernel} 时，处在本次漏洞的影响范围**
 
-**2.6.39** <= Linux Kernel < **6.1.175**
-**6.2** <= Linux Kernel < **6.6.140**
-**6.7** <= Linux Kernel < **6.12.86**
-**6.13** <= Linux Kernel < **6.18.27**
-**6.19** <= Linux Kernel < **7.0.4**
+- Linux Kernel < commit **3bfdc63936dd4773109b7b8c280c0f3b5ae7d349**
+
+- **2.6.39** <=  {Linux Kernel} < **6.1.175**
+- **6.2** <=  {Linux Kernel} < **6.6.140**
+- **6.7** <=  {Linux Kernel} < **6.12.86**
+- **6.13** <=  {Linux Kernel} < **6.18.27**
+- **6.19** <=  {Linux Kernel} < **7.0.4**
 
 
 ## 当前状态
