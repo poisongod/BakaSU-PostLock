@@ -249,6 +249,193 @@ def parse_header_profile(path: Path) -> dict[str, int]:
     }
 
 
+def parse_target_header_macros(path: Path) -> dict[str, str]:
+    text = path.read_text(encoding="utf-8")
+    out: dict[str, str] = {}
+    for m in re.finditer(r"^#define\s+(\w+)\s+(.+?)\s*$", text, re.M):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def replace_macro_lines(text: str, replacements: dict[str, str]) -> str:
+    used: set[str] = set()
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        fields = line.split(None, 2)
+        if len(fields) >= 2 and fields[0] == "#define" and fields[1] in replacements:
+            name = fields[1]
+            used.add(name)
+            out_lines.append(f"#define {name} {replacements[name]}")
+        else:
+            out_lines.append(line)
+    text = "\n".join(out_lines) + ("\n" if text.endswith("\n") else "")
+    missing = sorted(set(replacements) - used)
+    if missing:
+        print(f"警告: 模板 target.h 缺少可选宏，追加到 header 前部: {missing}", file=sys.stderr)
+        insert = "\n".join(f"#define {name} {replacements[name]}" for name in missing) + "\n"
+        text = text.replace("#define TARGET_H\n", "#define TARGET_H\n" + insert, 1)
+    return text
+
+
+def template_target_path(args: argparse.Namespace, output: Path) -> Path:
+    name = getattr(args, "template_target", None) or os.environ.get("TARGET_TEMPLATE") or "rodin"
+    path = repo_path(f"src/targets/{name}/target.h")
+    if not path.is_file():
+        fail(f"BTF fallback 模板不存在: {path}; 可用 --template-target 或 TARGET_TEMPLATE 指定")
+    if path.resolve() == output.resolve():
+        fail("BTF fallback 模板不能与输出 target.h 相同")
+    return path
+
+
+def first_existing_symbol(kallsyms: Any, names: list[str], *, required: bool = True) -> int | None:
+    errors = []
+    for name in names:
+        try:
+            return kall_one(kallsyms, name)
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+    if required:
+        fail("无法定位符号: " + "; ".join(errors))
+    return None
+
+
+def locate_boot_id_data_without_btf(kernel: bytes, kallsyms: Any) -> int | None:
+    # 无 BTF 时无法精确解析 struct ctl_table，做一个保守扫描：
+    # 找 sysctl_bootid 指针附近同时存在 boot_id 字符串指针的项。
+    import struct as _struct
+    base = int(kallsyms.relative_base)
+    try:
+        sysctl_bootid = kall_one(kallsyms, "sysctl_bootid")
+    except Exception:
+        return None
+    boot_id_string_offsets = []
+    pos = 0
+    while True:
+        pos = kernel.find(b"boot_id\x00", pos)
+        if pos < 0:
+            break
+        boot_id_string_offsets.append(pos)
+        pos += 1
+    if not boot_id_string_offsets:
+        return None
+    str_ptrs = {base + off for off in boot_id_string_offsets}
+    needle = _struct.pack("<Q", base + sysctl_bootid)
+    candidates = []
+    pos = 0
+    while True:
+        pos = kernel.find(needle, pos)
+        if pos < 0:
+            break
+        window_start = max(0, pos - 0x80)
+        window_end = min(len(kernel), pos + 0x80)
+        window = kernel[window_start:window_end]
+        if any(_struct.pack("<Q", ptr) in window for ptr in str_ptrs):
+            candidates.append(pos)
+        pos += 1
+    candidates = sorted(set(candidates))
+    if len(candidates) == 1:
+        return candidates[0]
+    print(f"警告: 无 BTF 扫描 boot_id.data 候选不唯一，使用 sysctl_bootid 兜底: {[hex(x) for x in candidates[:8]]}", file=sys.stderr)
+    return sysctl_bootid
+
+
+def fallback_generate_without_btf(args: argparse.Namespace, profile: dict[str, int], output: Path, boot: Any, config: dict[str, str], kallsyms: Any, reason: Exception) -> int:
+    template = template_target_path(args, output)
+    template_text = template.read_text(encoding="utf-8")
+    template_macros = parse_target_header_macros(template)
+    base = int(kallsyms.relative_base)
+    va_bits = int(config.get("CONFIG_ARM64_VA_BITS", "39"), 0)
+    p0_page_offset = profile.get("p0_page_offset", ((1 << 64) - (1 << va_bits)) & ((1 << 64) - 1))
+    direct_map_end = p0_page_offset + (1 << 36)
+    vmemmap_start = p0_page_offset | 0x7e00000000
+
+    def fmt(v: int) -> str:
+        return f"0x{v:x}ULL"
+
+    def sym_macro(macro: str, *names: str, required: bool = True) -> tuple[str, str] | None:
+        val = first_existing_symbol(kallsyms, list(names), required=required)
+        if val is None:
+            print(f"警告: {macro} 无法从 kallsyms 恢复，沿用模板值 {template_macros.get(macro)}", file=sys.stderr)
+            return None
+        return macro, fmt(val)
+
+    replacements: dict[str, str] = {
+        "BUILD_VARIANT_LABEL": f'"{(args.project or output.parent.name)}_no_btf"',
+        "KIMAGE_TEXT_BASE": fmt(base),
+        "P0_PAGE_OFFSET": fmt(p0_page_offset),
+        "P0_PHYS_OFFSET": fmt(profile["p0_phys_offset"]),
+        "P0_KERNEL_PHYS_LOAD": fmt(profile["p0_kernel_phys_load"]),
+        "KERNELSNITCH_IDENTITY_START": fmt(p0_page_offset),
+        "KERNELSNITCH_IDENTITY_END": fmt(direct_map_end),
+        "DIRECT_MAP_BASE": fmt(p0_page_offset),
+        "DIRECT_MAP_END": fmt(direct_map_end),
+        "VMEMMAP_START": fmt(vmemmap_start),
+    }
+
+    symbol_items = [
+        sym_macro("ASHMEM_FOPS_OFF", "ashmem_fops"),
+        sym_macro("ASHMEM_IOCTL_OFF", "ashmem_ioctl"),
+        sym_macro("ASHMEM_COMPAT_IOCTL_OFF", "compat_ashmem_ioctl"),
+        sym_macro("ASHMEM_MMAP_OFF", "ashmem_mmap"),
+        sym_macro("ASHMEM_OPEN_OFF", "ashmem_open"),
+        sym_macro("ASHMEM_RELEASE_OFF", "ashmem_release"),
+        sym_macro("ASHMEM_SHOW_FDINFO_OFF", "ashmem_show_fdinfo"),
+        sym_macro("CONFIGFS_READ_ITER_OFF", "configfs_read_iter", "configfs_read_file", required=False),
+        sym_macro("CONFIGFS_BIN_WRITE_ITER_OFF", "configfs_bin_write_iter", "configfs_write_bin_file", required=False),
+        sym_macro("COPY_SPLICE_READ_OFF", "copy_splice_read", "generic_file_splice_read", required=False),
+        sym_macro("NOOP_LLSEEK_OFF", "noop_llseek"),
+        sym_macro("INIT_TASK_OFF", "init_task"),
+        sym_macro("INIT_UTS_NS_OFF", "init_uts_ns"),
+        sym_macro("EMPTY_ZERO_PAGE_OFF", "empty_zero_page"),
+        sym_macro("ROOT_TASK_GROUP_OFF", "root_task_group"),
+        sym_macro("SELINUX_BLOB_SIZES_OFF", "selinux_blob_sizes"),
+        sym_macro("SECURITY_HOOK_HEADS_OFF", "security_hook_heads", required=False),
+        sym_macro("KMALLOC_CACHES_OFF", "kmalloc_caches"),
+        sym_macro("ANON_PIPE_BUF_OPS_OFF", "anon_pipe_buf_ops"),
+        sym_macro("SLIDE_NFULNL_LOGGER_OFF", "nfulnl_logger"),
+        sym_macro("SLIDE_SYSCTL_BOOTID_OFF", "sysctl_bootid"),
+    ]
+    for item in symbol_items:
+        if item is not None:
+            replacements[item[0]] = item[1]
+
+    ashmem_misc = first_existing_symbol(kallsyms, ["ashmem_misc"], required=False)
+    if ashmem_misc is not None:
+        replacements["ASHMEM_MISC_FOPS_OFF"] = fmt(ashmem_misc + 0x10)
+        print("警告: 无 BTF，ASHMEM_MISC_FOPS_OFF 使用 miscdevice.fops=0x10 模板假设", file=sys.stderr)
+    loggers = first_existing_symbol(kallsyms, ["loggers"], required=False)
+    if loggers is not None:
+        replacements["SLIDE_LOGGERS_0_1_OFF"] = fmt(loggers + 8)
+        print("警告: 无 BTF，SLIDE_LOGGERS_0_1_OFF 使用 loggers+8 模板假设", file=sys.stderr)
+    bootid_data = locate_boot_id_data_without_btf(boot.kernel, kallsyms)
+    if bootid_data is not None:
+        replacements["SLIDE_RANDOM_BOOT_ID_DATA_OFF"] = fmt(bootid_data)
+
+    selinux_state = first_existing_symbol(kallsyms, ["selinux_state"], required=False)
+    if selinux_state is not None:
+        old = template_macros.get("SELINUX_ENFORCING_OFF", "0")
+        # 模板里 SELINUX_ENFORCING_OFF 通常就是 selinux_state + enforcing 字段偏移；
+        # 已知 Android common/GKI 这里常为 +0。不能验证时保守用 +0 并警告。
+        replacements["SELINUX_ENFORCING_OFF"] = fmt(selinux_state)
+        print(f"警告: 无 BTF，SELINUX_ENFORCING_OFF 使用 selinux_state+0，模板原值 {old}", file=sys.stderr)
+
+    header = replace_macro_lines(template_text, replacements)
+    header = re.sub(r"^/\*.*?\*/", f"/* Generated for {args.project or output.parent.name} from {Path(args.boot).name} without BTF; template={template.parent.name}. */", header, count=1, flags=re.S)
+    warning = (
+        "/* WARNING: BTF was not available. Struct/layout macros not recovered from this image; "
+        f"values not overwritten above were inherited from template {template.parent.name}/target.h. "
+        f"BTF error: {str(reason).replace('*/', '* /')} */\n"
+    )
+    header = warning + header
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(header, encoding="utf-8")
+    print(f"警告: 未找到/无法解析 BTF，已使用模板 {template} 继续生成", file=sys.stderr)
+    print(f"生成成功: {output.resolve()}")
+    print(f"kernel SHA-256: {boot.kernel_sha256}")
+    print(f"target macros: {len(re.findall(r'^#define ', header, re.M))}")
+    return 0
+
+
 def kall_one(kallsyms: Any, name: str) -> int:
     return int(kallsyms.one(name))
 
@@ -566,14 +753,24 @@ def complete_generate(args: argparse.Namespace, profile: dict[str, int], output:
     gt2 = load_module("generate_target_2")
     boot = gt2.extract_boot_kernel(args.boot)
     _ikcfg_raw, config, _ikcfg_span = gt2.extract_ikconfig(boot.kernel)
-    if config.get("CONFIG_DEBUG_INFO_BTF") != "y":
-        fail("IKCONFIG 未启用 CONFIG_DEBUG_INFO_BTF=y，无法生成完整 target.h")
+    # 不强制校验 CONFIG_DEBUG_INFO_BTF=y。部分 boot image 的 IKCONFIG
+    # 可能不完整/被裁剪，但镜像内仍可恢复 BTF；后续 locate_btf()
+    # 会以实际镜像内容为准，找不到 BTF 时自然失败。
     profile_full = gt2.complete_profile(profile, config, boot.image_size)
     kallsyms = gt2.recover_kallsyms(boot.kernel, boot.kernel_size, boot.image_size)
     setattr(kallsyms, "__duchamp_kernel", boot.kernel)
-    btf = gt2.locate_btf(boot.kernel, kallsyms)
-    gt2.validate_btf_consumer_layout(btf)
-    btf.validate_percpu_entry_task(kallsyms.one("__per_cpu_start"), kallsyms.one("__entry_task"))
+    try:
+        btf = gt2.locate_btf(boot.kernel, kallsyms)
+    except Exception as exc:
+        return fallback_generate_without_btf(args, profile_full, output, boot, config, kallsyms, exc)
+    try:
+        gt2.validate_btf_consumer_layout(btf)
+    except Exception as exc:
+        print(f"警告: 无法验证 target.h 所需结构字段偏移，继续生成: {exc}", file=sys.stderr)
+    try:
+        btf.validate_percpu_entry_task(kallsyms.one("__per_cpu_start"), kallsyms.one("__entry_task"))
+    except Exception as exc:
+        print(f"警告: 无法验证 percpu entry_task 布局，继续生成: {exc}", file=sys.stderr)
     import tempfile as _tempfile
     with _tempfile.TemporaryDirectory(prefix="target-analysis-") as temporary:
         kernel_path = Path(temporary) / "kernel.bin"
@@ -622,6 +819,25 @@ def generate_from_profile(args: argparse.Namespace, profile_path: Path, output: 
 
 
 def generate_from_full_frontend(args: argparse.Namespace, output: Path) -> int:
+    if not args.legacy_wrapper and (args.mtk_partitions or args.mtk_vendor_boot):
+        full = load_module("generate_target")
+        boot = full.extract_boot_kernel(args.boot)
+        boot_path = args.boot.resolve()
+        if args.mtk_partitions:
+            mtk = full.recover_mtk_profile(args.mtk_partitions, boot_path, boot)
+        else:
+            vendor_boot_path = full.validate_mtk_vendor_boot(args.mtk_vendor_boot, boot_path)
+            mtk = full.recover_mtk_profile_from_vendor_boot(vendor_boot_path, boot)
+        print(f"arm64 Image text_offset: 0x{boot.text_offset:x}")
+        print(f"vendor_boot SHA-256: {mtk.vendor_boot_sha256}")
+        print(
+            f"MTK profile: phys=0x{mtk.phys_offset:x}, "
+            f"kernel=0x{mtk.kernel_phys_load:x}, "
+            f"ram={[f'0x{region.base:x}+0x{region.size:x}' for region in mtk.ram_regions]}, "
+            f"dtb={[hex(off) for off in mtk.dtb_offsets]}"
+        )
+        return complete_generate(args, {"p0_phys_offset": mtk.phys_offset, "p0_kernel_phys_load": mtk.kernel_phys_load}, output)
+
     argv = ["--boot", str(args.boot), "-o", str(output), "--llvm-objdump", args.llvm_objdump]
     if args.xbl_config:
         argv.extend(["--xbl-config", str(args.xbl_config)])

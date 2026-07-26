@@ -106,6 +106,29 @@ tools/vendor/detect_offset.py
 
 `tools/generate_target.py` 是入口脚本。它参考并封装了父目录所有 target 生成流程，最后输出适配本仓库源码的完整 `src/targets/<project>/target.h`。
 
+脚本不会强制校验 IKCONFIG 中的 `CONFIG_DEBUG_INFO_BTF=y`。如果结构字段偏移或 percpu `entry_task` 布局无法验证，会打印警告并继续生成。
+
+如果镜像里完全没有可用 BTF，例如出现：
+
+```text
+有效 vmlinux BTF 候选不唯一: []
+```
+
+生成器会进入 **无 BTF fallback**：
+
+- 继续从当前 `boot.img` 的 kallsyms 恢复函数/全局对象符号偏移；
+- 无法从 BTF 恢复的结构字段/layout 宏会继承模板 target，默认模板为 `rodin`；
+- 生成的 header 顶部会写入 warning，标明 `without BTF` 和使用的模板；
+- 这种 header 保证尽量可编译，但运行可靠性需要实机验证。
+
+可指定 fallback 模板：
+
+```bash
+tools/generate_target.py --project <project> --boot boot.img --profile profile.json --template-target rodin
+# 或
+TARGET_TEMPLATE=rodin tools/generate_target.py --project <project> --boot boot.img --profile profile.json
+```
+
 #### 1.使用 boot.img + profile JSON 生成
 
 ```bash
@@ -186,6 +209,7 @@ target macros: 168
 ```bash
 tools/generate_target.py --project rodin --boot boot.img --profile profile.json --mm-struct-sz 0x...
 ```
+
 ## 添加新 target
 
 推荐从匹配的 boot image 和 profile 生成：
