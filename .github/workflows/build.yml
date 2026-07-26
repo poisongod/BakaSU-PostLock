@@ -1,0 +1,140 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Project to build"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - rodin
+          - beryl
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.project }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [rodin, beryl]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select project
+        id: select
+        shell: bash
+        run: |
+          requested="${{ github.event.inputs.project || 'all' }}"
+          project="${{ matrix.project }}"
+          if [[ "$requested" != "all" && "$requested" != "$project" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping $project; requested $requested"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache Android NDK r29
+        if: steps.select.outputs.skip != 'true'
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/android-ndk-r29
+          key: android-ndk-r29-linux
+
+      - name: Install Android NDK r29
+        if: steps.select.outputs.skip != 'true' && steps.cache-ndk.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 -o "$RUNNER_TEMP/ndk.zip" \
+            https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$RUNNER_TEMP"
+          rm -f "$RUNNER_TEMP/ndk.zip"
+
+      - name: Show build info
+        if: steps.select.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f build/embed/ksud
+          make info PROJECT=${{ matrix.project }} ANDROID_NDK_ROOT="$RUNNER_TEMP/android-ndk-r29"
+          make list-projects | sort
+
+      - name: Build preload.so
+        if: steps.select.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          make PROJECT=${{ matrix.project }} ANDROID_NDK_ROOT="$RUNNER_TEMP/android-ndk-r29" -j"$(nproc)"
+
+      - name: Package artifact
+        if: steps.select.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          cp "build/${{ matrix.project }}/bin/preload.so" "dist/preload-${{ matrix.project }}.so"
+          file "dist/preload-${{ matrix.project }}.so"
+          sha256sum "dist/preload-${{ matrix.project }}.so" | tee "dist/preload-${{ matrix.project }}.so.sha256"
+
+      - name: Upload artifact
+        if: steps.select.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preload-${{ matrix.project }}-aarch64
+          path: |
+            dist/preload-${{ matrix.project }}.so
+            dist/preload-${{ matrix.project }}.so.sha256
+          if-no-files-found: error
+
+  release-assets:
+    name: attach release assets
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          find artifacts -type f -name 'preload-*.so' -exec cp -v {} dist/ \;
+          cd dist
+          sha256sum preload-*.so | tee SHA256SUMS
+          ls -l
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/preload-*.so
+            dist/SHA256SUMS
