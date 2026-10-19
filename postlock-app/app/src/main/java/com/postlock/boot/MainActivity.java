@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.format.DateUtils;
+import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -15,9 +16,10 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * Status panel for PostLockBoot: live driver / ocsk / SELinux state, a
- * manual chain trigger (with panic-risk confirmation) and the tail of the
- * chain log so the whole restore loop is observable on-device.
+ * Status panel for PostLock:Boot: live driver / ocsk / SELinux state, a
+ * manual loopback dispatch, and the tail of the shell-owned chain log
+ * (fetched over the 127.0.0.1:5555 adb channel -- the app uid cannot
+ * read /data/local/tmp itself under Enforcing).
  */
 public class MainActivity extends Activity {
 
@@ -27,9 +29,9 @@ public class MainActivity extends Activity {
     private Button btnTrigger;
     private ScrollView scroll;
     private final Handler ui = new Handler(Looper.getMainLooper());
-    private boolean triggerPending = false;
+    private volatile boolean triggerPending = false;
 
-    // refresh while a chain run is in flight; otherwise on demand only
+    // refresh every 4s while visible: one short loopback round-trip each
     private final Runnable refresher = new Runnable() {
         @Override
         public void run() {
@@ -43,11 +45,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Chain-in-flight screen policy: never let the screen sleep while
-        // this activity is up — OPPO HANS freezes the whole uid on LcdOff
-        // (and netd reaps our sockets), which silently kills the chain.
-        // TURN/SHOW_WHEN_LOCKED keep us above the keyguard so the run does
-        // not fall back to a locked-background process.
+        // keep the panel readable while a chain runs; harmless otherwise
         getWindow().addFlags(
                 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                         | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
@@ -85,41 +83,30 @@ public class MainActivity extends Activity {
     private void confirmTrigger() {
         new AlertDialog.Builder(this)
                 .setTitle("触发恢复链？")
-                .setMessage("链在后台执行（约 40–90 秒），期间设备可能卡顿。"
-                        + "存在内核 panic 导致自动重启的风险；重启后 PostLock:Boot "
-                        + "仍会再次自动触发。\n\n当前状态并非恢复态时才需要手动触发。")
+                .setMessage("链经回环 adb 以 shell 身份在后台执行（约 40–90 秒），"
+                        + "脱离本 app 存活，期间设备可能卡顿。存在内核 panic 导致"
+                        + "自动重启的风险；重启后本应用仍会再次自动触发。\n\n"
+                        + "驱动已加载（恢复态）时无需手动触发。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("触发", (d, w) -> doTrigger())
                 .show();
     }
 
     private void doTrigger() {
-        if (!PostLock.readyToTrigger()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("当前无法触发")
-                    .setMessage("fresh boot 上 app 域链必然失败：KASLR 泄漏的"
-                            + " watchpoint oracle 被 SELinux 对 untrusted_app 拒绝，"
-                            + "slide 路由会 panic 并触发看门狗重启（循环风险）。\n\n"
-                            + "链设计上需要同 boot 的 shell/root 轮先写入 "
-                            + "/data/local/tmp/ksu_kaslr，app 轮才能走已验证的 "
-                            + "FOPS 路径。当前 boot 该文件缺失或不匹配。")
-                    .setPositiveButton("知道了", null)
-                    .show();
-            return;
-        }
-        try {
-            PostLock.triggerChain(this);
-            Toast.makeText(this, "链已触发，日志持续刷新中", Toast.LENGTH_SHORT).show();
-            triggerPending = true;
-            btnTrigger.setEnabled(false);
-            ui.postDelayed(() -> {
+        btnTrigger.setEnabled(false);
+        triggerPending = true;
+        new Thread(() -> {
+            try {
+                PostLock.triggerChainLoopback(this);
+            } catch (Throwable e) {
+                Log.e(PostLock.TAG, "manual trigger failed", e);
+            }
+            ui.post(() -> {
                 triggerPending = false;
-                btnTrigger.setEnabled(true);
-            }, 90_000);
-            refresh();
-        } catch (Throwable e) {
-            Toast.makeText(this, "触发失败: " + e, Toast.LENGTH_LONG).show();
-        }
+                refresh();
+            });
+        }, "postlock-manual-trigger").start();
+        Toast.makeText(this, "经回环通道触发中…", Toast.LENGTH_SHORT).show();
     }
 
     private void refresh() {
@@ -132,27 +119,63 @@ public class MainActivity extends Activity {
         tvSelinux.setTextColor(enforcing ? Color.parseColor("#C62828")
                 : Color.parseColor("#2E7D32"));
 
-        boolean ready = PostLock.readyToTrigger();
-        tvReady.setText(ready ? "✓ 可用" : "✗ 需 shell 轮先导");
-        tvReady.setTextColor(ready ? Color.parseColor("#2E7D32")
+        String[] st = PostLock.readState(this);
+        String state = st[1];
+        long epoch = 0;
+        try {
+            epoch = Long.parseLong(st[0]);
+        } catch (NumberFormatException ignored) {
+        }
+        tvLastRun.setText(state.isEmpty()
+                ? "从未触发"
+                : (epoch > 0 ? DateUtils.getRelativeTimeSpanString(epoch) + " " : "")
+                        + stateLabel(state));
+
+        // one loopback round-trip: ping + chain liveness + log tail
+        String probe = PostLock.probeStatus(this, LOG_TAIL_BYTES);
+        boolean up = probe.contains("PING")
+                && !probe.startsWith("PROBE_FAIL")
+                && !probe.equals("PING_FAILED");
+        tvReady.setText(up ? "✓ 回环在线" : "✗ 回环不可达（需一次性 provisioning）");
+        tvReady.setTextColor(up ? Color.parseColor("#2E7D32")
                 : Color.parseColor("#9AA0A6"));
 
-        long mtime = PostLock.chainLogMtime(this);
-        tvLastRun.setText(mtime == 0
-                ? "从未"
-                : DateUtils.getRelativeTimeSpanString(mtime).toString());
-
-        String tail = PostLock.chainLogTail(this, LOG_TAIL_BYTES);
+        boolean running = up && probe.contains("CHAIN_RUNNING");
+        String tail = "";
+        if (up) {
+            StringBuilder sb = new StringBuilder();
+            for (String line : probe.split("\n")) {
+                if (line.equals("PING") || line.equals("CHAIN_RUNNING")
+                        || line.startsWith("LOG_BYTES:")) {
+                    continue;
+                }
+                sb.append(line).append('\n');
+            }
+            tail = sb.toString().trim();
+        }
         if (tail.isEmpty()) {
-            tvLog.setText("尚未触发。点上方按钮，或等待开机广播自动触发。");
+            tvLog.setText(up
+                    ? "回环在线，尚未触发。点上方按钮，或等待开机广播自动触发。"
+                    : "回环通道未就绪：adbd 需先由 tools/postlock.sh 一次性"
+                            + "provision（persist.adb.tcp.port + 授权密钥）。");
+            tvLogTitle.setText("链日志");
         } else {
             tvLog.setText(tail);
-            tvLogTitle.setText("链日志 chain.log"
-                    + (triggerPending ? "（链执行中…）" : ""));
-            if (triggerPending) {
+            tvLogTitle.setText("链日志 /data/local/tmp/postlock_chain.log"
+                    + (running || triggerPending ? "（执行中…）" : ""));
+            if (running || triggerPending) {
                 scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
             }
         }
+        btnTrigger.setEnabled(!running && !triggerPending);
+    }
+
+    /** Compact rendering of the loopback state marker. */
+    private static String stateLabel(String state) {
+        if (state.startsWith("FAIL:")) {
+            return "失败 " + state.substring(5);
+        }
+        return state;
     }
 
     private static void setModule(TextView tv, boolean loaded) {

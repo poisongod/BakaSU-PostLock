@@ -5,13 +5,9 @@
          restore chain on the relocked OPPO A96.  Deliberately independent
          of the BakaSU manager app (no shared code, no shared signing). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- keeps the screen on during a chain run: OPPO HANS freezes the uid
-         on LcdOff (destroying our sockets), wake lock is the defence -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- full-screen intent: the one background activity-start path ColorOS
-         still honours (alarm class); pulls MainActivity visible so HANS
-         cannot freeze the uid mid-chain -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- loopback bootstrap: connect to adbd on 127.0.0.1:5555 and run the
+         chain as shell uid (the app uid itself is denied the primitives) -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="PostLock:Boot"
