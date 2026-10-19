@@ -22,7 +22,7 @@ public class MainActivity extends Activity {
 
     private static final int LOG_TAIL_BYTES = 6000;
 
-    private TextView tvDriver, tvOcsk, tvSelinux, tvLastRun, tvLog, tvLogTitle;
+    private TextView tvDriver, tvOcsk, tvSelinux, tvReady, tvLastRun, tvLog, tvLogTitle;
     private Button btnTrigger;
     private ScrollView scroll;
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -45,6 +45,7 @@ public class MainActivity extends Activity {
         tvDriver = findViewById(R.id.tv_driver);
         tvOcsk = findViewById(R.id.tv_ocsk);
         tvSelinux = findViewById(R.id.tv_selinux);
+        tvReady = findViewById(R.id.tv_ready);
         tvLastRun = findViewById(R.id.tv_last_run);
         tvLog = findViewById(R.id.tv_log);
         tvLogTitle = findViewById(R.id.tv_log_title);
@@ -81,6 +82,19 @@ public class MainActivity extends Activity {
     }
 
     private void doTrigger() {
+        if (!PostLock.readyToTrigger()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("当前无法触发")
+                    .setMessage("fresh boot 上 app 域链必然失败：KASLR 泄漏的"
+                            + " watchpoint oracle 被 SELinux 对 untrusted_app 拒绝，"
+                            + "slide 路由会 panic 并触发看门狗重启（循环风险）。\n\n"
+                            + "链设计上需要同 boot 的 shell/root 轮先写入 "
+                            + "/data/local/tmp/ksu_kaslr，app 轮才能走已验证的 "
+                            + "FOPS 路径。当前 boot 该文件缺失或不匹配。")
+                    .setPositiveButton("知道了", null)
+                    .show();
+            return;
+        }
         try {
             PostLock.triggerChain(this);
             Toast.makeText(this, "链已触发，日志持续刷新中", Toast.LENGTH_SHORT).show();
@@ -105,6 +119,11 @@ public class MainActivity extends Activity {
         tvSelinux.setText(enforcing ? "Enforcing" : "Permissive");
         tvSelinux.setTextColor(enforcing ? Color.parseColor("#C62828")
                 : Color.parseColor("#2E7D32"));
+
+        boolean ready = PostLock.readyToTrigger();
+        tvReady.setText(ready ? "✓ 可用" : "✗ 需 shell 轮先导");
+        tvReady.setTextColor(ready ? Color.parseColor("#2E7D32")
+                : Color.parseColor("#9AA0A6"));
 
         long mtime = PostLock.chainLogMtime(this);
         tvLastRun.setText(mtime == 0

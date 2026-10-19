@@ -109,6 +109,29 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:text="链触发可用性"
+                android:textColor="#3C4043"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/tv_ready"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="检测中…"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
                 android:text="上次链触发"
                 android:textColor="#3C4043"
                 android:textSize="14sp" />

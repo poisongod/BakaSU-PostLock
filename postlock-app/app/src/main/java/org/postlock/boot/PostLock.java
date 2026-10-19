@@ -61,6 +61,44 @@ public final class PostLock {
     }
 
     /**
+     * App-uid rounds can NOT run the slide route: perf_event_open (the
+     * KASLR watchpoint oracle) is denied to untrusted_app by SELinux, so a
+     * first run on a fresh boot always fails -- and the chain's failure
+     * path ends in a watchdog reboot (main.c:131), which re-triggers this
+     * receiver: an infinite panic loop (observed 2026-10-19, boot
+     * f2683be0 -> 04714138 -> 067d3efd).  The design (main.c:236) is that
+     * a shell/root round of the SAME boot persists kaslr_base via
+     * ks_persist_kaslr_file(); only then can an app round take the
+     * verified FOPS path.  Gate dispatch on that file + boot_id match.
+     */
+    public static boolean readyToTrigger() {
+        String text = readSmallFile("/data/local/tmp/ksu_kaslr");
+        if (text == null || !text.startsWith("kaslr boot=")) {
+            return false;
+        }
+        String fileBoot = text.substring("kaslr boot=".length()).split("[ \\n]")[0];
+        String nowBoot = readSmallFile("/proc/sys/kernel/random/boot_id");
+        if (nowBoot == null) {
+            return false;
+        }
+        return fileBoot.equals(nowBoot.trim());
+    }
+
+    private static String readSmallFile(String path) {
+        try (FileInputStream in = new FileInputStream(path)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[256];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toString("UTF-8");
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * Dispatch the exploit chain: the preload constructor runs the whole
      * exploit synchronously inside the child /system/bin/sh; its
      * KS_COLDSTART fork then runs restore.sh as uid0 kernel domain.

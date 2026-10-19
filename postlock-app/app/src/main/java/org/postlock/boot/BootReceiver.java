@@ -39,6 +39,13 @@ public class BootReceiver extends BroadcastReceiver {
             Log.i(PostLock.TAG, "skip " + action + " (CE storage sealed)");
             return;
         }
+        // fresh boot: no same-boot kaslr file -> the app-uid slide route
+        // would panic-loop (see PostLock.readyToTrigger).  Do not dispatch.
+        if (!PostLock.readyToTrigger()) {
+            Log.w(PostLock.TAG, "skip " + action
+                    + ": no same-boot kaslr file (app-uid first run unsupported)");
+            return;
+        }
         try {
             PostLock.triggerChain(context);
             Log.i(PostLock.TAG, "chain dispatched from " + action);
