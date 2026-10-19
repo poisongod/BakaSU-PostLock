@@ -6,4 +6,5 @@ build/work/
 /warn*.png
 *.pyc
 __pycache__/
-images -> 原厂固件物料符号链接（指向 /mnt/c，勿入库）
+# images: 原厂固件物料符号链接（指向 /mnt/c，勿入库）
+images
