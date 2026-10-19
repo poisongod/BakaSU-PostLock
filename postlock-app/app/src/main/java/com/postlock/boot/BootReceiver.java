@@ -21,6 +21,12 @@ import android.util.Log;
  */
 public class BootReceiver extends BroadcastReceiver {
 
+    // Static so the GC cannot finalize (and silently release) the wake
+    // lock while the chain runs: a receiver-local reference dies with
+    // onReceive, which is exactly how the screen went off at +9 min and
+    // HANS froze the uid mid-run.  30 min cap covers the slowest round.
+    private static android.os.PowerManager.WakeLock sChainWakeLock;
+
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent == null) {
@@ -63,12 +69,15 @@ public class BootReceiver extends BroadcastReceiver {
             android.os.PowerManager pm = (android.os.PowerManager)
                     context.getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
-                android.os.PowerManager.WakeLock wl = pm.newWakeLock(
-                        android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
-                                | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
-                                | android.os.PowerManager.ON_AFTER_RELEASE,
-                        "postlock:chain");
-                wl.acquire(10 * 60 * 1000L); // auto-releases after 10 min
+                if (sChainWakeLock == null) {
+                    sChainWakeLock = pm.newWakeLock(
+                            android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                                    | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
+                                    | android.os.PowerManager.ON_AFTER_RELEASE,
+                            "postlock:chain");
+                    sChainWakeLock.setReferenceCounted(false);
+                }
+                sChainWakeLock.acquire(30 * 60 * 1000L); // 30 min cap
                 Log.i(PostLock.TAG, "wake lock acquired for chain run");
             }
             Intent ui = new Intent(context, MainActivity.class);
