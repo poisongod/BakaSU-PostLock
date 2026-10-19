@@ -814,3 +814,48 @@ ksu_kaslr` 的 `boot=` 与当前 boot_id 匹配才允许 BOOT_COMPLETED 触发
 （app 域真死点是 slide pselect，kaslr 文件只救 slide 的一个 fallback）
 下 gate 的必要性待重估，但保留无害。UI 面板状态卡 = 驱动/ocsk/SELinux/
 触发可用性/上次触发 + chain.log 尾部滚动。
+
+### untrusted_app 域独立跑链：shared-file slide 达成 + HANS 冻结根因（2026-10-19 第七轮）
+
+**架构定案（用户定义）**：root/shell 的辅助仅限「代读 app 域读不到的文件」——
+具体为 `KS_KASLR_ONLY=1` 廉价轮（`src/main.c:590`：只 perf leak + 写
+`/data/local/tmp/ksu_kaslr` 就退出，无 route、无 panic 风险；shell uid +
+`perf_event_paranoid=-1`（persist）即可跑，**甚至无需 root**）；app 域轮
+`kaslr_from_shared_file()`（main.c:241，boot_id 严格匹配 + 范围校验）消费
+文件 → **跳过必 panic 的 slide pselect route**。实测 app 域日志
+`text-base-ok ... (shared file)` ✓。
+
+**分支布局**：主仓 main = shell 域链（用户指定）；**`untrusted_app` 分支 =
+app 域改造**（本文所有 app 域结论落在此分支）。app 更名 **PostLock:Boot**
+（包名 `com.postlock.boot`，versionCode 6/1.5；旧包 org.postlock.boot 已
+卸载）；自适应图标 = 深蓝底金锁+绿闪电（`make_icon.py`）。
+
+**app 域链实测进度链**（shared file 后）：slide ✓ → collision ✓ →
+bruteforce(mm_struct) ✓ → phase2 prepare storm ——**死点两层**：
+1. **OPPO HANS/OFreezer 冻结 = 真凶**：logcat 铁证
+   `OplusHansManager: freeze uid: 10293 com.postlock.boot pids: [13181]
+   scene: LcdOff`（熄屏即冻整个 uid）+ 3 秒后
+   `netd: destroyAllSocketForUid:10293`（reclaim socket 全灭）→ 链进程
+   冻结不调度 → chain.log 静默停在 `prepare storm i=512/1088`（冻结
+   时刻），无任何错误行。**修复（app v1.5+）**：BootReceiver 先
+   `startActivity(MainActivity)`（亮屏+前台，HANS 不冻可见 activity）
+   再 dispatch；MainActivity 窗口 `FLAG_KEEP_SCREEN_ON | TURN_SCREEN_ON |
+   SHOW_WHEN_LOCKED | DISMISS_KEYGUARD`。
+2. `kill_child`（util.c:1560）= SIGKILL + **阻塞 waitpid** —— 子进程被
+   冻结时不退 → 永久卡（表象与「D 状态子进程」相同，实为冻结）。
+
+**其它 app 域实测事实**（补充第六轮）：
+- **OPPO 把 `adb install` 路由到自家 InstallGuideActivity 等 UI 确认**
+  （`com.oplus.appdetail`，屏幕熄灭时 `Background start not allowed`
+  直接挂死 adb install rc=124）——解法：亮屏后 install → 点引导页
+  「继续安装」(307,2057)@1080×2400 → InstallFinishActivity 装上。新包
+  首装必弹引导（`is_new_guide=1`），以后覆盖升级同流程。
+- Enforcing 下 `pm install`/`adb install` 不经 root 全程可用；app 域
+  取证走 `run-as com.postlock.boot`（debug 签名）。
+- `phase2 forensics: prepare storm` 每 256 打一行（util.c:3393-3399），
+  日志停在 `i=N` 且进程消失/无后续 = 卡在 kill_child(i=N..N+255)。
+- `reclaim sends ok=501/1024 last_err=11`(EAGAIN) 与 `fix36 phase1 tp
+  ctrl=-1 n=0` 在 app 域为观察到的常态/待查（tracefs 权限：本 boot 无
+  root chmod，Enforcing 下 app 域 tracefs 待验证是否为下一卡点）。
+- 新包 uid=10293（旧 10292）；UI 状态卡「链触发可用性 ✓」= gate 读
+  ksu_kaslr boot_id 匹配的实时判定。
