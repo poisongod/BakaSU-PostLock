@@ -145,7 +145,9 @@ public final class PostLock {
             while ((n = in.read(buf)) > 0) {
                 out.write(buf, 0, n);
             }
-            return out.toString("UTF-8");
+            // strip ANSI color escapes -- they render as garbage boxes
+            return out.toString("UTF-8")
+                    .replaceAll("\u001b\\[[0-9;]*[A-Za-z]", "");
         } catch (Exception e) {
             return "<log unreadable: " + e + ">";
         }
