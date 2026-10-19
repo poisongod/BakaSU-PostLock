@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("触发恢复链？")
                 .setMessage("链在后台执行（约 40–90 秒），期间设备可能卡顿。"
-                        + "存在内核 panic 导致自动重启的风险；重启后 PostLock "
+                        + "存在内核 panic 导致自动重启的风险；重启后 PostLock:Boot "
                         + "仍会再次自动触发。\n\n当前状态并非恢复态时才需要手动触发。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("触发", (d, w) -> doTrigger())
