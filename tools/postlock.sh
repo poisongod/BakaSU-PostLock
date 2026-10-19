@@ -83,8 +83,43 @@ ab push "$OCSK_SRC" "$STAGE/ocsk.ko" >/dev/null
 #      app (embedded private key) AUTH to that listener and get a SHELL
 #      uid session -- the app uid itself cannot run the chain (tracefs /
 #      mm_struct timing / configfs are all denied for untrusted_app).
-ab push "$REPO/build/work/pp_adb_tcp.bin" "$STAGE/pp_adb_tcp.bin" >/dev/null
-ab push "$REPO/build/work/adbkeys/postlock_adbkey.pub" "$STAGE/postlock_adbkey.pub" >/dev/null
+# Both live under build/work (gitignored) and are regenerated ONLY when
+# missing -- the keypair must stay stable forever or the pubkey baked
+# into the PostLock app APK stops matching /data/misc/adb/adb_keys.
+ADBKEY_DIR="$REPO/build/work/adbkeys"
+PP_ENTRY="$REPO/build/work/pp_adb_tcp.bin"
+if [ ! -f "$PP_ENTRY" ]; then
+  python3 - > "$PP_ENTRY" <<'PY'
+def wr(n):
+    o = b""
+    while True:
+        x = n & 0x7f; n >>= 7
+        o += bytes([x | (0x80 if n else 0)])
+        if not n: return o
+def st(f, v):
+    b = v.encode(); return wr((f << 3) | 2) + wr(len(b)) + b
+m = st(1, "persist.adb.tcp.port") + st(2, "5555")
+import sys; sys.stdout.buffer.write(wr(10) + wr(len(m)) + m)
+PY
+  echo "generated $PP_ENTRY"
+fi
+if [ ! -f "$ADBKEY_DIR/postlock_adbkey" ] || [ ! -f "$ADBKEY_DIR/postlock_adbkey.pub" ]; then
+  mkdir -p "$ADBKEY_DIR"
+  openssl genrsa -out "$ADBKEY_DIR/postlock_adbkey" 2048 2>/dev/null
+  python3 - "$ADBKEY_DIR" <<'PY'
+import base64, sys
+from cryptography.hazmat.primitives import serialization
+d = sys.argv[1]
+key = serialization.load_pem_private_key(open(d + "/postlock_adbkey", "rb").read(), password=None)
+pub = key.public_key().public_bytes(serialization.Encoding.DER,
+                                    serialization.PublicFormat.PKCS1)
+open(d + "/postlock_adbkey.pub", "w").write(
+    "2048 " + base64.b64encode(pub).decode() + " postlock_bootstrap\n")
+PY
+  echo "generated fresh adb keypair at $ADBKEY_DIR (APP APK MUST RE-EMBED IT)"
+fi
+ab push "$PP_ENTRY" "$STAGE/pp_adb_tcp.bin" >/dev/null
+ab push "$ADBKEY_DIR/postlock_adbkey.pub" "$STAGE/postlock_adbkey.pub" >/dev/null
 # +x matters: the root child's insmod helper gates on access(fm, X_OK) and
 # runs the su daemon from stage on some paths; adb push lands 666.
 ab shell "chmod 755 $STAGE/finitmod $STAGE/su" >/dev/null 2>&1 || true
