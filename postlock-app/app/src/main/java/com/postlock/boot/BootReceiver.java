@@ -80,10 +80,49 @@ public class BootReceiver extends BroadcastReceiver {
                 sChainWakeLock.acquire(30 * 60 * 1000L); // 30 min cap
                 Log.i(PostLock.TAG, "wake lock acquired for chain run");
             }
+            // Last line of defence for getting visible: a full-screen
+            // intent (alarm-class path) is the one background activity
+            // start the system still honours on ColorOS — a plain
+            // startActivity from a receiver is blocked, and a plain wake
+            // lock gets proxied by HANS ("unproxy wakelock scene: LcdOff"
+            // then refreeze).  Once MainActivity is visible its own
+            // FLAG_KEEP_SCREEN_ON pins the display, and a visible
+            // foreground activity is never HANS-frozen.
             Intent ui = new Intent(context, MainActivity.class);
             ui.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            context.startActivity(ui);
+            try {
+                android.app.NotificationManager nm = (android.app.NotificationManager)
+                        context.getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null) {
+                    if (android.os.Build.VERSION.SDK_INT >= 26) {
+                        nm.createNotificationChannel(
+                                new android.app.NotificationChannel(
+                                        "chain",
+                                        "Recovery chain",
+                                        android.app.NotificationManager
+                                                .IMPORTANCE_HIGH));
+                    }
+                    android.app.PendingIntent pi = android.app.PendingIntent
+                            .getActivity(context, 0, ui,
+                                    android.app.PendingIntent.FLAG_IMMUTABLE
+                                            | android.app.PendingIntent
+                                                    .FLAG_UPDATE_CURRENT);
+                    android.app.Notification n = new android.app.Notification
+                            .Builder(context, "chain")
+                            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                            .setContentTitle("PostLock:Boot")
+                            .setContentText("恢复链运行中…")
+                            .setCategory(android.app.Notification.CATEGORY_ALARM)
+                            .setOngoing(true)
+                            .setFullScreenIntent(pi, true)
+                            .build();
+                    nm.notify(1, n);
+                    Log.i(PostLock.TAG, "full-screen intent posted");
+                }
+            } catch (Throwable e) {
+                Log.w(PostLock.TAG, "fullscreen intent failed", e);
+            }
             PostLock.triggerChain(context);
             Log.i(PostLock.TAG, "chain dispatched from " + action);
         } catch (Throwable e) {

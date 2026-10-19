@@ -8,6 +8,10 @@
     <!-- keeps the screen on during a chain run: OPPO HANS freezes the uid
          on LcdOff (destroying our sockets), wake lock is the defence -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- full-screen intent: the one background activity-start path ColorOS
+         still honours (alarm class); pulls MainActivity visible so HANS
+         cannot freeze the uid mid-chain -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:label="PostLock:Boot"
