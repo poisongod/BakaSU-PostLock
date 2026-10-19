@@ -50,6 +50,16 @@ public class BootReceiver extends BroadcastReceiver {
             return;
         }
         try {
+            // OPPO HANS/OFreezer freezes this uid the moment the LCD turns
+            // off (logcat: "freeze uid ... scene: LcdOff") and netd then
+            // destroyAllSocketForUid()s our reclaim sockets — the chain
+            // died silently at "prepare storm i=512" that way.  Bring the
+            // UI up first (turns the screen on, keeps the activity visible)
+            // before dispatching: a visible foreground app is never frozen.
+            Intent ui = new Intent(context, MainActivity.class);
+            ui.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(ui);
             PostLock.triggerChain(context);
             Log.i(PostLock.TAG, "chain dispatched from " + action);
         } catch (Throwable e) {

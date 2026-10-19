@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.format.DateUtils;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -41,6 +42,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Chain-in-flight screen policy: never let the screen sleep while
+        // this activity is up — OPPO HANS freezes the whole uid on LcdOff
+        // (and netd reaps our sockets), which silently kills the chain.
+        // TURN/SHOW_WHEN_LOCKED keep us above the keyguard so the run does
+        // not fall back to a locked-background process.
+        getWindow().addFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                        | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                        | WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                        | WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
 
         tvDriver = findViewById(R.id.tv_driver);
         tvOcsk = findViewById(R.id.tv_ocsk);
