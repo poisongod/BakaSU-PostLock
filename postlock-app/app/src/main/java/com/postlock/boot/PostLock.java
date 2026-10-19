@@ -1,4 +1,4 @@
-package org.postlock.boot;
+package com.postlock.boot;
 
 import android.content.Context;
 import android.content.res.AssetManager;

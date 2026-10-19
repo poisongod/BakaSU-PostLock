@@ -7,7 +7,7 @@
 # readable by the kernel-domain carrier).
 #
 # NOTE: no single quotes below (this file is also safe to eval).
-PS=/data/user/0/org.postlock.boot/files/postlock
+PS=/data/user/0/com.postlock.boot/files/postlock
 TMP=/data/local/temp
 APP=com.resukisu.resukisu
 ACT=org.bakasu.bakasu.ui.MainActivity

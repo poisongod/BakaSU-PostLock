@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace = "org.postlock.boot"
+    namespace = "com.postlock.boot"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "org.postlock.boot"
+        applicationId = "com.postlock.boot"
         minSdk = 26
         targetSdk = 33
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     signingConfigs {

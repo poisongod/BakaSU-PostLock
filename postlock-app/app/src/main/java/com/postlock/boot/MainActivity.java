@@ -1,4 +1,4 @@
-package org.postlock.boot;
+package com.postlock.boot;
 
 import android.app.Activity;
 import android.app.AlertDialog;

@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- PostLockBoot: standalone boot-trigger for the CVE-2026-43499
+    <!-- PostLock:Boot: standalone boot-trigger for the CVE-2026-43499
          restore chain on the relocked OPPO A96.  Deliberately independent
          of the BakaSU manager app (no shared code, no shared signing). -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
-        android:label="PostLock"
+        android:label="PostLock:Boot"
+        android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
@@ -26,8 +27,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <!-- manual test: am broadcast -a org.postlock.boot.LAUNCH -->
-                <action android:name="org.postlock.boot.LAUNCH" />
+                <!-- manual test: am broadcast -a com.postlock.boot.LAUNCH -->
+                <action android:name="com.postlock.boot.LAUNCH" />
             </intent-filter>
         </receiver>
 

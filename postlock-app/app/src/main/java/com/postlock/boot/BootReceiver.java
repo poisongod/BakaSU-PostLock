@@ -1,4 +1,4 @@
-package org.postlock.boot;
+package com.postlock.boot;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -29,13 +29,13 @@ public class BootReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action)
-                && !"org.postlock.boot.LAUNCH".equals(action)) {
+                && !"com.postlock.boot.LAUNCH".equals(action)) {
             return;
         }
         // LOCKED_BOOT_COMPLETED is skipped on purpose: the credential
         // encrypted filesDir is unreadable before first unlock.
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
-                && !"org.postlock.boot.LAUNCH".equals(action)) {
+                && !"com.postlock.boot.LAUNCH".equals(action)) {
             Log.i(PostLock.TAG, "skip " + action + " (CE storage sealed)");
             return;
         }
@@ -44,7 +44,7 @@ public class BootReceiver extends BroadcastReceiver {
         // Explicit LAUNCH broadcasts bypass the gate on purpose: they are
         // the manual/debug entry (am broadcast -n .../.BootReceiver) used
         // for app-domain experiments; BOOT_COMPLETED stays protected.
-        if (!"org.postlock.boot.LAUNCH".equals(action) && !PostLock.readyToTrigger()) {
+        if (!"com.postlock.boot.LAUNCH".equals(action) && !PostLock.readyToTrigger()) {
             Log.w(PostLock.TAG, "skip " + action
                     + ": no same-boot kaslr file (app-uid first run unsupported)");
             return;
