@@ -758,3 +758,59 @@ shell 直读 Permission denied（root 可读）；app 启动用
 `monkey -p com.resukisu.resukisu -c android.intent.category.LAUNCHER 1`；
 截图前先 dismiss-keyguard + BACK 收弹窗，焦点常态被
 `com.oplus.exsystemservice`/NotificationShade 抢占。
+
+### PostLock app「开机自启」路线与 untrusted_app 卡点（2026-10-19 第六轮）
+
+**目标**：已回锁设备上，一个 app（`org.postlock.boot`，PostLock，CI 构建
+`Build PostLock App` workflow 产 `app-debug.apk`）开机自启跑链 → root →
+自动恢复整套（kernelsu.ko + ocsk + daemon + overlay），全程零 host。
+**app 域执行环境 = `u:r:untrusted_app` + SELinux Enforcing + seccomp 严格**
+（Runtime.exec 的 sh 继承 app 的 seccomp filter——perf_event_open 等被
+SCMP_ACT_ERRNO 拒；不是 SELinux 拒的）。术语：BakaSu = 用户侧管理器
+（`com.resukisu.resukisu`）；PostLock = 自启 app（本文）。
+
+**已实测事实链**：
+- OPPO 不拦 BOOT_COMPLETED（receiver 自动触发实测成功）；`am broadcast
+  -n org.postlock.boot/.BootReceiver -a org.postlock.boot.LAUNCH` 手动触发
+  （必须 `-n` 显式）。**LAUNCH 广播跳过 gate（debug 后门），BOOT_COMPLETED
+  走 gate**（versionCode 5 起）。
+- Enforcing 下 shell→untrusted_app 的 runcon 被 SELinux 拒（domain
+  transition 不允许），模拟 app 域只能用真实 app 进程。Permissive 下 runcon
+  可以（shell uid + untrusted_app 域，曾跑出完整失败日志）。
+- app 域读 `/proc/kallsyms`：**地址全 0**（kptr_restrict=2，内核抹零，无
+  AVC 拒绝——文件可读）。app 域读 `/dev/kmsg`：Permission denied。app 域读
+  `/data/local/tmp/ksu_kaslr`：**成功**（DAC 644 + shell_data_file 允许——
+  代读通道畅通）。
+- `perf_event_paranoid=-1` 是 persist 的（不随 boot 重置）；但 app uid 的
+  perf_event_open 被 **seccomp** 拒（errno≠SELinux 语义），shell uid 下
+  `text-base-ok ... (perf)` 成功。**watchpoint errno=22 = 内核拒绝内核地址
+  breakpoint，对 shell/app 一样废**（不是 app 特有）。
+- shell 域对照组每次 route 都打 `main cmp_requeue ret=-1 errno=35`
+  （FUTEX_CMP_REQUEUE_PI 语义常态）随后继续；**app uid 下链的真实死点 =
+  slide 的 pselect route panic**（链日志最后一行 `slide child context
+  route=pselect ... uid=10292 attr=u:r:untrusted_app` 后断，pstore 显示
+  JSLag Monitor 踩 `_raw_spin_unlock_irq` 坏锁——链留下的 dangling
+  rt_mutex 状态殃及系统进程）。**同 boot 并发三跑链 = 必 panic**（一次
+  postlock 成功 + runcon + shell 对照并发，设备重启）。
+- 真实 app 域 fresh boot 首跑（gate 已 bypass）：UI 面板（v1.4）显示链
+  跑到 kernelsnitch 阶段后 panic 重启（boot_id b5ecbc42→92149050）；
+  `run-as org.postlock.boot cat files/postlock/chain.log` 是 shell 取证
+  app 域链日志的唯一通道（debuggable APK）。
+
+**卡点机制（源码级）**：slide 的 pselect route 把 fake rt_mutex 布置在
+pselect 内核栈的 fdset 里（`src/slide.c` `slide_pselect_stack_copy`，
+`SLIDE_PSELECT_SHIFTS` 调栈布局偏移）。**app uid 的 pselect 每个 fd 引入
+额外 SELinux 检查栈帧 → 布局错位 → rt_mutex_adjust_prio_chain 把 fdset
+数据当指针 deref → oops**。这正是 `src/main.c:236` 注释「its pselect
+probe panics under app uid」的物理机制。**修复方向**：① 扩大/固定 app uid
+的 shift 搜索（但错误 shift = panic，不可自适应循环）；② fake lock 的
+owner 指针字段填哨兵值使 walk 安全失败；③ app uid 跳过 pselect slide，
+KASLR 走 root 代读 kallsyms 文件（`ks_persist_kaslr_file`）——但 fresh
+boot 无 root，鸡生蛋，需与 ①/② 组合。
+
+**gate（v1.3/4/5）**：`PostLock.readyToTrigger()` 读 `/data/local/tmp/
+ksu_kaslr` 的 `boot=` 与当前 boot_id 匹配才允许 BOOT_COMPLETED 触发
+（不匹配 → receiver skip）。**注意这是旧结论下的保守 gate**——新认知
+（app 域真死点是 slide pselect，kaslr 文件只救 slide 的一个 fallback）
+下 gate 的必要性待重估，但保留无害。UI 面板状态卡 = 驱动/ocsk/SELinux/
+触发可用性/上次触发 + chain.log 尾部滚动。
