@@ -683,3 +683,70 @@ github.com/ReSukiSU/ReSukiSU，tmp 会清，可重克隆）。
   `reset_main_route_state()` 复位，改全局变量时记得同步复位。
 - 编译告警不是默认全开：`-Wall -Wextra` 之外显式关掉了
   `-Wno-unused-parameter -Wno-sign-compare -Wno-unused-function`，且 `-O2 -g0`。
+
+### 真实标准模式达成：ocsk v11.2 与 BakaSu 蓝卡（2026-10-19，boot 998d4c8d）
+
+**终态（ui4.png）**：原厂回锁内核 5.4.254-qgki 上 BakaSu 蓝卡**「工作中 Built-in」**，
+驱动 (35220/5) 来自真 `[ksu_driver]` fd（dmesg `ksu ioctl ... from uid=0` 实证），
+零欺骗（本 boot wrap prop 空、无 libgrant、无 libkernelsu 补丁参与）。链条 =
+postlock restore（kernelsu.ko Live + `ksu_debug_manager_appid=10279`）→
+ocsk v11.2 拦 OPLUS_ROOT_CHECK → app 派出的 libksud.so 提权 uid=0 拿 fd →
+su shell 正常（KsuCli 输出 `Zygisk implement: None` 等业务日志，无 not-a-shell）。
+
+**红卡归因修正**：「获取 root 失败 / Created process is not a shell」的根因
+**不是 fd 缺失**（fd 一直是 libksud.so 用 `reboot(magic)` 自取的，链路早通），
+而是 **OPLUS_ROOT_CHECK 把提权回滚**——ksud ioctl 恒 `uid=10279`，以 app uid
+起的 sh 不是 root shell。
+
+**ocsk 迭代归因链（v9→v10→v11→v11.2，防重踩）**：
+- **OPPO 自己在 tracefs 挂了探针**：`p:kprobes/ocs oplus_root_check_succ
+  adr=$stack0`、`p:kprobes/seb oplus_exec_block`（/sys/kernel/tracing/
+  kprobe_events，root 可读）。`ocs` 的 `brk #0x80`（词 d4200080 = aarch64
+  kprobe 单步占位）**长期钉在 entry+0 永不还原** → v9 的 SCS 锚点必 FAIL
+  （100 次重试全读到 brk）。删除报 EBUSY（疑 perf 引用，服务持有）。v10 起
+  锚点接受 SCS push 或 brk 占位 + kill 词精确锚 `0x94004415`（pc-relative
+  KASLR 不变）才算过。
+- **arm64 kprobe pre_handler 返回值语义是成败分水岭**（源码
+  arch/arm64/kernel/probes/kprobes.c:357）：`return 0` → setup_singlestep
+  **覆盖** regs->pc（单步槽或模拟执行），pre_handler 的 pc 修改全部作废；
+  `return 1` → 跳过单步、**直接从 regs->pc 继续**。v8~v11.1 的 kill_pre
+  靠 `x0=0`（force_sig(0)=信号0 不杀人）**看似拦截成功（61/61、40/40），
+  但 force_sig 本身被调用就连带回滚提权**——这就是 uid 卡 10279 的根。
+  **v11.2 `return 1` + 去掉 x0 清零 → bl force_sig 完全不执行 → uid=0**，
+  一步到位蓝卡。`entry_hits`/`hits` 计数相等且等于 kill printk 增量 =
+  探针没拦住的铁证（1:1:1 判据）。
+- **entry+0 的 br x30 整函数跳过实测无效**：entry_pre 同样 return 1 +
+  pc=x30，但 entry_hits 与 kill hits 恒 1:1（函数体照常跑完）——归因收窄
+  到与 OPPO trace kprobe 的**聚合交互**（干净地址 +0xa30 的 return 1 完美
+  生效是对照）；**本内核 CONFIG_DEBUG_FS=n**（/sys/kernel/debug 不存在、
+  任意点挂 debugfs 报 No such device、/sys/kernel 下 mkdir EPERM），
+  kprobes/list 观测不到，未最终定因。entry 探针现为惰性观察者（保留：
+  万一 trace 事件被删它就生效）。
+- **打印照打 ≠ 拦截失败**：`Kill the process of escalation` printk 在探针
+  点之前/函数未跳过时都照打，判据只认 uid/hits/1:1 增量。
+- **在线热替换**（当 boot 有 root 通道免 reboot）：`su -c "rmmod ocsk;
+  /data/local/temp/finitmod /data/local/temp/ocsk.ko 0 arm=1"`；v9 起
+  FAIL 复位 armed_flag，可反复 echo 1 重试；state（hexdump 读，
+  shell `$(cat)` 曾因转义读空）是唯一诊断源（本内核模块 printk/dmesg
+  不可达、filp_open 在 finitmod 上下文失败——老 v6b/v24 教训依旧）。
+- **ocsk 编译命令**（host，每次照抄）：
+  `make -C /home/yang1/opencode-work/kout-v15 M=$REPO/tools/ocsk ARCH=arm64
+  CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar
+  OBJCOPY=llvm-objcopy CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER= modules`
+  （PATH 加 NDK clang；kout=5.4.147 勿用，kout-v15=5.4.254 匹配设备；
+  `CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER=` 必须置空——Makefile:933
+  写死的 `-enable-trivial-auto-var-init-zero...` 是 clang21 移除的 flag；
+  源码树在 /home/yang1/opencode-work/kernsrc/sm6375-v15）。
+
+**安全警告弹窗（未治理）**：exsystemservice 弹「检测到恶意程序…已阻止本次
+破坏行为」由 `kevent_send_to_user:execve` 上报 libksud.so execve 触发，每次
+app 冷启动必弹。处理：点「知道了」**坐标 (293,1396)**（BACK 无效），**「立即
+重启」(775,1396) 绝不点**。第四轮既定决策「弹窗真出现再加 kevent 探针」已触发
+未做——待办：给 `kevent_send_to_user`（kallsyms 有 t 符号）加 ocsk 式探针
+按事件类型过滤（全局拦有副作用风险，pre_handler 读参数寄存器放过非 execve）。
+
+**其它现场事实**：`/sys/module/kernelsu/parameters/ksu_debug_manager_appid`
+shell 直读 Permission denied（root 可读）；app 启动用
+`monkey -p com.resukisu.resukisu -c android.intent.category.LAUNCHER 1`；
+截图前先 dismiss-keyguard + BACK 收弹窗，焦点常态被
+`com.oplus.exsystemservice`/NotificationShade 抢占。
