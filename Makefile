@@ -19,6 +19,7 @@ endef
 
 PRELOAD := $(OUTDIR)/preload.so
 EMBED_KSUD := $(EMBEDDIR)/ksud
+EMBED_SU := $(EMBEDDIR)/su_daemon_aarch64_pie
 
 CORE_SRCS := \
   $(call pick_src,main.c) \
@@ -27,7 +28,7 @@ CORE_SRCS := \
   $(call pick_src,fops.c) \
   $(call pick_src,pipe.c) \
   src/root.c
-PRELOAD_SRCS := $(CORE_SRCS) src/preload.c src/ksud_blob.S
+PRELOAD_SRCS := $(CORE_SRCS) src/preload.c src/ksud_blob.S src/su_blob.S
 
 .DEFAULT_GOAL := preload
 
@@ -102,10 +103,15 @@ $(OUTDIR):
 $(EMBEDDIR):
 	mkdir -p $@
 
-$(PRELOAD): $(PRELOAD_SRCS) $(TARGET_HEADER) $(EMBED_KSUD) src/offset.h src/common.h src/kernelsnitch/*.h | $(OUTDIR)
+$(PRELOAD): $(PRELOAD_SRCS) $(TARGET_HEADER) $(EMBED_KSUD) $(EMBED_SU) src/offset.h src/common.h src/kernelsnitch/*.h | $(OUTDIR)
 	$(TARGET_CC) $(TARGET_FLAGS) $(SO_CFLAGS) $(WARN_CFLAGS) $(TARGET_CFLAGS) \
 	  $(PRELOAD_SRCS) $(TARGET_COMMON_LDFLAGS) \
 	  -shared -o $@ -pthread
+	sha256sum $@
+
+$(EMBED_SU): src/su_daemon.c | $(EMBEDDIR)
+	$(TARGET_CC) $(TARGET_FLAGS) -static $(COMMON_CFLAGS) $(WARN_CFLAGS) \
+	  src/su_daemon.c -o $@
 	sha256sum $@
 
 info:

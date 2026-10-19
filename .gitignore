@@ -1,2 +1,8 @@
 build/*/bin/preload.so
 build/embed/su_daemon_aarch64_pie
+build/work/
+# 临时取证截图（screencap 拉回的 ui/warn 等）
+/ui*.png
+/warn*.png
+*.pyc
+__pycache__/

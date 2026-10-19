@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import bisect
 import gzip
 import hashlib
 import json
@@ -533,14 +534,20 @@ def locate_u32_offset_table(
     #   _text, __pi__text, _stext      -> offsets: 0, 0, 0x10000
     #   _text, _stext, ...             -> offsets: 0, 0x10000
     #   _text, _head, pe_header, ...   -> offsets: 0, 0, 0x40, 0x44, 0x58
+    #   _head, _text, pe_header, ...   -> offsets: 0, 0, 0x40, 0x44, 0x58
+    # PE 头固定点已与 arm64 Image 头交叉验证：pe_off=0x40、COFF Machine=0x44、
+    # optional header magic=0x58、section_table(".text")=0xf8，且 vectors/init_pg_dir
+    # 均满足对齐要求。注意 0 偏移序列 (0, 0, 0, 0x40, 0x44) 也会通过全表验证，
+    # 只有 (0, 0, 0x40, 0x44, 0x58) 这个 5 元固定点能唯一锁定正确对齐。
     first_names = [name for _, name in names[:3]]
     if len(names) >= 3 and first_names == ["_text", "__pi__text", "_stext"]:
         signature = struct.pack("<III", 0, 0, 0x10000)
     elif len(names) >= 2 and [name for _, name in names[:2]] == ["_text", "_stext"]:
         signature = struct.pack("<II", 0, 0x10000)
-    elif len(names) >= 5 and [name for _, name in names[:5]] == [
-        "_text", "_head", "pe_header", "coff_header", "optional_header"
-    ]:
+    elif len(names) >= 5 and [name for _, name in names[:5]] in (
+        ["_text", "_head", "pe_header", "coff_header", "optional_header"],
+        ["_head", "_text", "pe_header", "coff_header", "optional_header"],
+    ):
         signature = struct.pack("<IIIII", 0, 0, 0x40, 0x44, 0x58)
     else:
         fail(f"kallsyms 开头符号不符合当前固定点: {names[:3]!r}")
@@ -625,6 +632,115 @@ def infer_relative_base_off_66(data: bytes, address_table_off: int, num_syms: in
             file=sys.stderr,
         )
     return off, value
+
+
+def find_rela_chain(data: bytes) -> list[int] | None:
+    """Return file offsets of the longest R_AARCH64_RELATIVE entry chain (24-byte stride)."""
+    needle = struct.pack("<Q", 1027)
+    hits: list[int] = []
+    pos = data.find(needle)
+    while pos >= 0:
+        hits.append(pos)
+        pos = data.find(needle, pos + 1)
+    if len(hits) < 400:
+        return None
+    by_residue: dict[int, list[int]] = {}
+    for hit in hits:
+        entry = hit - 8
+        if entry < 0 or entry + 24 > len(data):
+            continue
+        by_residue.setdefault(entry % 24, []).append(entry)
+    longest: list[int] = []
+    for starts in by_residue.values():
+        starts.sort()
+        chain = [starts[0]]
+        for entry in starts[1:]:
+            if entry == chain[-1] + 24:
+                chain.append(entry)
+                continue
+            if len(chain) > len(longest):
+                longest = chain
+            chain = [entry]
+        if len(chain) > len(longest):
+            longest = chain
+    if len(longest) < 100:
+        return None
+    return longest
+
+
+def infer_relative_base_from_relocs(
+    data: bytes,
+    image_size: int,
+    address_table_off: int,
+    num_syms: int,
+) -> int | None:
+    """Infer the link-time _text base from an embedded R_AARCH64_RELATIVE table.
+
+    KASLR images whose kallsyms_relative_base is stored as 0 (filled at load time)
+    still carry a .rela-style table of {r_offset, r_info=1027, r_addend} records.
+    Both r_offset and r_addend are link-time kernel VAs, so the unique base that
+    keeps every relocation inside the image and lands addends on kallsyms symbol
+    starts is the link-time _text address.
+    """
+    longest = find_rela_chain(data)
+    if longest is None:
+        return None
+    offsets: list[int] = []
+    addends: list[int] = []
+    for entry in longest:
+        r_offset = u64(data, entry)
+        r_addend = u64(data, entry + 16)
+        if not is_canonical_kernel_pointer(r_offset):
+            return None
+        if is_canonical_kernel_pointer(r_addend):
+            addends.append(r_addend)
+        offsets.append(r_offset)
+    if len(addends) < len(longest) // 2:
+        return None
+    sorted_offsets = sorted(offsets)
+    sorted_addends = sorted(addends)
+
+    def invalid(base: int) -> int:
+        return (
+            bisect.bisect_left(sorted_offsets, base)
+            + len(sorted_offsets)
+            - bisect.bisect_left(sorted_offsets, base + image_size)
+            + bisect.bisect_left(sorted_addends, base)
+            + len(sorted_addends)
+            - bisect.bisect_left(sorted_addends, base + image_size)
+        )
+
+    scan_lo = sorted_offsets[-1] - image_size
+    scan_hi = sorted_offsets[0]
+    if scan_lo > scan_hi or scan_hi - scan_lo > image_size + 0x100000:
+        return None
+    grid = list(range(scan_lo & ~0xFFF, scan_hi + 1, 0x1000))
+    if len(grid) > 65536:
+        return None
+    scored: list[tuple[int, int]] = [(invalid(base), base) for base in grid]
+    best_invalid = min(score for score, _ in scored)
+    if best_invalid > max(8, (len(offsets) + len(addends)) // 200):
+        return None
+    tied = [base for score, base in scored if score == best_invalid]
+    symbol_rvas = {u32(data, address_table_off + 4 * i) for i in range(num_syms)}
+    stride = max(1, len(addends) // 4096)
+    sample = addends[::stride]
+
+    def hits(base: int) -> int:
+        total = 0
+        for addend in sample:
+            rva = addend - base
+            if 0 <= rva <= image_size and rva in symbol_rvas:
+                total += 1
+        return total
+
+    ranked = sorted(((hits(base), base) for base in tied), reverse=True)
+    top_hits, top_base = ranked[0]
+    if top_hits < 8:
+        return None
+    if len(ranked) > 1 and ranked[1][0] > 0 and top_hits < ranked[1][0] * 1.4:
+        return None
+    return top_base
 
 
 def recover_kallsyms(data: bytes, kernel_size: int, image_size: int) -> KallsymsInfo:
@@ -717,7 +833,17 @@ def recover_kallsyms(data: bytes, kernel_size: int, image_size: int) -> Kallsyms
             "不是规范内核指针，改为在 kallsyms_offsets 附近扫描",
             file=sys.stderr,
         )
-        relative_base_off, relative_base = infer_relative_base_off_66(data, address_table_off, num_syms)
+        reloc_base = infer_relative_base_from_relocs(data, image_size, address_table_off, num_syms)
+        if reloc_base is not None:
+            relative_base = reloc_base
+            print(
+                f"警告: kallsyms_relative_base 由 RELA 重定位表推导为 0x{relative_base:x}",
+                file=sys.stderr,
+            )
+        else:
+            relative_base_off, relative_base = infer_relative_base_off_66(
+                data, address_table_off, num_syms
+            )
     if not is_canonical_kernel_pointer(relative_base):
         fail(f"kallsyms_relative_base 不是规范内核指针: 0x{relative_base:x}")
 
@@ -725,8 +851,9 @@ def recover_kallsyms(data: bytes, kernel_size: int, image_size: int) -> Kallsyms
     if seqs is not None and seqs != relative_base_off + 8:
         fail("kallsyms_seqs_of_names 未紧随 relative_base")
 
-    if info.one("_text") != 0 or info.one("_stext") != 0x10000:
-        fail("_text/_stext 固定点校验失败")
+    stext = info.one("_stext")
+    if info.one("_text") != 0 or stext & 0xFFF or stext > 0x1000000:
+        fail(f"_text/_stext 固定点校验失败: _text=0, _stext=0x{stext:x}")
     edata = maybe_one("_edata")
     if edata is not None and not (0 < edata <= image_size):
         fail(f"_edata 超出 Image 边界: 0x{edata:x} > 0x{image_size:x}")

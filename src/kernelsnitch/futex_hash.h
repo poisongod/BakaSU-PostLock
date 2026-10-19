@@ -201,6 +201,18 @@ uint32_t __futex_hash(futex_key_t *key, uint32_t futex_hashsize)
 
 unsigned long futex_hashsize = (unsigned long)-1;
 
+/*
+ * Kernel hash_futex() hashes the raw union futex_key bytes starting at
+ * offset 0 for (hashsize/4 == 4) u32 words with initval = both.offset.
+ * Verified against the live 5.4.254-qgki vmlinux: private { mm@0, address@8,
+ * offset@16 } -> hash bytes [mm, address], matching the default layout below.
+ * FUTEX_KEY_ADDRESS_FIRST=1 targets kernels whose futex_key stores address
+ * first; confirm via get_futex_key disassembly before enabling.
+ */
+#ifndef FUTEX_KEY_ADDRESS_FIRST
+#define FUTEX_KEY_ADDRESS_FIRST 0
+#endif
+
 static inline unsigned long futex_roundup_pow2(unsigned long v)
 {
     if (v <= 1)
@@ -211,6 +223,42 @@ static inline unsigned long futex_roundup_pow2(unsigned long v)
     return v + 1;
 }
 
+/*
+ * Count possible CPUs from /sys/devices/system/cpu/possible ("0-7" style).
+ * The kernel builds futex_hashsize from roundup_pow2(256 * popcount(possible)),
+ * so this tells us the K the offline mask must not exceed.
+ */
+static unsigned long futex_possible_cpus(void)
+{
+    FILE *f = fopen("/sys/devices/system/cpu/possible", "r");
+    if (!f)
+        return 0;
+    char buf[256] = {0};
+    fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    unsigned long count = 0;
+    char *p = buf;
+    while (*p) {
+        char *end = NULL;
+        unsigned long a = strtoul(p, &end, 10);
+        if (end == p) {
+            ++p;
+            continue;
+        }
+        unsigned long b = a;
+        p = end;
+        if (*p == '-') {
+            p++;
+            b = strtoul(p, &end, 10);
+            p = end;
+        }
+        count += (b >= a) ? (b - a + 1) : 1;
+        if (*p == ',')
+            ++p;
+    }
+    return count;
+}
+
 void futex_init(void)
 {
     const char *env = getenv("KSNITCH_FUTEX_HASHSIZE");
@@ -218,8 +266,12 @@ void futex_init(void)
         char *end = NULL;
         unsigned long val = strtoul(env, &end, 0);
         if (end && *end == '\0' && val > 0) {
-            futex_hashsize = val;
-            return;
+            if (val & (val - 1)) {
+                pr_warning("KSNITCH_FUTEX_HASHSIZE=%lu is not a power of two, ignoring (offline mask must be a power of two)\n", val);
+            } else {
+                futex_hashsize = val;
+                return;
+            }
         }
     }
 
@@ -235,8 +287,13 @@ uint32_t futex_hash(size_t addr, size_t mm)
 {
     ASSERT_pr((futex_hashsize != (unsigned long)-1), "need to call futex_init() first\n");
     futex_key_t key;
+    key.both.offset = addr & KS_PAGE_MASK;
+#if FUTEX_KEY_ADDRESS_FIRST
+    key.both.ptr = (uint64_t)(addr & ~KS_PAGE_MASK);
+    key.both.word = mm;
+#else
     key.private.mm = (void *)mm;
     key.private.address = addr & ~KS_PAGE_MASK;
-    key.private.offset = addr & KS_PAGE_MASK;
+#endif
     return __futex_hash(&key, futex_hashsize);
 }

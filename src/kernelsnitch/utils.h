@@ -18,10 +18,28 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 
 #ifdef ANDROID_APP_NO_LKM
 #include <android/log.h>
 #endif
+
+/* Panic-safe logging: stdout is fully buffered when redirected to a file, so
+ * a kernel panic in the middle of the exploit discards everything still in
+ * the stdio buffer (and, if not fsync'ed, the page cache).  Set KS_LOG_SYNC=1
+ * to flush+fsync every pr_* line. */
+static inline void pr_flush(void) {
+  fflush(stdout);
+  const char *s = getenv("KS_LOG_SYNC");
+  if (s && s[0] && strcmp(s, "0") != 0) fsync(fileno(stdout));
+}
+
+/* Forked helper children (pipe_prepare, clone_child, leak_child) must not
+ * run the parent's inherited atexit handlers on error paths: pr_error's
+ * exit(-1) would fire route_pi_release_atexit / ashmem_guard_restore and
+ * corrupt the parent's route state.  Set this to 1 in the child right after
+ * fork so pr_error uses _exit instead of exit. */
+extern int ks_child_no_atexit;
 
 #ifndef HIDEMINMAX
 #define MAX(X,Y) (((X) > (Y)) ? (X) : (Y))
@@ -82,23 +100,27 @@
 #else
 #define pr_error(fmt, ...) do { \
         printf(COLOR_RED "[!] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
-        exit(-1); \
+        pr_flush(); \
+        if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
         printf(COLOR_RED "[-] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
         printf(COLOR_YELLOW "[*] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
         printf(COLOR_GREEN "[+] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #endif
 #else
 #ifdef ANDROID_APP_NO_LKM
 #define pr_error(fmt, ...) do { \
         __android_log_print(ANDROID_LOG_ERROR, "google_poc_app", "[!] " fmt, ##__VA_ARGS__); \
-        exit(-1); \
+        if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
         __android_log_print(ANDROID_LOG_WARN, "google_poc_app", "[-] " fmt, ##__VA_ARGS__); \
@@ -110,18 +132,23 @@
         __android_log_print(ANDROID_LOG_INFO, "google_poc_app", "[+] " fmt, ##__VA_ARGS__); \
     } while (0)
 #else
+#define PR_TIDP (int)syscall(SYS_gettid)
 #define pr_error(fmt, ...) do { \
-        printf(COLOR_RED "[!] " COLOR_DEFAULT fmt, ##__VA_ARGS__); \
-        exit(-1); \
+        printf(COLOR_RED "[!][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        pr_flush(); \
+        if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        printf(COLOR_RED "[-] " COLOR_DEFAULT fmt, ##__VA_ARGS__); \
+        printf(COLOR_RED "[-][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        printf(COLOR_YELLOW "[*] " COLOR_DEFAULT fmt, ##__VA_ARGS__); \
+        printf(COLOR_YELLOW "[*][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        printf(COLOR_GREEN "[+] " COLOR_DEFAULT fmt, ##__VA_ARGS__); \
+        printf(COLOR_GREEN "[+][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        pr_flush(); \
     } while (0)
 #endif
 #endif
