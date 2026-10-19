@@ -3,6 +3,7 @@ cmd_/home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.o := clan
 source_/home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.o := /home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.c
 
 deps_/home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.o := \
+    $(wildcard include/config/debug/fs.h) \
   /home/yang1/opencode-work/kernsrc/sm6375-v15/include/linux/kconfig.h \
     $(wildcard include/config/cc/version/text.h) \
     $(wildcard include/config/cpu/big/endian.h) \

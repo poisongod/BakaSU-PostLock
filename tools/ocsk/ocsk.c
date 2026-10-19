@@ -1,5 +1,23 @@
 /* ocsk.ko -- silence OPPO's oplus_root_check_succ kill path from kernel side.
  *
+ * v12 (round 998d4c8d, popup治理): silence the security-warning popup
+ * ("检测到恶意程序...已阻止本次破坏行为") that pops on every app cold
+ * start.  Static disassembly of oplus_exec_block (bootdump, capstone;
+ * link = runtime - slide where slide = oplus_root_check_succ runtime -
+ * 0xffffffc0102ea620) shows the exec-monitor flow:
+ *   x0 (task context struct) -> whitelist strncmp prefixes -> if pass:
+ *   build msg (type=3 at [sp+0x18], path string) -> +0x1b8 bl
+ *   kevent_send_to_user -> printk -> return 0 (ALLOW -- execve itself
+ *   always succeeds); a second block at +0x25c does the same then
+ *   returns -1 (block path, never hit for our case).
+ * The popup is user-space exsystemservice reacting to that kevent.
+ * Rather than globally blocking kevent_send_to_user (shared by the
+ * theia_/fb_/mm_fb_ families -- side-effect risk flagged in round 4),
+ * probe the two CALL SITES inside oplus_exec_block: clean internal
+ * addresses (no trace-kprobe aggregation like entry+0), pre_handler
+ * does `pc += 4; return 1` per the v11.2-proven semantics, skipping
+ * ONLY these two reports.  Link-relative words are KASLR-invariant.
+ *
  * v11.2 (round 998d4c8d, THE fix): v11's entry-side `br x30` never
  * worked in practice -- entry_hits and kill-hits stayed 1:1 (42/42)
  * with kill printks matching, i.e. the whole function STILL RAN even
@@ -118,17 +136,24 @@
 #define KILL_BL_WORD  0x94004415U	/* v10: exact `bl force_sig` (link-rel) */
 #define KILL_BL_OFF   0xa30		/* bl force_sig, LIVE path (xref2) */
 #define DEAD_BL_OFF   0x268		/* bl force_sig in dead clone (xref1) */
+#define EXEC_SYM      "oplus_exec_block"
+#define REP1_OFF      0x1b8		/* v12: bl kevent_send_to_user (allow path) */
+#define REP2_OFF      0x25c		/* v12: bl kevent_send_to_user (block path) */
+#define REP1_WORD     0x940000a4U	/* link-rel: +0x1b8 -> kevent (+0x290) */
+#define REP2_WORD     0x9400007bU	/* link-rel: +0x25c -> kevent (+0x1ec) */
 
 static unsigned long hits;
 static unsigned long last_pc;
 static unsigned long entry_addr;
 static unsigned long entry_hits;	/* v11: whole-function skips */
+static unsigned long rep_hits;		/* v12: suppressed kevent reports */
 static int armed;
 
 static char state_buf[512];
 static int armed_flag;		/* set once the probes are registered */
 static int entry_on;		/* v11: kp_entry stays registered */
 static int kill_on;		/* kp_kill registered */
+static int rep_on;		/* v12: popup-suppression probes registered */
 
 static void emit(const char *fmt, ...)
 {
@@ -187,6 +212,19 @@ static struct kprobe kp_entry = {
 static struct kprobe kp_kill = {
 	.pre_handler = kill_pre,
 };
+
+/* v12: skip `bl kevent_send_to_user` at the two oplus_exec_block call
+ * sites -- kills the security-warning popup without touching the shared
+ * kevent channel (other reporters keep working). */
+static int rep_pre(struct kprobe *p, struct pt_regs *regs)
+{
+	__sync_fetch_and_add(&rep_hits, 1);
+	regs->pc += 4;			/* skip `bl kevent` */
+	return 1;			/* v11.2-proven: honor pc change */
+}
+
+static struct kprobe kp_rep1 = { .pre_handler = rep_pre };
+static struct kprobe kp_rep2 = { .pre_handler = rep_pre };
 
 /* arm setter -- runs from parse_args() inside load_module(), long before
  * the (never reached) do_init_module().  Always returns 0 so the module
@@ -276,6 +314,44 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 	probe_kernel_read(&w_after, kp_kill.addr, sizeof(w_after));
 	emit("kill.word.after=%08x patched=%d\n", w_after, w_after != w_before);
 	armed = 1;
+
+	/* v12: popup suppression -- best-effort, WARN-only (a failure
+	 * here costs nothing but the warning dialog; the kill fuse and
+	 * the driver path stay armed).  Resolve EXEC_SYM with a throwaway
+	 * symbol probe, then park the two call-site probes. */
+	{
+		struct kprobe kp_sym = { .symbol_name = EXEC_SYM };
+		unsigned int w;
+		int i, r, rok = 0;
+
+		r = register_kprobe(&kp_sym);
+		emit("ret.exec=%d\n", r);
+		if (!r) {
+			unsigned long base = (unsigned long)kp_sym.addr;
+
+			unregister_kprobe(&kp_sym);
+			kp_rep1.addr = (kprobe_opcode_t *)(base + REP1_OFF);
+			kp_rep2.addr = (kprobe_opcode_t *)(base + REP2_OFF);
+			for (i = 0; i < 2; i++) {
+				struct kprobe *kp = i ? &kp_rep2 : &kp_rep1;
+				unsigned int exp = i ? REP2_WORD : REP1_WORD;
+				unsigned int wa = 0;
+
+				probe_kernel_read(&wa, kp->addr, sizeof(wa));
+				emit("rep%d.word=%08x%s\n", i + 1, wa,
+				     wa == exp ? "" : " MISMATCH");
+				if (wa != exp)
+					continue;
+				r = register_kprobe(kp);
+				emit("ret.rep%d=%d\n", i + 1, r);
+				if (!r)
+					rok++;
+			}
+			rep_on = rok;
+			emit("rep armed=%d\n", rok);
+		}
+	}
+
 	pr_err("ocsk: entry @%px, kill-bl @%px ret=%d word %08x->%08x\n",
 	       (void *)entry_addr, (void *)kp_kill.addr, ret, w_before, w_after);
 	return 0;
@@ -292,6 +368,8 @@ module_param(hits, ulong, 0444);
 MODULE_PARM_DESC(hits, "skipped-kill count");
 module_param(entry_hits, ulong, 0444);
 MODULE_PARM_DESC(entry_hits, "v11: whole-function skips (br x30 at entry)");
+module_param(rep_hits, ulong, 0444);
+MODULE_PARM_DESC(rep_hits, "v12: suppressed kevent exec reports (popup)");
 module_param(last_pc, ulong, 0444);
 MODULE_PARM_DESC(last_pc, "kaddr of last skipped instruction");
 module_param(entry_addr, ulong, 0444);
