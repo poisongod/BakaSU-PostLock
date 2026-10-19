@@ -859,3 +859,19 @@ bruteforce(mm_struct) ✓ → phase2 prepare storm ——**死点两层**：
   root chmod，Enforcing 下 app 域 tracefs 待验证是否为下一卡点）。
 - 新包 uid=10293（旧 10292）；UI 状态卡「链触发可用性 ✓」= gate 读
   ksu_kaslr boot_id 匹配的实时判定。
+
+**HANS 保活三路全败 + 前台 activity 唯一可行（v1.5→1.7 实测）**：
+1. receiver `startActivity`：AOSP 拦（logcat W `Background activity start
+   allowBackgroundActivityStart:false callingUidProcState:RECEIVER`），activity 不起。
+2. `PowerManager.WakeLock`（SCREEN_BRIGHT|ACQUIRE_CAUSES_WAKEUP|ON_AFTER_RELEASE，
+   static 持有防 GC）：**能点亮**（LAUNCH 后 `mWakefulness=Awake`）但 HANS 接管：
+   logcat `OplusHansManager: unfreeze uid:10293 reason: unproxy wakelock scene: LcdOff`
+   → 8s 后 `freeze uid ... scene: LcdOff` → netd `destroyAllSocketForUid` → 链静默死。
+3. 全屏通知 `setFullScreenIntent(CATEGORY_ALARM)`（USE_FULL_SCREEN_INTENT A12 自动授）：
+   非锁屏时系统降级为普通通知（`mCurrentFocus=NotificationShade`，activity 未前台）。
+**唯一可行 = MainActivity 前台可见**（用户手动打开时链持续推进 i=6688→8489+bruteforce），
+receiver 无权拉起。**结论：ColorOS 上 app 自启保活需用户一次性授权（OPPO 设置
+→应用管理→PostLock:Boot→自启动 + 后台弹出界面/白名单），纯 app 手段不完整可行**。
+app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间），bootstrap 依赖
+用户开 OPPO 白名单或保持手动触发。链被冻结后的特征：进程消失/静默停在 collision
+计时行（`%016zx i=N t=...`）或 bruteforce（`start finding mm_struct`），无错误行。
