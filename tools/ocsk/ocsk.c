@@ -1,5 +1,43 @@
 /* ocsk.ko -- silence OPPO's oplus_root_check_succ kill path from kernel side.
  *
+ * v11.2 (round 998d4c8d, THE fix): v11's entry-side `br x30` never
+ * worked in practice -- entry_hits and kill-hits stayed 1:1 (42/42)
+ * with kill printks matching, i.e. the whole function STILL RAN even
+ * though entry_pre set pc=x30 and returned 1, because OPPO's trace
+ * kprobe `ocs` aggregates with ours on entry+0 and the interaction
+ * defeats the pc redirect (details not fully pinned; debugfs is
+ * CONFIG_DEBUG_FS=n on this kernel so kprobes/list is unavailable).
+ * What actually unlocked uid=0: kill_pre switched to `return 1` with
+ * the x0=0 patch REMOVED.  Returning non-zero makes arm64
+ * kprobe_handler skip setup_singlestep entirely ("it will modify the
+ * execution path and no need to single stepping"), so `pc += 4`
+ * genuinely lands and `bl force_sig` is never CALLED -- versus v8..v11.1
+ * where force_sig(0) still ran (x0 cleared, signal no-op) and the mere
+ * call kept rolling the escalation back: ksud ioctl stayed uid=10279
+ * and KsuCli reported "Created process is not a shell".  With v11.2:
+ * dmesg `ksu ioctl ... from uid=0`, no KsuCli errors, BakaSu blue card
+ * "工作中 Built-in" on the stock relocked kernel.  The entry probe stays
+ * registered as a (currently inert) observer; kp_kill is the enforcer.
+ *
+ * v11 (round 998d4c8d, 3rd finding): skipping `force_sig` was NOT enough.
+ * After v10 armed (hits=40 kills intercepted, app alive) the ksud child
+ * still ran with uid=10279 -- dmesg `ksu ioctl: cmd=0xc0004b0d from
+ * uid=10279` -- and KsuCli reported `Created process is not a shell`:
+ * the detector blocks the privilege escalation ITSELF before the printk
+ * (+0xa1c `bl entry+0x0` recursion into ocs proper runs first; force_sig
+ * at +0xa30 is just the tail).  So skip the WHOLE function instead:
+ *
+ *   entry probe stays registered (aggregated with OPPO's own trace
+ *   kprobe on the same address) and its pre_handler does
+ *   `regs->pc = regs->x30` -- an aarch64 `br x30`.  The probe fires at
+ *   entry+0 BEFORE the SCS push / frame setup, so x30 still holds the
+ *   caller's return address, sp/x29/x18 are untouched, nothing was
+ *   pushed to the shadow call stack: the function becomes a no-op that
+ *   returns with x0 (= its first argument) unchanged.  printk, force_sig
+ *   and any cred blocking in ocs proper all vanish.  kp_kill stays
+ *   registered as a belt-and-suspenders fuse for the case where the
+ *   entry probe ever misses.
+ *
  * v10 (round 998d4c8d, 2nd finding): OPPO keeps its OWN trace kprobe on
  * the same function -- `p:kprobes/ocs oplus_root_check_succ adr=$stack0`
  * in /sys/kernel/tracing/kprobe_events (plus `seb` on oplus_exec_block)
@@ -84,10 +122,13 @@
 static unsigned long hits;
 static unsigned long last_pc;
 static unsigned long entry_addr;
+static unsigned long entry_hits;	/* v11: whole-function skips */
 static int armed;
 
 static char state_buf[512];
 static int armed_flag;		/* set once the probes are registered */
+static int entry_on;		/* v11: kp_entry stays registered */
+static int kill_on;		/* kp_kill registered */
 
 static void emit(const char *fmt, ...)
 {
@@ -101,17 +142,46 @@ static void emit(const char *fmt, ...)
 	(void)len;
 }
 
+/* v11.2 EXPERIMENT: prove the return-1 pc-honoring mechanism on a CLEAN
+ * address (entry+0xa30 has no co-resident trace kprobe, unlike entry+0).
+ * Return non-zero => arm64 kprobe_handler skips setup_singlestep and
+ * continues from regs->pc; the x0=0 patch is REMOVED so a failure to
+ * honor the pc change falls back to force_sig(9) and kills the ksud
+ * children (recoverable, app shows red).  If ksud survives + su works,
+ * the mechanism is live and entry+0's non-skip is a trace-aggregation
+ * interaction to chase separately. */
 static int kill_pre(struct kprobe *p, struct pt_regs *regs)
 {
 	__sync_fetch_and_add(&hits, 1);
 	last_pc = regs->pc;
 	regs->pc += 4;			/* skip `bl force_sig` */
-	regs->regs[0] = 0;		/* clean return: 0, not SIGKILL/9 */
-	return 0;
+	return 1;			/* v11.2: honor pc, no simulation */
+}
+
+/* v11: intended as "return immediately as if the detector never ran"
+ * (fires at entry+0 before SCS push / stp setup, so x30 is still the
+ * caller's return address and NO callee state was touched).
+ *
+ * Reality (v11.2 verdict): this does NOT redirect control flow on this
+ * kernel -- entry_hits and kill-hits stay 1:1, the function body runs
+ * to completion every time despite `return 1`.  Root cause narrowed to
+ * the aggregation with OPPO's trace kprobe `ocs` parked on the same
+ * entry+0 (a clean-address probe at +0xa30 honors return-1 + pc change
+ * perfectly -- see kill_pre).  Kept as an inert observer/counter; the
+ * enforcer is kp_kill.  Do not remove: if the aggregation quirk ever
+ * changes (trace event deleted), this becomes live and skips the whole
+ * detector including the printk noise. */
+static int entry_pre(struct kprobe *p, struct pt_regs *regs)
+{
+	__sync_fetch_and_add(&entry_hits, 1);
+	last_pc = regs->pc;
+	regs->pc = (unsigned long)regs->regs[30];	/* br x30 */
+	return 1;			/* v11.1: skip setup_singlestep entirely */
 }
 
 static struct kprobe kp_entry = {
 	.symbol_name = OCS_SYM,
+	.pre_handler = entry_pre,	/* v11: whole-function skip */
 };
 
 static struct kprobe kp_kill = {
@@ -131,7 +201,7 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 		emit("arm-reentry ignored\n");
 		return 0;
 	}
-	emit("ocsk-v8 arm=%s smod=%zu\n",
+	emit("ocsk-v11 arm=%s smod=%zu\n",
 	     val && *val ? val : "", sizeof(struct module));
 	if (!val || !*val || *val == '0') {
 		emit("arm=0 no-op\n");
@@ -146,13 +216,13 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 		armed_flag = 0;		/* v9: allow a later echo 1 > arm */
 		return 0;		/* keep module loadable */
 	}
+	entry_on = 1;			/* v11: keep it -- entry_pre skips the fn */
 	entry_addr = (unsigned long)kp_entry.addr;
-	unregister_kprobe(&kp_entry);
 	emit("entry=%lx\n", entry_addr);
 
-	/* v10: accept the SCS push OR a foreign kprobe's `brk #0x80`
-	 * placeholder (OPPO's trace kprobe `ocs` parks one there forever);
-	 * v9's retry loop stays for the pure text-poke race case. */
+	/* v10/v11: with our probe parked the word at entry+0 is now a
+	 * brk placeholder (ours or OPPO's, aggregated); accept SCS push
+	 * OR kprobe placeholder, v9 retry covers pure text-poke races. */
 	{
 		int i;
 
@@ -166,6 +236,8 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 		emit("anchor tries=%d word=%08x\n", i, w_entry);
 		if (i == 100) {
 			emit("FAIL entry-anchor %08x\n", w_entry);
+			unregister_kprobe(&kp_entry);	/* v11: release for retry */
+			entry_on = 0;
 			armed_flag = 0;
 			return 0;
 		}
@@ -185,6 +257,8 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 	}
 	if (w_before != KILL_BL_WORD) {
 		emit("FAIL kill-anchor %08x\n", w_before);
+		unregister_kprobe(&kp_entry);	/* v11: release for retry */
+		entry_on = 0;
 		armed_flag = 0;		/* v9: allow retry */
 		return 0;
 	}
@@ -192,9 +266,12 @@ static int arm_set(const char *val, const struct kernel_param *kp)
 	ret = register_kprobe(&kp_kill);
 	emit("ret.kill=%d\n", ret);
 	if (ret) {
+		unregister_kprobe(&kp_entry);	/* v11: release for retry */
+		entry_on = 0;
 		armed_flag = 0;		/* v9: allow retry */
 		return 0;
 	}
+	kill_on = 1;
 
 	probe_kernel_read(&w_after, kp_kill.addr, sizeof(w_after));
 	emit("kill.word.after=%08x patched=%d\n", w_after, w_after != w_before);
@@ -213,8 +290,10 @@ MODULE_PARM_DESC(arm, "write 1 to register the kill-site kprobe (setter runs in 
 
 module_param(hits, ulong, 0444);
 MODULE_PARM_DESC(hits, "skipped-kill count");
+module_param(entry_hits, ulong, 0444);
+MODULE_PARM_DESC(entry_hits, "v11: whole-function skips (br x30 at entry)");
 module_param(last_pc, ulong, 0444);
-MODULE_PARM_DESC(last_pc, "kaddr of last skipped bl force_sig");
+MODULE_PARM_DESC(last_pc, "kaddr of last skipped instruction");
 module_param(entry_addr, ulong, 0444);
 MODULE_PARM_DESC(entry_addr, "resolved symbol entry (sanity: boot base + 0x26a620)");
 module_param_string(state, state_buf, sizeof(state_buf), 0444);
@@ -234,11 +313,13 @@ static int __init ocs_init(void)
 
 static void __exit ocs_exit(void)
 {
-	if (armed_flag)
+	if (entry_on)
+		unregister_kprobe(&kp_entry);
+	if (kill_on)
 		unregister_kprobe(&kp_kill);
 }
 
 module_init(ocs_init);
 module_exit(ocs_exit);
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("kprobe killer of oplus_root_check_succ's live force_sig site (entry+0xa30)");
+MODULE_DESCRIPTION("v11: skip oplus_root_check_succ entirely (br x30 at entry) + force_sig fuse");
