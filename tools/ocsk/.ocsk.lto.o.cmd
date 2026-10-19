@@ -1,0 +1,1 @@
+cmd_/home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.lto.o := ld.lld  -r -o /home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.lto.o  --whole-archive /home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/ocsk/ocsk.o
