@@ -937,3 +937,60 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   + app 域连 127.0.0.1:5555 的 SELinux 可行性（untrusted_app 回环 connect 待实测）
   + boot 后 app 经 shell 会话跑 KS_KASLR_ONLY 轮 + 全链（shell 域 pselect 可用，
   共享 KASLR 文件方案在该路径下不再必需）。
+
+### PostLock:Boot 独立仓 + Tailscale/adb 异地通道（2026-10-20 第九轮）
+
+- **app 已独立成仓 `poisongod/PostLock-Boot`（private！assets 含设备 adb 授权
+  私钥）**，本地 = `build/bakasu-work/postlock-app`（原 BakaSU-PostLock 的
+  single-branch clone，refspec 只跟踪 `upstream-main`——fetch 其他分支要显式
+  URL）。分支 main 从 v1.9 orphan 导入：**旧 ReSukiSU 上游 commit 链对象
+  （`b2c595d…`）从未完整上传任何远端**，推空仓必 `remote unpack failed: did
+  not receive expected object`（老仓推送能过是因为 negotiation 排除了服务端
+  已有对象）——故截断历史，v1.0-v1.8 留 BakaSU-PostLock `postlock-app` 分支。
+  `BakaSU-PostLock` main 是**主仓镜像（另一路维护，勿覆盖）**。
+- **该仓 workflows/runs 会列出 10 个 ReSukiSU 系幽灵 workflow**（id 3899405xx，
+  disable API 全 404=非本仓注册，BakaSU-PostLock 的 id 也不同——网络层共享
+  显示，有时以带 `postlock-app/` 包装的树跑）。**ReSukiSU 整个已弃用，
+  不再研究其机制**；树里无定义即无害，Lints/CodeQL failure 不管。
+- **CI = 仓内 `.github/workflows/build.yml`**（temurin17 + 根布局
+  `./gradlew :app:assembleDebug`，artifact `postlock-app-debug`）。
+- **USB 已退役**，host 走 Tailscale 异地 adb（**临时通道**，PostLock:Boot
+  自建 tailscale 正式启用后废弃）：Windows 装有官方 Tailscale（本机
+  100.116.34.46），设备 **`adb connect 100.80.86.28:5555`**（oppo-a96-5g，
+  direct 192.168.8.10）；MagicDNS 名 `oppo-a96-5g-1.tail5809d2.ts.net`
+  **解析不了（no such host）——只用 IP**。双路径（192.168.8.10 与
+  100.80.86.28）网络层均通。
+- **AUTH 卡点（未解）**：TCP 通但 `adb devices` unauthorized；postlock2 私钥
+  Python 客户端（`/tmp/opencode/adbloop_postlock2.py`，host 硬编码需 sed 改
+  host）round1 签名被拒 → round2 发 RSAPUBLICKEY 后 adbd **挂起无响应** =
+  设备 `/data/misc/adb/adb_keys` 不再含现有 key（10-19 还验证通过，之间用户
+  侧可能撤销过授权）。修复路径：设备屏幕授权弹窗点允许 / root 后重写
+  adb_keys（root 通道依赖链，链又依赖 adb……当前是死锁，突破口=用户在设备
+  上操作）。
+- **Tailscale 官方构建**（tailscale-rs 已弃用勿碰）：go1.27.2 在 `~/sdk/go`，
+  克隆 `build/work/tailscale`，
+  `GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -tags ts_omit_ssh,ts_omit_systray
+  ./cmd/tailscaled ./cmd/tailscale`（android 下 linux tag 为真会选中
+  ssh/systray 依赖而构建失败，必须 omit）。产物 35/24MB push
+  `/data/local/temp/`（sha1 双端比对），userspace-networking 免 root，
+  **unix sock_file 被 SELinux EACCES（dontaudit 静默）→ abstract socket
+  `@postlock-tsd`**。冒烟已过（NeedsLogin/DERP bootstrap 通）。
+- **功能页 v1.9（ServicesActivity）**：三卡片（开关+点击展开详情）
+  - PostLock：pref `services/postlock` 门控 BootReceiver（默认开）；
+  - Tailscale：**用户要求开关旁带「浏览器登录」按钮**——localapi over
+    LocalSocket(abstract)：`POST /localapi/v1/login-interactive` → 每 1s
+    `GET /localapi/v1/status` 解析 **`AuthURL`**（ipnstate 无 json tag 直用）
+    → `ACTION_VIEW` 开默认浏览器授权 → 轮询 `BackendState=="Running"`。
+    自写 HTTP/1.1 helper（Content-Length/EOF 读体）。启停 = exec
+    `/data/local/temp/tailscaled` + `filesDir/tsd.pid`（app 同 uid 才有
+    localapi 写权限；shell 起的 daemon app 连 = 403 只读）；
+  - adbd：pref `services/adbd` + best-effort setprop（app 域大概率 SELinux
+    拒，intent 落盘等链 root 侧应用）+ 127.0.0.1:5555 connect 探测。
+- **Android 编译坑（8f5a998 修复）**：① `import android.os.Process` 会遮蔽
+  `java.lang.Process` → pid/waitFor/getInputStream/exitValue 全炸 +
+  incompatible-types；② Android **没有 `java.util.JSONArray`**（只有
+  `org.json`）；③ `Base64` 两文件分开：PostLock 用 `android.util.Base64`
+  （`encodeToString(x, NO_WRAP)`），AdbShell 用 `java.util.Base64`
+  （`getDecoder()`）——别统一；④ AdbShell 构造器必须 package-private。
+  `Process.waitFor(2, TimeUnit.SECONDS)`/`Process.pid()` 在 minSdk26/compileSdk35
+  可用（之前报错全是 import 遮蔽连锁）。
