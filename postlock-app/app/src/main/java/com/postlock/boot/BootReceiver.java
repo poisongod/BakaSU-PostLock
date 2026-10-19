@@ -53,9 +53,24 @@ public class BootReceiver extends BroadcastReceiver {
             // OPPO HANS/OFreezer freezes this uid the moment the LCD turns
             // off (logcat: "freeze uid ... scene: LcdOff") and netd then
             // destroyAllSocketForUid()s our reclaim sockets — the chain
-            // died silently at "prepare storm i=512" that way.  Bring the
-            // UI up first (turns the screen on, keeps the activity visible)
-            // before dispatching: a visible foreground app is never frozen.
+            // died silently at "prepare storm i=512" that way.  A wake
+            // lock with ACQUIRE_CAUSES_WAKEUP lights the screen and keeps
+            // it on for the whole run (10 min cap), so the LcdOff scene
+            // never fires.  Starting MainActivity from a receiver is
+            // blocked by the background-activity-start check anyway
+            // ("allowBackgroundActivityStart: false"), so the wake lock
+            // is the primary defence; the UI start below is best effort.
+            android.os.PowerManager pm = (android.os.PowerManager)
+                    context.getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                android.os.PowerManager.WakeLock wl = pm.newWakeLock(
+                        android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK
+                                | android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP
+                                | android.os.PowerManager.ON_AFTER_RELEASE,
+                        "postlock:chain");
+                wl.acquire(10 * 60 * 1000L); // auto-releases after 10 min
+                Log.i(PostLock.TAG, "wake lock acquired for chain run");
+            }
             Intent ui = new Intent(context, MainActivity.class);
             ui.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP);
