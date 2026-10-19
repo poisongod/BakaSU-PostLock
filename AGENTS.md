@@ -875,3 +875,31 @@ receiver 无权拉起。**结论：ColorOS 上 app 自启保活需用户一次�
 app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间），bootstrap 依赖
 用户开 OPPO 白名单或保持手动触发。链被冻结后的特征：进程消失/静默停在 collision
 计时行（`%016zx i=N t=...`）或 bruteforce（`start finding mm_struct`），无错误行。
+
+**app 域链本体终验（v1.7 前台保活，boot a56430b0）——保活解决，链体结构性失败**：
+- **保活验证通过**：MainActivity 前台（shell `am start` 拉起）+ KEEP_SCREEN_ON，
+  链全程 fg=1、boot 稳定 8min+ 无冻结无 panic，prepare 失败后**自动重启第二轮
+  kernelsnitch**——证明「前台可见 = HANS 免疫」成立，保活不再是卡点。
+- **链体 root=0（安全失败）**，失败链（chain.log 101167B 完整取证）：
+  1. `fix36 phase2 tp ctrl=-1 ... n=0`——**tracefs 在 untrusted_app 域被拒**
+     （链的 tp 窗口抓取原语死亡；shell 域 postlock 成功轮靠 root chmod/SUDO 过）；
+  2. `KernelSnitch mm_struct leak failed` ×3 + `[N] scan done ... found=0`——
+     identity window（来自共享 KASLR 文件，值正确）内 timing 泄漏 mm_struct
+     失败——**app 域 timing/原语退化**（seccomp 严格模式是首要嫌疑；
+     collision 能过、leak 不能，两者共用 futex 但 leak 需更精细测量）；
+  3. `configfs verify failed r1=0 r2=0`——payload 页未落地 → cfgfs 通道死；
+  4. `slub shrink(post-prepare/post-pins) failed errno=13`——EACCES，
+     `/sys/kernel/slab/*/shrink` root 600（代码注释自证 shell 同样拒，非 app 特有、
+     非致命 warning）；
+  5. `prepare_kernel_page retry 22/72` 耗尽 → 重启 → 第二轮 post-pile 后进程退出。
+- **结论：app 域（untrusted_app+seccomp）当前形态无法独立完成整链**——slide 可靠
+  共享文件过、collision 过，但 tracefs/mm_struct leak/configfs 三个内核原语在该域
+  不可用。**链必须以 shell uid 跑**（shell 域 fresh boot 实测 root=1 无预处理依赖
+  的先例：d86c4da3）。
+- **boot 自足的最后拼图方向（未实施）**：一次性 host 成功链的 KS_COLDSTART 追加
+  ①`setprop persist.adb.tcp.port 5555`（adbd boot 后自监听）②app 的 adb pubkey 写
+  `/data/misc/adb/adb_keys`；app 内嵌 private key，boot 后连 `127.0.0.1:5555` 走
+  adb AUTH 拿 **shell 会话**跑链（KS_KASLR_ONLY 轮 + 全链）——绕开 app uid 的
+  内核接口墙，实现纯设备自足。未验证点：Android 12 persist prop 监听时效、app
+  明文 tcp AUTH 流程。
+- 附：`persist.adb.tcp.port` 当前空（本 boot 链未成功过未 setprop），5555 无监听。
