@@ -256,8 +256,10 @@ public final class AdbShell implements Closeable {
         int off = 0;
         while (off + 5 <= data.length) {
             int id = data[off] & 0xff;
-            int len = ((data[off + 1] & 0xff) << 24) | ((data[off + 2] & 0xff) << 16)
-                    | ((data[off + 3] & 0xff) << 8) | (data[off + 4] & 0xff);
+            // shell v2 inner packet length is LITTLE-endian (verified against adbd:
+            // bytes 08 00 00 00 = len 8; BE parse yields 134217728 and breaks the stream)
+            int len = (data[off + 1] & 0xff) | ((data[off + 2] & 0xff) << 8)
+                    | ((data[off + 3] & 0xff) << 16) | ((data[off + 4] & 0xff) << 24);
             off += 5;
             if (len < 0 || off + len > data.length) {
                 break; // malformed; keep what we have
@@ -270,9 +272,13 @@ public final class AdbShell implements Closeable {
                     stderr.write(data, off, len);
                     break;
                 case SH_EXIT:
-                    if (len >= 4) {
-                        pendingExit = ((data[off] & 0xff) << 24) | ((data[off + 1] & 0xff) << 16)
-                                | ((data[off + 2] & 0xff) << 8) | (data[off + 3] & 0xff);
+                    // adbd emits a 1-byte exit code (verified: 42 -> 0x2A, 137 -> 0x89).
+                    // Tolerate a 4-byte LE variant too.
+                    if (len == 1) {
+                        pendingExit = data[off] & 0xff;
+                    } else if (len >= 4) {
+                        pendingExit = (data[off] & 0xff) | ((data[off + 1] & 0xff) << 8)
+                                | ((data[off + 2] & 0xff) << 16) | ((data[off + 3] & 0xff) << 24);
                     }
                     break;
                 case SH_CLOSE:
