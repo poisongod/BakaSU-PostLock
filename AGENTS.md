@@ -903,3 +903,37 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   内核接口墙，实现纯设备自足。未验证点：Android 12 persist prop 监听时效、app
   明文 tcp AUTH 流程。
 - 附：`persist.adb.tcp.port` 当前空（本 boot 链未成功过未 setprop），5555 无监听。
+
+### adb 回环 bootstrap 四项核心验证全通（2026-10-20 第八轮）——纯设备自足的 shell uid 通道打通
+
+上轮定的方向（app 内嵌 adb key 连本地 adbd 拿 shell 会话跑链）本轮逐项实测：
+
+- **`setprop persist.adb.tcp.port` 被 SELinux 死拒**（无论 shell/kernel scontext，
+  即使 getenforce=0/Permissive 也拒——audit `tcontext=u:object_r:default_prop:s0
+  tclass=property_service permissive=0`，init 属性服务检查特殊不随全局 permissive
+  放行）。**解法 = 直写 `/data/property/persistent_properties`**（protobuf，root
+  `cat` 追加 30 字节条目 `0a1c 0a14 <key> 1204 5555`；push 必须经 root 中转
+  cp 到 /data/local/tmp 再 pull，`adb pull` 直读 600 报 Permission denied、
+  `adb exec-out su cat` 二进制流被截 0 字节）。370→371 项，reboot 后 init 自
+  应用 `getprop persist.adb.tcp.port=5555`。
+- **adbd boot 自监听 `[::]:5555`**（tcp6 双栈）：`toybox netstat -tln` 实证；
+  设备本地 `127.0.0.1:5555` 可达（`TIME_WAIT` 握手实证，v4-mapped 映射）。
+- **postlock 专用 key AUTH 单 key 连通**：`ANDROID_SDK_HOME=/tmp/plockhome
+  ADB_VENDOR_KEYS=build/work/adbkeys adb connect 192.168.8.10:5555` →
+  `connected` → `id` = **uid=2000(shell) context=u:r:shell:s0** ✓（隔离 home 后
+  唯一已授权候选就是 postlock_adbkey，证明「app 内嵌同款私钥可拿 shell 会话」）。
+- 双通道并存：USB `5bf5bf85` + TCP `192.168.8.10:5555` 同时在线，`adb shell`
+  报 `more than one device` 必须 `-s` 指定 serial；Tailscale 本 boot 未在线，
+  用 WLAN IP 验证即可。
+- **provisioning 已固化进 `tools/postlock.sh`**（commit 3a7e57c4+ce2b9dc9）：
+  stage 段 push `pp_adb_tcp.bin`(30B protobuf 条目) + `postlock_adbkey.pub`，
+  restore.sh 内幂等两步（`grep -qF postlock_bootstrap` 追加 adb_keys、
+  `grep -qF persist.adb.tcp.port` 追加 persistent_properties，均 `|| WARN`
+  防 `set -e`）。物料 build/work 下**仅缺失时自生成**——keypair 必须一次生成
+  永久沿用（重建=pub 变=app APK 内嵌私钥失配，脚本已打 "MUST RE-EMBED" 警告）。
+  生效时序：restore 写 pp → **下次 reboot** adbd 才监听（当前 boot 手动部署
+  已实测过一轮完整链路）。
+- **尚未做**：app 端 Java adb 客户端（CNXN/AUTH-RSA-SHA1 签名/OPEN shell 协议）
+  + app 域连 127.0.0.1:5555 的 SELinux 可行性（untrusted_app 回环 connect 待实测）
+  + boot 后 app 经 shell 会话跑 KS_KASLR_ONLY 轮 + 全链（shell 域 pselect 可用，
+  共享 KASLR 文件方案在该路径下不再必需）。
