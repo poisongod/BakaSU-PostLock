@@ -738,12 +738,20 @@ su shell 正常（KsuCli 输出 `Zygisk implement: None` 等业务日志，无 n
   写死的 `-enable-trivial-auto-var-init-zero...` 是 clang21 移除的 flag；
   源码树在 /home/yang1/opencode-work/kernsrc/sm6375-v15）。
 
-**安全警告弹窗（未治理）**：exsystemservice 弹「检测到恶意程序…已阻止本次
-破坏行为」由 `kevent_send_to_user:execve` 上报 libksud.so execve 触发，每次
-app 冷启动必弹。处理：点「知道了」**坐标 (293,1396)**（BACK 无效），**「立即
-重启」(775,1396) 绝不点**。第四轮既定决策「弹窗真出现再加 kevent 探针」已触发
-未做——待办：给 `kevent_send_to_user`（kallsyms 有 t 符号）加 ocsk 式探针
-按事件类型过滤（全局拦有副作用风险，pre_handler 读参数寄存器放过非 execve）。
+**安全警告弹窗（v12 已治理，2026-10-19）**：exsystemservice 弹「检测到恶意
+程序…已阻止本次破坏行为」由 `kevent_send_to_user:execve` 上报 libksud.so
+execve 触发，每次 app 冷启动必弹。**v12 拦截点 = `oplus_exec_block` 内部两处
+`bl kevent_send_to_user`**（`+0x1b8` 放行路径 / `+0x25c` 阻止路径），而非全局
+拦 kevent 通道（`theia_/fb_/mm_fb_` 家族共享，第四轮标注的副作用风险）。
+静态反汇编方法：kallsyms 拿 runtime（root 读）→ slide = `oplus_root_check_succ`
+runtime − `0xffffffc0102ea620` → link = runtime − slide → fileoff = `0x1000 +
+(link − 0xffffffc010080000)`（`build/work/bootdump.img`）→ capstone 5.0.7
+（host 已装；NDK 只有 llvm-objdump 无 llvm-mc，GNU objdump 无 aarch64 支持）。
+锚点词 `0x940000a4`/`0x9400007b`（pc-relative KASLR 不变），探针语义同 v11.2
+（`pc+=4; return 1`），WARN-only 不影响 kill fuse。实测 `rep armed=2`、
+`rep_hits=42`、焦点直达 MainActivity 无弹窗、`uid=0` 蓝卡保持（ui5.png）。
+应急点击坐标保留：「知道了」**(293,1396)**（BACK 无效），**「立即重启」
+(775,1396) 绝不点**。
 
 **其它现场事实**：`/sys/module/kernelsu/parameters/ksu_debug_manager_appid`
 shell 直读 Permission denied（root 可读）；app 启动用
