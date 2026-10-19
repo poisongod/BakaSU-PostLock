@@ -1,0 +1,4 @@
+{
+  "p0_phys_offset": "0x80000000",
+  "p0_kernel_phys_load": "0xa0070000"
+}
