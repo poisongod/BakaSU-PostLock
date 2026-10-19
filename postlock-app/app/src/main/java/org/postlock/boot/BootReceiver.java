@@ -41,7 +41,10 @@ public class BootReceiver extends BroadcastReceiver {
         }
         // fresh boot: no same-boot kaslr file -> the app-uid slide route
         // would panic-loop (see PostLock.readyToTrigger).  Do not dispatch.
-        if (!PostLock.readyToTrigger()) {
+        // Explicit LAUNCH broadcasts bypass the gate on purpose: they are
+        // the manual/debug entry (am broadcast -n .../.BootReceiver) used
+        // for app-domain experiments; BOOT_COMPLETED stays protected.
+        if (!"org.postlock.boot.LAUNCH".equals(action) && !PostLock.readyToTrigger()) {
             Log.w(PostLock.TAG, "skip " + action
                     + ": no same-boot kaslr file (app-uid first run unsupported)");
             return;
