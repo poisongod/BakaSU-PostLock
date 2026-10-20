@@ -190,6 +190,12 @@ fi
 if ! grep -qF persist.adb.tcp.port /data/property/persistent_properties 2>/dev/null; then
   cat $STAGE/pp_adb_tcp.bin >> /data/property/persistent_properties || echo WARN-pp-append
 fi
+# phantom-process killer off (persist): AMS culled the app-uid chain's
+# >32 clone children as "Trimming phantom processes" (rounds 1/2/4 silent
+# kills).  It is a framework quota reaper, not a security boundary; the
+# setting survives reboots but not a factory reset.  Written via settings
+# (root here; untrusted_app cannot write global settings).
+settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || echo WARN-phantom-settings
 for p in \$(ps -A -o PID=,ARGS= | grep "su --daemon" | grep -v grep | sed "s/ .*//"); do kill -9 \$p 2>/dev/null || true; done
 rm -f $TMP/su.sock $TMP/su.pid
 setsid $TMP/su --daemon >> $TMP/su.log 2>&1 < /dev/null &

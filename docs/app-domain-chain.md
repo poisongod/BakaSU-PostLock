@@ -212,6 +212,16 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
   runtime 覆盖 `PSELECT_WAITER_WORD_SHIFT`=0/target.h）——若定罪 pselect
   栈布局错位，shift 可直接 env 试值（注意错值=panic，不可自适应循环）。
   下一步：拉死前日志（chain.log panic 前最后行）+ pstore 归因。
+  **设备离线中**（2026-10-20 深夜，双地址 100% 丢包 2h+，疑电量耗尽——
+  链跑数小时 KEEP_SCREEN_ON + 多次 panic reboot）。恢复后行动序：
+  1. `adb connect 192.168.8.10:5555`；
+  2. 拉 `run-as com.postlock.boot cat files/postlock/chain.log`（panic 前
+     最后行，文件跨 reboot 保留）+ `logcat -d -L`（last reboot logcat）；
+  3. 重建 KASLR（shell `KS_KASLR_ONLY=1` 轮）→ LAUNCH 重跑 → 若再 panic
+     则按 chain.log 死点归因（physrw window 的 dangling-PI walk 时序 vs
+     pselect 栈布局——若定罪后者用 `KS_PSELECT_SHIFT` env 试值，错值
+     =panic 不可自适应循环，每值需 fresh boot）；
+  4. 注意充电状态——设备离线前可能正在关机。
 - M4 待 M3。
 
 ### 部署注意
