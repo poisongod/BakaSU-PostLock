@@ -230,3 +230,36 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
   设备**需要重新写（部署脚本步骤）。
 - app APK 须 ≥ 含 gate+KS_SLIDE_SKIP 版本（8509e56），否则 reboot 后
   panic 循环风险回归。
+
+---
+
+## 附录：架构角色定义（2026-10-21 用户裁决）
+
+**shell 域 = 老师，untrusted_app 域 = 学生。**
+
+- shell 域的全部辅助（KS_KASLR_ONLY leak 轮、共享 KASLR 文件、代读写文件）
+  **仅限开发/练习期**——那是老师帮学生备考，不是考试的一部分。
+- **考场 = BOOT_COMPLETED 独立触发那一刻**：没有 shell、没有预跑文件、
+  没有 host。app 必须自己完成包括 KASLR 在内的每一个环节。
+- 共享 KASLR 文件（`kaslr_from_shared_file`）在考场上不存在——依赖它的
+  路线**不是终态方案**，只是脚手架。
+
+### 终态自足路线（app 域原语，零 shell 依赖）
+
+运行时随机量只有两块砖，且互为先决（physmap 通道需要 slide 定位目标；
+pvo oracle 需要 slide；slide 自举 `leak_kernel_base()` 又需要 physmap 通道）：
+
+1. **打破鸡生蛋 = cfgfs confused read 暴力扫 physmap 候选**：
+   arm64 5.4 `page_offset_base` 随机熵有限（数百~数千候选）。对每个候选
+   pvo 计算 `P0_DATA_ALIAS_CONST(ASHMEM_FOPS)`，confused read open 槽，
+   `is_kernel_ptr()` 校验读回值——命中即真实 fops 表。纯用户态 syscall，
+   app 域实测可用（round11 fix52 dump 走的就是这条通道），seccomp/SELinux
+   均不拦。
+2. **slide 自举**：`leak_kernel_base()`（fops.c:1427）从 fops 表
+   `open` 指针反推 `kaslr_base`——已有实现，physmap 通了即可用。
+3. pvo 由 physmap 推导（`ks_layout_apply` 反向），kprobe/kallsyms 泄漏
+   路线全部退役。
+
+剩余考试内容：mm_struct 泄漏 app 域退化（第七轮）、tracefs 依赖点
+（kprobe fetch 的 content verify，考虑 cfgfs read 替代）、prepare/wave
+（M3，frozen 页已定罪）。
