@@ -33,8 +33,10 @@ EINVAL（shell 同死）；slub shrink errno=13 非致命（shell 同拒）。
 | fix36 tp 窗口 | perf_event_open(TRACEPOINT) | ✗ | seccomp（本设计的核心死点之一） |
 | kprobe fetch | tracefs | ✗ | SELinux |
 | watchpoint | perf HW breakpoint | ✗ | 内核地址 EINVAL，shell 同死 |
-| configfs 内容读（ashmem deputy） | /dev/ashmem + pread | ？ | 实测 `r1=0 r2=0` 未定根因（M1 排查） |
-| KernelSnitch mm_struct | cntvct_el0 + futex PI | ✗ 不稳 | 纯用户态 timing，无权限依赖；boot a56430b0 `found=0`×3 |
+| configfs 内容读（ashmem deputy） | /dev/ashmem + pread | ✗ 已定性 | **M1 完成（2026-10-20）**：原语依赖 misc.fops 已被 route 劫持——pre-route 新 ashmem fd 的 `->read` 是真 `ashmem_read`（未 mmap 恒返回 0），`r1=0 r2=0` 与 payload 落地无关；page/pos 回绕算术一直正确。**verify 时点不可用是时序死锁**，非 bug 可修 |
+| KernelSnitch mm_struct | cntvct_el0 + futex PI | ✓ 实测 | 纯用户态 timing；boot a56430b0 `found=0`×3 后，c631fae8/c9f7af69 各轮 8/8 `found=1` 稳定（D3 降级为观察项） |
+| /proc/&lt;child&gt;/mem | SELinux ptrace | ✗→已修 | untrusted_app 读任何其他进程 mem 被拒（同 uid 同 domain 也拒）→ **child self-open `/proc/self/mem` + SCM_RIGHTS 传父**（fd open 后无限制，FMODE_UNSIGNED_OFFSET 语义等价），commit ffec4212 |
+| Phantom process killer | AMS | ✗→已关 | app 派生子进程超 32 配额被 `Trimming phantom processes` 批杀（round1/2/4 静默死根因）→ `settings put global settings_enable_monitor_phantom_procs false`（持久跨 reboot；已写入） |
 | collision / futex PI | futex | ✓ 实测 | |
 | bruteforce / prepare storm | /proc、mmap、clone | ✓ 实测 | 前台保活下推进 i=8489+ |
 | /proc/slabinfo、buddyinfo | procfs | ✓ | |
@@ -135,9 +137,9 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
 
 | 里程碑 | 动作 | 通过判据 |
 |---|---|---|
-| **M1 configfs 根因** | app 域轮 `KS_CFGFS_LOG=1` 取证 `r1=0` 根因 → 对症修（a 上游 / b 原语 / c layout） | app 域 `configfs verify` 打出 `r1=8 r2=8`，gate `content_ok` |
-| **M2 timing 稳定** | KSNITCH env 收窄/调参轮测 | `KernelSnitch mm_struct leak` 不再出现，`found>=1` |
-| **M3 route 实测** | M1+M2 后链推进到 route | `main cmp_requeue` 后无 panic、走完 CFI；若 panic → shift 静态预计算 |
+| **M1 configfs 根因** ✅ | ~~取证 `r1=0` 根因 → 对症修~~ | **结论**：原语 pre-route 结构性不可用（时序死锁，见 §2）；gate 改 faith 分支（§6 M1 报告），commit 252b4672 |
+| **M2 timing 稳定** ✅ | KSNITCH env 收窄/调参轮测 | 现状 8/8 `found=1` 已稳定（观察项保留） |
+| **M3 route 实测** | M1+M2 后链推进到 route | `main cmp_requeue` 后无 panic、走完 CFI；若 panic → shift 静态预计算。**2026-10-20 首测：faith gate 生效、链进 route、app 域 pselect route panic（BOOT_COMPLETED 循环三 boot）**→ 当前阻塞点 |
 | **M4 physrw→root** | 全链 | `pipe-physrw-summary … root=1` + DONE rc=0 + 120s 无 reboot |
 
 每轮失败照 fail 放大器定性处理（reboot 换 fresh boot）；取证走
@@ -157,3 +159,55 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
   shell 域 fresh boot 已验）。
 - **R5（低）**：HANS 保活依赖前台 activity（v1.7 已验），用户若手动切后台
   或熄屏且系统策略变化，链会静默停——已在 app 层兜底（KEEP_SCREEN_ON）。
+
+## 6. M1 完成报告（2026-10-20，rounds 1-6，boot c631fae8/c9f7af69）
+
+### 根因链（按发现顺序）
+
+1. **`/proc/<child>/mem` SELinux 拒**（round3）：`open_memfd()` 父进程打开
+   子进程 mem，untrusted_app 的 ptrace 检查连同 uid 同 domain 的子进程都拒
+   → `SYSCHK(open(path,O_RDONLY)): Permission denied` 静默杀链。修 = child
+   self-open `/proc/self/mem` + socketpair SCM_RIGHTS 传父（fd open 后不受
+   限，FMODE_UNSIGNED_OFFSET 不 pin mm 语义等价），commit `ffec4212`。
+2. **Phantom process killer**（round1/2/4「静默死」实锤）：`am_kill …
+   Trimming phantom processes`——app 派生子进程超 32 配额被 AMS 批杀。
+   修 = `settings put global settings_enable_monitor_phantom_procs false`
+   （一次写入跨 reboot 持久；部署脚本须含此步）。
+3. **configfs read 原语 = 时序死锁**（round5 `r1=0 r2=0` 定案）：`cfgfs_read`
+   的 pread 只在 misc.fops 已被 route 劫持后才走 `configfs_read_file`；
+   pre-route 新 ashmem fd 的 `->read` 是真 `ashmem_read`（未 mmap 恒返 0）。
+   ashmem_area/configfs_buffer overlay 布局与 page/pos 回绕算术逐字节核对
+   全部正确——**原语在 verify 时点结构性不可用**，不是 payload 落地问题。
+   `g_fops_probe_fd` 只在 route 阶段存在（fops.c:1558/1687），换 fd 无解。
+4. **gate 四判据全灭 → faith 分支**：tracefs 拒（fv=-1）、configfs 时序
+   死锁、watchpoint EINVAL、tp 窗口 seccomp 死（tpw2.n=0 → hit_evidence
+   恒 0 → **无限 prepare-retry 风暴**，round5 的 pid 阶梯）。修 = gate 加
+   「无 oracle 可用 + base/drain 行为证据 → fail-amplifier 放行」，commit
+   `252b4672`。生效实证：faith 后链首次进 route（round6 t22365 打出
+   `main cmp_requeue`）。
+5. **slide pselect probe = app 域卡死/panic**（rounds 3/6 + panic 循环）：
+   fake rt_mutex 落在带 SELinux per-fd 检查帧的 pselect 内核栈上，轻则
+   child 永不泄漏（parent 永等 `read()`，round6 停 `slide attempt 1
+   using shift=0` 200s），重则 deref 栈垃圾 panic。产物全有 fallback
+   （KASLR=共享文件、pvo=静态）→ `KS_SLIDE_SKIP=1` 拒绝探测（fail
+   closed），commit `3911eaec`。
+6. **BOOT_COMPLETED panic 循环**：无 gate 的 BootReceiver 在每次 reboot
+   自动触发链 → route/slide panic → reboot → ……（c9f7af69→da8e128c 连续
+   三 boot 实测）。修 = `PostLock.readyToTrigger()`（共享 KASLR 文件
+   boot_id 匹配才放行 BOOT_COMPLETED；LAUNCH 调试入口免 gate）+
+   KS_SLIDE_SKIP，app commit `8509e56`。
+
+### 里程碑状态
+
+- M1 ✅（本节）、M2 ✅（8/8 found=1 已稳）
+- **M3 进行中**：faith gate 已把链送进 route，**app 域 pselect main route
+  panic**（t22365 于 `main cmp_requeue` 后）是当前唯一阻塞——D4 静态
+  shift 预计算 / route 模式切换待做。
+- M4 待 M3。
+
+### 部署注意
+
+- `settings_enable_monitor_phantom_procs` 是 persist 的，但**恢复出厂/新
+  设备**需要重新写（部署脚本步骤）。
+- app APK 须 ≥ 含 gate+KS_SLIDE_SKIP 版本（8509e56），否则 reboot 后
+  panic 循环风险回归。
