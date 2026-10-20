@@ -225,7 +225,7 @@ reboot 后 daemon 死 + /product/bin overlay 没 → ksud 无 `[ksu_driver]` fd 
   在 run_fops 头部（grep `[p]reload\.so`）。
 - **temp 观察跨 reboot 存活**（b3b5ce6a 上 10-01~10-08 文件共存），与 10-02
   「reboot 即清」记录矛盾——10-02 那次疑为恢复出厂所致，存疑待复核。
-- 设备可用 **Tailscale adb**：`adb connect 100.84.45.76:5555`（USB 不在时）。
+- 设备可用 **Tailscale adb**：优先 MagicDNS `adb connect oppo-a96-5g.tail5809d2.ts.net:5555`（2026-10-21 起可解析 → 100.80.86.28）；旧 IP 直连仍可用。
 
 ### 自研 su（方案 2）相关坑
 
