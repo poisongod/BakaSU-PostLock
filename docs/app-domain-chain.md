@@ -200,9 +200,18 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
 ### 里程碑状态
 
 - M1 ✅（本节）、M2 ✅（8/8 found=1 已稳）
-- **M3 进行中**：faith gate 已把链送进 route，**app 域 pselect main route
-  panic**（t22365 于 `main cmp_requeue` 后）是当前唯一阻塞——D4 静态
-  shift 预计算 / route 模式切换待做。
+- **M3 进行中**（2026-10-20 第二轮取证，boot da8e128c）：faith gate +
+  KS_SLIDE_SKIP 部署后重跑——**链推进史上最远**：
+  `text-base-ok (shared file)` → slide skip ✓ → prepare → **CFI baseline
+  `cfgfs read rd=8`**（route 时点 configfs 原语经 hijacked fops 正常工作，
+  推翻「route 段 configfs 也死」的担忧）→ **`main cmp_requeue`** →
+  **pipe convert wave[20]**（physrw window 波次推进）→ **panic**。
+  死点修正：**不在 pselect cmp_requeue（round6 t22365 的日志停在那里只是
+  未及 flush），而在 physrw window 阶段或其后**。
+  工具确认：**`KS_PSELECT_SHIFT` env 已存在**（fops.c:185，range -32..64，
+  runtime 覆盖 `PSELECT_WAITER_WORD_SHIFT`=0/target.h）——若定罪 pselect
+  栈布局错位，shift 可直接 env 试值（注意错值=panic，不可自适应循环）。
+  下一步：拉死前日志（chain.log panic 前最后行）+ pstore 归因。
 - M4 待 M3。
 
 ### 部署注意
