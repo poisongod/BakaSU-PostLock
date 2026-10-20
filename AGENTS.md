@@ -881,8 +881,13 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   链全程 fg=1、boot 稳定 8min+ 无冻结无 panic，prepare 失败后**自动重启第二轮
   kernelsnitch**——证明「前台可见 = HANS 免疫」成立，保活不再是卡点。
 - **链体 root=0（安全失败）**，失败链（chain.log 101167B 完整取证）：
-  1. `fix36 phase2 tp ctrl=-1 ... n=0`——**tracefs 在 untrusted_app 域被拒**
-     （链的 tp 窗口抓取原语死亡；shell 域 postlock 成功轮靠 root chmod/SUDO 过）；
+  1. `fix36 phase2 tp ctrl=-1 ... n=0`——**tp 窗口 = perf_event_open(TRACEPOINT)
+     + SET_FILTER，根本不碰 tracefs**（`util.c:2121` 注释明言；2026-10-20 代码级
+     归因修正，旧「tracefs 被拒」说法错误）——真死因 = **seccomp 拒
+     perf_event_open**（`util.c:2341` `id<=0` 早退 → ctrl=-1 n=0）。tracefs 被拒
+     杀的是 kprobe fetch（content verify / layout pvo），不是 tp；shell 域过 gate
+     也不靠 tracefs 而靠 tp 证据（`drain_capture` 第三级）。app 域链路替代设计见
+     `docs/app-domain-chain.md`；
   2. `KernelSnitch mm_struct leak failed` ×3 + `[N] scan done ... found=0`——
      identity window（来自共享 KASLR 文件，值正确）内 timing 泄漏 mm_struct
      失败——**app 域 timing/原语退化**（seccomp 严格模式是首要嫌疑；
