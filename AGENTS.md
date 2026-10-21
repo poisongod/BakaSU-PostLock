@@ -1112,3 +1112,42 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
 - **detached + KS_COLDSTART 方式（替代 postlock.sh 触发）**：STAGE 物料（restore.sh/preload.so/ko/finitmod/ocsk，postlock.sh 已 stage 且跨 reboot 保留）齐全时，直接 `setsid nohup env LD_PRELOAD=$D/preload.so <TRIGGER_ENV> KS_COLDSTART=$D/restore.sh KS_FINITMOD=$D/finitmod KS_KO=$D/kernelsu.ko /system/bin/sh -c 'echo CHAIN_EXIT_DONE'` detached 跑——链成功 root 后 self patch finitmod 驱动 + fork KS_COLDSTART restore.sh（uid0）配置 appid/ksud/overlay。
 - **M3 collision 失败模式（新证据）**：fresh boot e4eaa672 链 `phys prepare produced no page; abort before gate`，根因 `pipe child collision wait spun out spins=100000001` → `target not owned after waves`——pipe child 的 futex collision 自旋 1 亿次超时，链重试 4 次（t25381/t1798/t13319/t21487）全超时。**与 771b7409 run_fops 成功同 env**，证明 collision 成功是 SLUB/时序抽签，非确定 bug。链安全失败（root=0、cfi fail path pi_cleanup ok=1、fake fops neutralize，无 panic）。**payload 捕获/collision 成功率是 shell 域考试命门（M3）**。
 - kprobe payload verify 回锁后恒失效（tracefs DAC 拒）+ configfs read 需 route 劫持（鸡生蛋）→ payload 无 verify 兜底，collision/捕获成功率决定成败。fresh boot 是必要非充分条件。
+
+### 满页根因判决 + 11 次重启教训 + 息屏守护（2026-10-21 攻关）
+
+**满页（owned=0 inuse=34）根因判决链**（数据全部在归档日志）：
+- presweep 形态恒为 `pre-sweep meta inuse=0 objects=34 frozen=1`（页空）→
+  24 波后 `phys wave stuck inuse=34 frozen=0`（满页外人占）；`taken=23
+  owned=0 sc 恒非0`。
+- **两阶段 kill**（`bef0f86d`，SIGKILL 全发再统一 waitpid）+ **sc2 转换记
+  taken**（`174b1cfb`，治 wave[5] sc2 先变 0 时批 kill 被 `if(sc2!=0)` 跳过
+  → taken 恒 -1 白盖 16 波）均已部署，但 wave 判定仍过不了。
+- **判决实验**（`0088bd1b`）：批 kill 后无 fork 轮询 2s →
+  `post-kill rcu wait w=5 tsc=非0 inuse=34 frozen=0`——**teardown/RCU 延迟
+  假说被否**（2s 足够 mm 同步释放），**外人 fork 抢占 kill 空窗 = 满页根因
+  实锤**；用户活跃期（番茄/美团 fork）时满页必败，771b7409 成功在闲置期。
+- **prep fork 暴毙**：`pipe child ctx prep=1088` 后 1088 个连续
+  clone+open_memfd 无节流 = 1-2s 负载尖峰 → hang-detect/watchdog（wintickdie
+  /bruteforce/34e325de 三轮同窗口）；已加节流（每 128 个 50ms，`70bb81bc`）。
+
+**owner 归属诊断两次翻车（血教训）**：读 `mm->owner -> task->comm` 判外人
+身份，第 7/10 次重启（e5d016e6/934a736c）都死在这里——**cfgfs 内核读是
+回调里直接解引用，野指针 = data abort oops = panic，不是安全失败**；
+physmap 窗口 `[ffffff8000000000, ffffffe000000000)` **含未映射 hole，范围校
+验挡不住垃圾 owner**。已整体删除（`0088bd1b`）——**只允许读 page
+descriptor（head flags/meta），绝不读派生指针**（AGENTS chain14 的 base==0
+教训的加强版）。
+
+**11 次重启死点分布**：fork 风暴尖峰 ×3、route pselect 内核自旋 ×1（卡
+4min 无用户态防御，fd 集栈布局抽签）、win/bruteforce 期暴毙 ×2、owner 诊断
+panic ×2、wave 盖页风暴 ×2、slide/prep 早期 ×1——**共同点 = 用户活跃期跑
+链**。payload 死（win enter 后 3-6s tbl=0，`+.3s` 是整秒不是 0.3s）轮反而
+安全退出不重启。
+
+**对策 = 息屏守护 `tools/guard.sh`**（commit `a4834e73`）：亮屏 idle 不碰设
+备；息屏才起 `KS_PIPE_MAX_ATTEMPTS=3` 短链；轮询 root=1 / 换 boot（归档
+`plock_chain.reboot_N.log`）/ 败轮归档 `guard_rounds/`；成功写
+`/tmp/opencode/GUARD_SUCCESS` 并 pull SUCCESS 日志。**运行中**：
+`nohup bash tools/guard.sh 20 > /tmp/opencode/guard.log 2>&1 &`。
+其他新工具：`KS_PIPE_MAX_ATTEMPTS` env 收 pipe 重试轮数（默认 12 太长，
+18min 风暴）。
