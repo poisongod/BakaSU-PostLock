@@ -4238,18 +4238,14 @@ ssize_t configfs_write_once(int fd, uintptr_t target, const void *data, size_t l
 
 static ssize_t cfgfs_read_ex(int fd, uintptr_t target, void *data, size_t len,
                              uint32_t needs_read_fill, int quiet) {
-  /* fix55 (t15153 kernel_panic + owner-forensics reboots 7/10): the
-   * configfs callback derefs the target-derived page inside the kernel --
-   * garbage is a data abort = panic, not a benign -1.  Reject at entry:
-   * every legitimate target here is 8-byte aligned (u64 field/head/page
-   * reads); t15153's dying read was ffffffb51d831051 (unaligned + a
-   * linear-map hole far past the 8GiB RAM).  Alignment alone cannot catch
-   * aligned garbage (the owner rounds proved that), but it costs nothing
-   * and catches this whole class. */
-  if (target & 7) {
-    errno = EINVAL;
-    return -1;
-  }
+  /* NO alignment check here (fix55 regression, round1/round2 2026-10-22):
+   * the +1 payload page-view shift is deliberate -- fix52's dump reads
+   * base+OFF+1 by design (fops.c:1624-1634), so a 7-bit mask at this entry
+   * rejects every legitimate shifted read: both chains died with
+   * "fix52 cfi table garbage ... refusing further ops" (rv=-1 where the
+   * 771b7409 baseline had rv=8).  Garbage targets (owner-forensics rounds
+   * 7/10, t15153's hole addr) are caught upstream by the gate requiring
+   * k_true>=0, not by alignment -- this entry stays permissive. */
   unsigned char blob[128];
   /*
    * layout of the configfs_buffer overlaid on ashmem_area (see
