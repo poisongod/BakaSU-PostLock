@@ -1160,3 +1160,21 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 旧结论「端点不稳定改走 gh API」不成立——同一 token api 也必 403。
 **本地 git 是唯一权威**，恢复远端需 woshimaniubi8 凭证或加协作者（用户侧
 操作）。
+
+**重启循环与守护策略迭代（2026-10-21 深夜，第 12-15 次重启）**：
+- **恢复期起链 = 重启连爆**（d2c6e342→4069896e→6fa5e792→44d6359a→e09c6c96
+  四连爆）：守护 asleep 分支原先不查 load，在 boot 后 app 恢复风暴期
+  （load 7-40）起链 = 链风暴叠加系统风暴，100% 重启。修复（`d89dcf77`）：
+  **任何分支起链前 load<2.0**（亮屏 idle 档仍 <0.5）+ REBOOT 检测后强制
+  90s 冷却。重启后 load 不降的常见源 = `com.oplus.onetrace` 遥测恢复
+  （几分钟自消），链残留检查用 `ps|grep pause/memfd`（无泄漏即正常）。
+- **RCU 等待 2s→0.3s**（`db0c1fc1`）：批 kill 后 2s×4 批 = armed 暴露
+  +8s/轮，AGENTS 已有结论「armed 期间任何延长都在喂 dangling waiter 的
+  PI-chain 直至锁死」——重启率 55%→100% 期间该等待是唯一新增变量；
+  判决数据（post-kill inuse 恒 34）已得手，等待目的达成即缩。
+- **满页轮 = 重启高危轮**：owned 失败 → 24 波 2640 fork + 多轮 drain 全在
+  armed 态下跑（~30s+），owned 胜利则 waves≈2 快速过——重启率与 owned
+  率成反比，根治仍是满页（三处 head/freelist 诊断见 92c5facb）。
+- 三处诊断（pre-sweep/post-kill/stuck 打 head+freelist，post-kill 加
+  hd==0 守卫防 hd=0 时读 0x28 panic）在 so 9f54411e，等 load<2 黄金
+  窗口首跑。
