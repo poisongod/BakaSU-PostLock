@@ -42,6 +42,7 @@ while true; do
       if [ "$b2" != "$boot" ]; then
         echo "[g$round] REBOOT detected ($boot -> $b2)"
         "$ADB" -s "$S" shell "[ -s /data/local/tmp/plock_chain.log ] && cp /data/local/tmp/plock_chain.log /data/local/tmp/plock_chain.reboot_$round.log" 2>/dev/null
+        sleep 90   # let the boot storm settle (all apps restarting, load 30+)
         continue 2
       fi
       res=$("$ADB" -s "$S" shell 'grep -E "root=1 kaslr=1|uid=2000->0|POSTLOCK-RESTORE-OK" /data/local/tmp/plock_chain.log 2>/dev/null | tail -2' 2>/dev/null)
@@ -71,7 +72,16 @@ while true; do
   wake=$("$ADB" -s "$S" shell 'dumpsys power 2>/dev/null | grep -m1 mWakefulness=' 2>/dev/null | tr -d '\r')
   load=$("$ADB" -s "$S" shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | tr -d '\r')
   case "$wake" in
-    *Asleep*) ;;
+    *Asleep*)
+      # sleep-but-load-high = reboot recovery storm (chain started at
+      # load=39.65 on boot 6fa5e792 => instant reboot loop); require a
+      # settled system even when the screen is off.
+      if ! awk -v l="$load" 'BEGIN{exit !(l<2.0)}' 2>/dev/null; then
+        echo "[g$round] asleep but load=$load high (recovery?); idle 30s"
+        sleep 30
+        continue
+      fi
+      ;;
     *)
       if awk -v l="$load" 'BEGIN{exit !(l<0.5)}' 2>/dev/null; then
         echo "[g$round] awake but idle (load=$load); proceed"
