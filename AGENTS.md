@@ -1151,3 +1151,12 @@ panic ×2、wave 盖页风暴 ×2、slide/prep 早期 ×1——**共同点 = 用
 `nohup bash tools/guard.sh 20 > /tmp/opencode/guard.log 2>&1 &`。
 其他新工具：`KS_PIPE_MAX_ATTEMPTS` env 收 pipe 重试轮数（默认 12 太长，
 18min 风暴）。
+
+**push 阻塞（2026-10-21 实测）**：`git push origin` 返回 403
+`Permission to woshimaniubi8/CVE-2026-43499-root-KernelSU denied to
+poisongod`——gh 登录 poisongod（repo scope）对该仓库 `push:false`、非
+fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
+（2026-07-26 committer=woshimaniubi8，本地 11+38 个 commit 全未推）。
+旧结论「端点不稳定改走 gh API」不成立——同一 token api 也必 403。
+**本地 git 是唯一权威**，恢复远端需 woshimaniubi8 凭证或加协作者（用户侧
+操作）。
