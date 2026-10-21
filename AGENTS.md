@@ -1197,3 +1197,23 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   不动**，逻辑矛盾（exit_mm 同步应已 free）。五 word slab dump（+08..+28）
   已加（so 8dffee47）待跑出数据定字段。成功轮 chain5 是 **per-wave kill**
   （waves=2 taken=1 owned=1），当前 batch(6 波攒杀)从未让 tsc 归 0。
+- **满页根因判决链闭合（2026-10-22 凌晨，wavepostfork 定案）**：
+  - 数据链：`wavehead w=0 inuse=0` → wave[0] fork110 → `wavepostfork w=0
+    inuse=34 +20=NULL`（**wave mm 确实在目标页**）→ kill 110/110 reaped →
+    `w=1 inuse=34 +20=NULL` 恒定 24 波——**mm 从未 kmem_cache_free**（SLUB
+    free 必挂 freelist，+20 恒 NULL 是铁证）。字段交叉验证：+18==tsc
+    （slab_cache=mm_cachep，order-3 34 对象=0x3c0 mm_struct ✓）、+28 位域
+    inuse/objects/frozen 全对（高位 0x8=cpu slab 编码）。+20 freelist 链头
+    =leaked（LIFO 自洽：pre-sweep 杀 leak_child 后其 mm 是最后 free 的）。
+  - **串行 vs 并发 kill 的分水岭**：串行 `kill_child`（每个子进程 exit_mm
+    完成后才发下一个 SIGKILL）三个先例全部生效——pre 的 clone_memfd×33、
+    pre/post/spray 清扫（pre-sweep 恒 inuse=0）、chain5 成功轮
+    （waves=2 taken=1 owned=1，正是 80a92409 的 per-wave kill_child）。
+    两阶段批量 kill（bef0f86d 引入，110 个 SIGKILL us 级并发）只有失败
+    记录——并发 do_exit/exit_mm 下 free 丢失（疑 mm_count/mmu_notifier
+    竞态窗口）。已改回串行（so 9f9ecac4）。
+  - clone flags=SIGCHLD only（util.c:1615，CLONE_VM 已排除）；clone_memfd
+    = clone_child+open_memfd+kill_child（同款子进程）。objprobe（读
+    physmap 对象头）会 data abort panic——physmap 目标的 cfgfs 读在 wave
+    段不可用（vmemmap/静态区读安全）；page_to_direct 换算闭环但读 base
+    照炸，未定因。
