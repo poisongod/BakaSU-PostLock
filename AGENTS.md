@@ -1074,3 +1074,28 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   亮屏后恢复。`node.tail5809d2.ts.net`→100.71.26.6 是 **app 自建
   tailscaled 的独立 tailnet IP**，host 不在该 tailnet 不可达，连接一律用
   oppo 名或 100.80.86.28。
+
+## 考试制度（2026-10-21 用户最终裁决，覆盖旧「禁 shell」严格版）
+
+**出题人 = opencode（AI）；shell 域 = 老师；untrusted_app 域 = 学生；设备 = 考场。**
+**两次标准考试**，各自独立，均须达标 = 链 `root=1` → kernelsu.ko 加载 → BakaSu 蓝卡「工作中 Built-in」（真驱动真 store，无欺骗）：
+- **考试一** = shell 域（老师）host 脚手架全链（run_fops Tier-0）。
+- **考试二** = untrusted_app 域（学生）app BOOT_COMPLETED 自跑全链（`triggerChain` direct）。
+
+**出题人权限（合法）**：泄题（shell 域全部辅助——KS_KASLR_ONLY 轮、共享 KASLR 文件、代读写、回环递答案——考前/考中均合法，含 app 经 loopback **只跑泄题轮**）；降难度（改考纲/参数/原语——KS_SLIDE_SKIP、faith gate、静态 fallback、pselect shift 静态预计算、把某题移出考卷用预置答案）。
+**红线 = 泄题 ≠ 代考**：shell uid 跑完整链是考试一内容；考试二的链必须 app uid 自己跑完（`triggerChain` direct），loopback dispatch 全链 = 代考 = 不合格。
+
+### PostLock-Boot v1.32（app 独立仓 poisongod/PostLock-Boot）= 考场工具合规版
+- 三入口（BootReceiver/ChainService/MainActivity）全部切 `triggerChain`（app-uid direct = 考场路径）；`triggerChainLoopback` 降级 PRACTICE SCAFFOLD ONLY（脚手架，零调用点，仍用于 probe/Tailscale 探测）。
+- KASLR gate 恢复为练习期安全网：BOOT_COMPLETED 时共享 `ksu_kaslr` stale/missing → skip + setState `WAIT_KASLR`（UI 可见），不盲跑防 panic 循环；LAUNCH 广播照旧免 gate。终态自足 KASLR（M5 cfgfs physmap 扫）落地后 gate 随脚手架退役。
+- 主页 readiness 真话：通道态=脚手架，KASLR 缺=真实阻塞（`✗ 缺本 boot KASLR 参考（自举方案落地前无法开考）`）；新增 `WAIT_KASLR` 状态标签。
+- 保留 v1.29-131 的规则中性 UX/健壮性（probe 移子线程、指数退避、single-flight、probeVerdict 三态、原始异常串日志）。
+- 已装机 versionCode=33 / versionName=1.32（2026-10-21）。
+
+### 考试一实况（2026-10-21，boot 459b2892，回锁后 fresh 无 su 环境首跑）
+- 环境：原厂内核 5.4.254-qgki、**Enforcing**（无预 setenforce 0，回锁后无 `/system/bin/su`）、`KS_PIPE_SLABS=15` 档位（无 pipe-user-pages-soft 提升）、shell Tier-0。
+- 链推进极深全绿：KASLR perf `slide=0x204d600000`、collision 5、mm_struct 8 线程 found=1、payload 落地+nonce、order3 drain 8192 页、fix36 tp `ctrl=503`、fix40 捕获 `pfn=3431032 k=11`、pselect route `slot marked dirty`→`entering cfi stage`。
+- **死点 = `opening ashmem`**（route 段，fops 接管后第一次 fake open）。根因：**configfs confused deputy 读通道失效**——`cfgfs read ... set=0(SET_NAME 成功) rd=0 errno=0`（`pread` 返回 0 字节 EOF）→ `configfs verify failed r1=0 r2=0` + watchpoint `errno=22` oracle 也废 → payload gate 靠 drain+hit 强放行 → `open_ashmem_device()` 卡死 → 进程树（runner+chain）整体被清理，**无 panic（boot 未变）**。
+- configfs read = ashmem SET_NAME + configfs bin pread 组合（`cfgfs_read_ex` util.c:4227）；pread 返 0 = configfs bin file read 回调未产出内容（疑 Enforcing SELinux 或该 boot configfs item 状态污染）。
+- 处置：无 panic 但进程树死亡 + 设备污染（route armed、ashmem fops 疑劫持）→ **reboot 换 fresh boot 重试**。若 fresh boot configfs 稳定失效 → 定性为回锁后环境问题（Enforcing），需出题人补「无需 root 的 configfs 访问」预处理。
+- **回锁后无 su 时 prep 的三步 root 依赖全部可绕**：chcon（temp 跨 reboot 保留正确 label）、setenforce（链内自带/非必需）、pipe soft（KS_PIPE_SLABS=15 档位）。直接 push run_fops.sh 跑即可。
