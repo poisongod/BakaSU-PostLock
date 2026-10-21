@@ -67,13 +67,21 @@ while true; do
     continue
   fi
 
-  # 无链 -> 只在息屏时起
+  # 无链 -> 息屏起; 亮屏但完全静止(1min load<0.5)视为等效闲置
   wake=$("$ADB" -s "$S" shell 'dumpsys power 2>/dev/null | grep -m1 mWakefulness=' 2>/dev/null | tr -d '\r')
+  load=$("$ADB" -s "$S" shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | tr -d '\r')
   case "$wake" in
     *Asleep*) ;;
-    *) echo "[g$round] screen awake ($wake); idle 30s"; sleep 30; continue ;;
+    *)
+      if awk -v l="$load" 'BEGIN{exit !(l<0.5)}' 2>/dev/null; then
+        echo "[g$round] awake but idle (load=$load); proceed"
+      else
+        echo "[g$round] screen awake ($wake) load=$load; idle 30s"
+        sleep 30
+        continue
+      fi
+      ;;
   esac
-  load=$("$ADB" -s "$S" shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | tr -d '\r')
   round=$((round + 1))
   if [ "$round" -gt "$MAX" ]; then
     echo "[guard] max chain rounds ($MAX) done"
