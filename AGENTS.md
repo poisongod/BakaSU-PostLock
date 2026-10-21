@@ -575,6 +575,38 @@ github.com/ReSukiSU/ReSukiSU，tmp 会清，可重克隆）。
   5555`）——仅在 permissive+无驱动时的自救路径，我们的环境开机即 Enforcing 永不触发，
   auto jailbreak 开关保持关闭、不授自启动。
 
+### PostLock panic guard（v1.25-v1.27，2026-10-21）——防 panic→重启→自启死循环
+
+BOOT_COMPLETED 在链 gate 之前先读上次启动原因，命中 panic 类 → **自动关
+`prefs(postlock)` + setState `PANIC_GUARD <reason>` + 不触发链**（fail-amplifier
+对策：上一次 panic 就停，等人工排查后重跑，绝不无限 panic）。Tailscale 自启
+独立、照常起。**开关语义自此收敛 = 只管开机自启**（v1.22 起），**LAUNCH 调试
+后门不受开关约束**（panic guard 关了开关也能用 LAUNCH 重跑 = 排查后的入口）。
+
+- **app 域 boot reason 判据（SELinux get_prop 实测 2026-10-21）**：
+  `ro.boot.bootreason` / `sys.boot.reason(.last)` / `persist.sys.boot.reason`
+  / `persist.sys.boot.reason.history` **全部对 untrusted_app 空读**（shell 均
+  可读；exec getprop 正常——`ro.boot.hardware=qcom` 对照有值，纯属性权限）；
+  **唯一可读 = `persist.sys.oplus.boot_reason`**。`bootReason()` 先试 history
+  （首行=最新条目，reason=首个逗号前 token；app 拒读自然落到 fallback）→
+  oplus 单值链。
+- **OPPO panic token = `kernel_panic`**（`persist.sys.boot.reason.history`
+  shell 实证：`kernel_panic,null,1792534818`——本设备 10-21 09:40 真实一次
+  panic 重启）。`looksLikePanic` 匹配 panic/oops/watchdog/crash/brownout；
+  **fail-open**（reason 读不到不拦，健康开机必须照常自启）。
+- **探针（免重启验证检测路径）**：`am broadcast -n com.postlock.boot/
+  .BootReceiver -a com.postlock.boot.LAUNCH --ez panicCheck true` → logcat
+  `PostLockBoot: panic check: ... => verdict='...' panic=...`（只检测：不切
+  开关、不触发链）。实测正常 boot：`verdict='reboot' panic=false` ✓。
+- **待实战确认**：oplus 单值 prop 在 panic 时的形态未直接实证（history 不可
+  读）。round13 若触发 panic → 开机后查 logcat `panic guard:` 行、开关自动
+  变 ✗、状态卡 `⚠ 上次异常重启(kernel_panic) · 自启已关`；**若 guard 没触发**
+  说明 oplus 写了不含 panic 字样的 token，按实测值扩 `looksLikePanic`。
+- 显示层 `stateLabel` 收进 `PostLock`（Main/Services 共用），新增
+  PANIC_GUARD 文案分支；状态文件 = app files `loopback_state.txt`
+  （`run-as com.postlock.boot cat files/loopback_state.txt` 可读，模拟测试
+  写完记得恢复真实值）。
+
 ### 链三连败根因修复 + v8 动态闭环 + ocsk 固化（2026-10-19 第四轮，root=1）
 
 - **三连败（06:12/6919ed61/808c7707/d5658ac7 同指纹）根因 = payload 页死判定宽限太短**：
