@@ -1186,3 +1186,14 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   合法地址 &7==1 必被拒，成功基线同位置 rv=8。教训：**这个代码库的 cfgfs
   读目标可以故意不对齐**，任何「8 对齐」假说都错；垃圾地址防线只认
   gate 的 `k_true>=0`（该轮 k_true=10/11 均正常过 gate 未误拦）。
+- **第 17-20 次重启 + 满页数据链闭合（2026-10-22）**：g8(第17次,kernel_panic)
+  死点 `opening ashmem`——fake 表 open 槽被 misc_open 真实调用跳垃圾地址
+  （fix52 dump 在 open **之后**才验证，救不了第一跳；表垃圾=payload 弱抽签，
+  g9 同 so 走完全程是对照）。g12(第20次)死 win tick 期（无栈）。
+  **满页三段式定案数据**（wavehead+batch kill 诊断）：`w=0 inuse=0 frozen=1`
+  → wave[0] fork110 后 `w=1 inuse=34`（转换恰在 wave[0] fork 期）→
+  `batch kill sent=660 reaped=660 werr=0`（waitpid 全成功，杀空排除）→
+  `w=6..23 inuse=34` 恒定 + freelist/slab_list 恒值——**660 个死透但页纹丝
+  不动**，逻辑矛盾（exit_mm 同步应已 free）。五 word slab dump（+08..+28）
+  已加（so 8dffee47）待跑出数据定字段。成功轮 chain5 是 **per-wave kill**
+  （waves=2 taken=1 owned=1），当前 batch(6 波攒杀)从未让 tsc 归 0。
