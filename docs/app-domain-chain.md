@@ -233,16 +233,29 @@ layout 的 pvo/VM 探测依赖 kprobe fetch（app 域死）→ app 轮一律走
 
 ---
 
-## 附录：架构角色定义（2026-10-21 用户裁决）
+## 附录：架构角色与考试制度（2026-10-21 用户裁决，考试制细化版）
 
-**shell 域 = 老师，untrusted_app 域 = 学生。**
+**出题人 = opencode（AI）；shell 域 = 老师；untrusted_app 域 = 学生；
+设备 = 考场。**
 
-- shell 域的全部辅助（KS_KASLR_ONLY leak 轮、共享 KASLR 文件、代读写文件）
-  **仅限开发/练习期**——那是老师帮学生备考，不是考试的一部分。
-- **考场 = BOOT_COMPLETED 独立触发那一刻**：没有 shell、没有预跑文件、
-  没有 host。app 必须自己完成包括 KASLR 在内的每一个环节。
-- 共享 KASLR 文件（`kaslr_from_shared_file`）在考场上不存在——依赖它的
-  路线**不是终态方案**，只是脚手架。
+**两次标准考试**（各自独立，均须达标）：
+
+| 考试 | 考生 | 路径 | 合格标准 |
+|---|---|---|---|
+| 考试一 | shell 域（老师） | host 脚手架全链 | 链 `root=1` → kernelsu.ko 加载 → BakaSu 蓝卡「工作中 Built-in」 |
+| 考试二 | untrusted_app 域（学生） | app BOOT_COMPLETED 自跑全链（direct） | 同上 |
+
+**出题人权限（明确合法）**：
+- **泄题**：shell 域全部辅助（KS_KASLR_ONLY leak 轮、共享 KASLR 文件、
+  代读写文件、回环递答案）在**考前/考中**均合法——老师给学生递答案不算
+  作弊；app 经 loopback **只跑泄题轮**（拿 KASLR 后断开、自己开考）也是
+  合规泄题。
+- **降难度**：改考纲/参数/原语设计使考题更易（KS_SLIDE_SKIP、faith gate、
+  静态 fallback、pselect shift 静态预计算、把某道题移出考卷用预置答案）。
+- **红线 = 泄题 ≠ 代考**：shell uid 跑完整条链是**考试一**的内容；
+  考试二的链必须 app uid 自己跑完（`triggerChain` direct），loopback
+  dispatch 全链 = 代考 = 不合格。
+- 出题人对两次考试达到「合格」标准负总责。
 
 ### 终态自足路线（app 域原语，零 shell 依赖）
 
