@@ -646,10 +646,17 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
           for (size_t i = 0; i < wave_sz; i++) {
             if (wave_pids[k * wave_sz + i]) {
-              if (waitpid(wave_pids[k * wave_sz + i], NULL, 0) > 0)
+              pid_t wp = wave_pids[k * wave_sz + i];
+              if (waitpid(wp, NULL, 0) > 0)
                 reaped++;
               else
                 werr++;
+              /* Drop the mmgrab pin: purge the queued /proc/pid/mem fd
+               * this child handoff'd (never recv'd) so its mm_struct
+               * actually frees.  Without this the reap leaves mm_count
+               * pinned and inuse stays 34 forever (see
+               * release_child_handoff in util.c). */
+              release_child_handoff(wp);
               wave_pids[k * wave_sz + i] = 0;
             }
           }
@@ -725,7 +732,9 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   for (int k = 0; k < CONVERT_MAX_WAVES; k++) {
     for (size_t i = 0; i < wave_sz; i++) {
       if (wave_pids[k * wave_sz + i]) {
-        kill_child(wave_pids[k * wave_sz + i]);
+        pid_t wp = wave_pids[k * wave_sz + i];
+        kill_child(wp);
+        release_child_handoff(wp);
         wave_pids[k * wave_sz + i] = 0;
       }
     }

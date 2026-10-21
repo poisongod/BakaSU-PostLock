@@ -1561,6 +1561,27 @@ static int memx_take_sv(pid_t child) {
   return -1;
 }
 
+/* ROOT-CAUSE FIX for the permanent mm_struct leak that made every wave
+ * convert round read inuse=34 forever.  clone_child()'s child handoff'd
+ * its /proc/self/mem fd through the socketpair, but the wave path never
+ * recv'd it (only pre's clone_memfd calls open_memfd), so the fd stayed
+ * queued on this end's receive queue for the life of the chain.
+ * fs/proc/base.c:813 proc_mem_open does mmgrab(mm) -- the comment there
+ * literally reads "ensure this mm_struct can't be freed" -- and only
+ * mmput(mm) (drops mm_users, NOT mm_count).  So the queued fd pinned
+ * mm_count: after the child's SIGKILL ran exit_mm -> mmput(mm_users->0)
+ * -> __mmput -> exit_mmap -> mmdrop, mm_count was still >=1 and the mm
+ * was never kmem_cache_freed (SLUB freelist stayed NULL, inuse frozen
+ * at 34, page never discarded to buddy).  Closing this socket end
+ * purges the queued skb -> fput(memfd) -> mem_close -> mmdrop, dropping
+ * the pin so the mm finally frees.  pre avoided this by recv'ing +
+ * closing sv immediately (open_memfd) and closing the fd later. */
+void release_child_handoff(pid_t child) {
+  int sv = memx_take_sv(child);
+  if (sv >= 0)
+    close(sv);
+}
+
 static int recv_memfd(int sv, int timeout_ms) {
   struct pollfd p = {.fd = sv, .events = POLLIN};
   if (poll(&p, 1, timeout_ms) <= 0) {
