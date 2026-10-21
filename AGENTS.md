@@ -1265,3 +1265,22 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
     （`cfi fail path payload table dead tbl=0`），修复尚未被 wave 段检验；
     守护等息屏窗口跑下一轮，判据 = `killpost w=0 inuse=0`（归 0 即修复生效）
     → `convert waves=... owned=1` → drain → root=1。
+- **泄漏回归点定案 = commit ffec4212（2026-10-20 20:10，app 域 M1 修复的副作用）**：
+  该 commit 为修 app 域 `open_memfd` 被 SELinux ptrace 拒，给**所有** `clone_child`
+  子进程加了 `child_handoff_memfd`（子进程自开 `/proc/self/mem` sendmsg 给父）。
+  commit message 当时断言「FMODE_UNSIGNED_OFFSET still does not pin the mm」——
+  **错误**：`proc_mem_open` 的 `mmgrab(mm)`（"ensure this mm_struct can't be
+  freed"）永久 +1 mm_count，wave 路径从不 recv/close sv[0] → fd 卡 queue →
+  mm 永不 free。自此之后每一轮 wave convert 全部 inuse=34 恒定（数据完全吻合）。
+- **chain5（771b7409，10-21 06:15）反例消解**：4a700189 曾猜「chain5 的 wave 恰好
+  走过 recv/close」——错。真相 = **chain5 的 so 构建早于 ffec4212**（pre-handoff
+  时代 `clone_child` 子进程直接 pause、不开 /proc/self/mem，mm 干净 free）。
+  行为证据链：handoff 前（chain5）waves=2 taken=1 owned=1 root=1；handoff 后
+  （此后所有轮）inuse 恒 34、owned=0、+20 freelist 恒 NULL。同一机制解释全部刻度。
+  **教训：改 clone_child 子进程路径引入任何「文件被内核持有」（/proc、binder、
+  dma-buf）都可能 mmgrab/mmget 钉住 mm——ffec4212 的 app 域修复曾被误判为无害。**
+- **验证判据（so ca1b89bc = release_child_handoff 修复版）**：`plock_chain.wavefix1.log`
+  出现 `convert waves=2 taken=0 owned=1 sc=0000000000000000`（页回 buddy）——
+  候选修复生效证据，待设备上线后核实该日志特征行（killpost w=0 inuse=0）与后续
+  drain/root=1；若确认，wave convert 满页死锁正式告破，剩余死点回到 route 段
+  `opening ashmem`（g8 类 fake 表 open 槽 panic）。
