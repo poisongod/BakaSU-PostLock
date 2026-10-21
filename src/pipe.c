@@ -592,7 +592,7 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
          * (groom) and its first tsc read -- this reproduces that gap at
          * the batch boundary.  Reads here are page-descriptor only
          * (proven safe); never derived pointers. */
-        for (int r = 0; r < 20; r++) {
+        for (int r = 0; r < 3; r++) {
           if (read_target_slab_cache(conv_fd, base) == 0)
             break;
           usleep(100000);
