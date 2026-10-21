@@ -583,6 +583,14 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
         }
         taken_wave = w;
       }
+    } else if (sc2 != tsc) {
+      /* sc2 hit 0 while tsc was non-zero: the fork sweep pushed the target
+       * out of the slab on this very wave, so the batch kill was skipped
+       * (it only arms under sc2 != 0) and taken stayed -1 -- forensics
+       * wave[5]: n=110 sc=0 followed by 16 waves of tsc==0 that never
+       * claimed ownership.  Record the transition; the next iteration
+       * re-reads tsc and owned fires only if the zero sticks. */
+      taken_wave = w;
     }
     /* else: wave consumed a buddy page above the target; hold it out. */
     if (sc2 == tsc) {
