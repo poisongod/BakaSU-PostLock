@@ -12,6 +12,8 @@ OUT=/tmp/opencode/guard_rounds
 mkdir -p "$OUT"
 [ -f /tmp/opencode/GUARD_SUCCESS ] && rm -f /tmp/opencode/GUARD_SUCCESS
 
+started=0   # 起链轮计数(亮屏 idle 不消耗配额)
+
 env_chain="LD_PRELOAD=$D/preload.so KS_LOG_SYNC=1 KS_PSELECT_BSS_LOCK=1 \
 KS_CFGFS_LOG=1 KS_PAYLOAD_SCAN=1 KSNITCH_VERBOSE=1 \
 KS_RECLAIM_DETERMINISTIC=1 KS_PSELECT_FOPS_VOFF=1 \
@@ -24,7 +26,8 @@ dev_ok() {
   [ "$(timeout 10 "$ADB" -s "$S" shell 'echo x' 2>/dev/null | tr -d '\r')" = "x" ]
 }
 
-for round in $(seq 1 "$MAX"); do
+round=0
+while true; do
   dev_ok || { echo "[g$round] device offline, retry 30s"; sleep 30; continue; }
   boot=$("$ADB" -s "$S" shell 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null | tr -d '\r')
 
@@ -71,6 +74,11 @@ for round in $(seq 1 "$MAX"); do
     *) echo "[g$round] screen awake ($wake); idle 30s"; sleep 30; continue ;;
   esac
   load=$("$ADB" -s "$S" shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | tr -d '\r')
+  round=$((round + 1))
+  if [ "$round" -gt "$MAX" ]; then
+    echo "[guard] max chain rounds ($MAX) done"
+    exit 1
+  fi
   echo "[g$round] asleep load=$load boot=${boot:0:8}; starting chain"
   # 归档旧日志
   "$ADB" -s "$S" shell 'mv -f /data/local/tmp/plock_chain.log /data/local/tmp/plock_chain.guard_arch.log 2>/dev/null' 2>/dev/null
