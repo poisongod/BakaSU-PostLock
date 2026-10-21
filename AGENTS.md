@@ -1237,3 +1237,31 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   - 满页攻关 so 演进（untrusted_app）：779a3fe4(wavepostfork) →
     9f9ecac4(串行 kill_child) → b83c5bd6(killpoll 10s 时序) →
     488b0ee9(wave_n=34) → c6a7f9ae(68 挤压) → c781613f(68 两阶段, 终版)。
+- **满页/泄漏终极根因（2026-10-22，内核源码铁证，commit 4a700189 so ca1b89bc）**：
+  - **根因 = wave 子进程 `/proc/pid/mem` fd 卡在父 socket queue 致 mmgrab 永久泄漏**。
+    内核 `fs/proc/base.c:813 proc_mem_open`：`mmgrab(mm)`（注释原文
+    "ensure this mm_struct can't be freed"，mm_count++）+ `mmput(mm)`
+    （只减 mm_users，不减 mm_count）。`clone_child()` 的子进程
+    `child_handoff_memfd` 把 `/proc/self/mem` fd sendmsg 进 socketpair，
+    但 **wave 段从不 `open_memfd`(recv) 也从不 close sv[0]** → fd 卡在
+    父 receive queue 到链退出 → file 持 mm_count → 子进程 SIGKILL 的
+    `exit_mm`(mmput→__mmput→exit_mmap→mmdrop) 减不到 mm_count 0 →
+    **mm 永不 free** → inuse 恒 34 / +20 恒 NULL / 页永不 discard。
+  - **pre 不泄漏的真相**：`clone_memfd` = clone_child + `open_memfd`
+    (立即 recv + close sv) + 后来 `close_ctx_memfds` close fd →
+    mmdrop → mm free（pre-sweep 恒 inuse=0）。这解释了泄漏线四刻度
+    （pre 1ms 不泄漏 vs wave 50/110/1s 全泄漏）——**不是 live time 问题，
+    是 fd 有没有被 recv/close**（早先 live-time 归因错误，已推翻）。
+  - **修复**：新增 `release_child_handoff(child)`（util.c，=memx_take_sv+close），
+    声明于 common.h；pipe.c wave reap 循环与 flush 循环 kill 后调用 →
+    purge queue skb → fput(memfd) → mem_close → mmdrop → mm_count 归 0
+    → mm free → 页 discard → owned。
+  - **chain5 成功之谜的更优解释**：chain5 的 wave 恰好走过 recv/close
+    （或其代码版本 sv 被管理），mm 正常 free，非「boot 无泄漏者抽签」。
+  - **KSNITCH 无法换 leak 对象**：futex hash seed = `current->mm_struct`
+    （kernelsnitch.h:116），collision 只能 leak mm_struct —— 换 kmalloc-2k
+    的方案不可行，本根因修复是唯一出路。
+  - **验证状态**：so ca1b89bc 已部署，但 g1 死于 wave 前 payload 表早死
+    （`cfi fail path payload table dead tbl=0`），修复尚未被 wave 段检验；
+    守护等息屏窗口跑下一轮，判据 = `killpost w=0 inuse=0`（归 0 即修复生效）
+    → `convert waves=... owned=1` → drain → root=1。
