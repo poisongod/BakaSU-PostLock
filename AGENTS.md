@@ -1217,3 +1217,23 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
     physmap 对象头）会 data abort panic——physmap 目标的 cfgfs 读在 wave
     段不可用（vmemmap/静态区读安全）；page_to_direct 换算闭环但读 base
     照炸，未定因。
+- **convert 路线终审判决（2026-10-22 凌晨，mm_struct 页回收证伪）**：
+  - **泄漏线四刻度**：pre 的 clone_memfd（fork→kill ~1ms live）**零泄漏**
+    （pre-sweep 恒 inuse=0）；wave 34 版 ~55ms 未对照（mm 没进目标页）；
+    wave 68 串行 ~110ms **全泄漏**（g2/821c25c1 killpost inuse=34 恒定）；
+    wave 68 两阶段 ~50ms **全泄漏**（sent=68 reaped=68 后 inuse=34 恒定）；
+    wave 110 ~1s 全泄漏（g14 killpoll 10s 窗口 inuse 恒 34 +20 恒 NULL）。
+    持有者永久性（10s+ 不释放），疑 mmu_notifier/驱动级 mm_count 泄漏。
+  - **结构性死锁**：占满页 A 需 34 个 mm 并存 ≥25ms（34 次 fork 本身的
+    耗时），而泄漏线 <50ms——「同时持有一页 mm」必然踩泄漏窗口。
+    chain5（771b7409）成功 = 其 boot 上泄漏者不在（boot 级环境抽签）。
+  - **页 A 归属 cpu 是 per-attempt 抽签**（frozen=1 的 cpu_partial 空页）：
+    110/68 版抽到 wave[0] 的 cpu 被拉满+泄漏；34 版没被拉（24 波 inuse
+    恒 0、sc 恒非 0、永不 discard——cpu slab 位卡死）。另 wave[4+] pin
+    errno=22（设备部分 cpu 不可 affinity，keep last pin 兜底）。
+  - **下一步（换 leak 对象）**：physrw 需要 pipe_buffer 落「已知物理页」，
+    mm 页回 buddy 死路 → KSNITCH collision 换目标对象（kmalloc-2k
+    pipe_buffer cache 或 skb frag page），collision/leak 段需重构。
+  - 满页攻关 so 演进（untrusted_app）：779a3fe4(wavepostfork) →
+    9f9ecac4(串行 kill_child) → b83c5bd6(killpoll 10s 时序) →
+    488b0ee9(wave_n=34) → c6a7f9ae(68 挤压) → c781613f(68 两阶段, 终版)。
