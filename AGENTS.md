@@ -1178,3 +1178,11 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 - 三处诊断（pre-sweep/post-kill/stuck 打 head+freelist，post-kill 加
   hd==0 守卫防 hd=0 时读 0x28 panic）在 so 9f54411e，等 load<2 黄金
   窗口首跑。
+- **cfgfs 对齐校验回归（2026-10-22，已回滚 `29771bdc`）**：曾给
+  `cfgfs_read_ex` 入口加 `target&7` 拒读想拦 t15153 的 hole 地址，结果
+  round1(t29730)/round2(t5556)/g3/g4 四轮连败全死 `fix52 cfi table garbage
+  rv=-1 -> refusing further ops -> route 安全放弃`——fix52 dump 读的是
+  `base+OFF+1`（fops.c:1624-1634 delta=-1 page-view shift 是**故意设计**），
+  合法地址 &7==1 必被拒，成功基线同位置 rv=8。教训：**这个代码库的 cfgfs
+  读目标可以故意不对齐**，任何「8 对齐」假说都错；垃圾地址防线只认
+  gate 的 `k_true>=0`（该轮 k_true=10/11 均正常过 gate 未误拦）。
