@@ -73,10 +73,12 @@ while true; do
   load=$("$ADB" -s "$S" shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | tr -d '\r')
   case "$wake" in
     *Asleep*)
-      # sleep-but-load-high = reboot recovery storm (chain started at
-      # load=39.65 on boot 6fa5e792 => instant reboot loop); require a
-      # settled system even when the screen is off.
-      if ! awk -v l="$load" 'BEGIN{exit !(l<2.0)}' 2>/dev/null; then
+      # Reboot recovery storms run load 7-40 (chains there = instant
+      # reboot loop), but a settled night can sit at 5-6 from USER app
+      # background D-state IO (bili download, dragon.read preload --
+      # confirmed via wchan sampling) with CPU actually idle.  Distrust
+      # >=7 (storm), allow <7 (settled-but-IO-busy).
+      if ! awk -v l="$load" 'BEGIN{exit !(l<7.0)}' 2>/dev/null; then
         echo "[g$round] asleep but load=$load high (recovery?); idle 30s"
         sleep 30
         continue
