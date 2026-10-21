@@ -583,6 +583,22 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     pr_info("pipe convert wave[%d] n=%zu sc=%016llx cpu=%d\n", w, wave_n,
             (unsigned long long)sc2, w % wave_ncpu);
     if (sc2 != 0) {
+      /* decisive read: five-word state BETWEEN the wave's forks and the
+       * kill.  inuse==34 here => the wave's mms DID land on the target
+       * page and the kill that follows must free them (page should empty;
+       * it never does => the mms are not the page's occupants or free is
+       * blocked).  inuse==0 here => the wave never touched this page and
+       * the w+1满ness arrives from somewhere else entirely. */
+      {
+        uintptr_t ph3 = direct_to_head_page(conv_fd, base);
+        if (ph3) {
+          uint64_t f20 = kernel_read64(conv_fd, ph3 + 0x20);
+          uint64_t f28 = kernel_read64(conv_fd, ph3 + 0x28);
+          pr_info("pipe wavepostfork w=%d +20=%016llx +28=%016llx inuse=%u frozen=%d\n",
+                  w, (unsigned long long)f20, (unsigned long long)f28,
+                  (unsigned)(f28 & 0xffffu), (int)((f28 >> 31) & 1u));
+        }
+      }
       /*
        * Batch hold-kill instead of killing per wave.  A per-wave kill
        * returns the just-allocated pages to the partial lists right away,
