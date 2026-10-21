@@ -1099,3 +1099,10 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
 - configfs read = ashmem SET_NAME + configfs bin pread 组合（`cfgfs_read_ex` util.c:4227）；pread 返 0 = configfs bin file read 回调未产出内容（疑 Enforcing SELinux 或该 boot configfs item 状态污染）。
 - 处置：无 panic 但进程树死亡 + 设备污染（route armed、ashmem fops 疑劫持）→ **reboot 换 fresh boot 重试**。若 fresh boot configfs 稳定失效 → 定性为回锁后环境问题（Enforcing），需出题人补「无需 root 的 configfs 访问」预处理。
 - **回锁后无 su 时 prep 的三步 root 依赖全部可绕**：chcon（temp 跨 reboot 保留正确 label）、setenforce（链内自带/非必需）、pipe soft（KS_PIPE_SLABS=15 档位）。直接 push run_fops.sh 跑即可。
+
+### 考试一 root=1 达成（2026-10-21，fresh boot 771b7409，裸 run_fops）+ 裸驱动红卡归因
+- **shell 域全链 root=1 验证成功**：fresh boot（SLUB 干净）payload 捕获成功 → opening ashmem 通过 → `pipe-physrw-summary done=1 root=1 kaslr=1 read_ok=1 write_ok=1 rw64=1/1 uid=2000->0 selinux=1->0 setenforce=0/0 slide=0x2295a00000`，DONE rc=0，120s+ 无 reboot。**证实上一轮失败 = SLUB 污染（3h uptime）致 payload 捕获失败，非结构性问题**。
+- **kprobe payload verify 恒定失效（回锁后）**：tracefs `drwxr-xr-x root root`，shell 写 `kprobe_events` DAC 拒（无 root 无法 chmod）；configfs read 需 route 劫持 fops（route 前鸡生蛋）；watchpoint 内核 EINVAL。三通道全废，payload 捕获成功率成唯一命门——**fresh boot 是 shell 域考试的关键前置**。
+- **裸 run_fops 的驱动是「裸加载」→ BakaSu 红卡**：链成功时 root.c self 路径自动 fork finitmod 加载 kernelsu.ko（默认 `/data/local/tmp/home/` 路径）+ `exp_v6c.sh` reload ocsk（lsmod 两者都在），但 **finitmod 未带 `ksu_debug_manager_appid` 参数** → `/sys/module/kernelsu/parameters/ksu_debug_manager_appid` 文件不存在 → 驱动不认 BakaSu（appid=10279）→ app 拿不到 driver fd → 红卡「内核上未检测到 KernelSU 驱动程序」。
+- **无持久 root 通道**：`/system/bin/su` 是 stale overlay bind（ls 可见但 exec inaccessible）、ksud 文件未写出、SELinux 回 Enforcing——链 root 窗口（constructor 内）已关闭。
+- **结论**：裸 run_fops 只达 root=1 判据；**考试一完整合格（蓝卡）必须用 `postlock.sh`**——restore.sh 在链 root 窗口经 KS_COLDSTART fork（uid0）配置 `ksu_debug_manager_appid=10279` + 起 ksud + overlay + setenforce，全程不需预先 root，匹配回锁环境。host artifacts（su/preload/ko/finitmod/ocsk）已确认齐全。
