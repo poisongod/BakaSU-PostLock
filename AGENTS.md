@@ -1031,3 +1031,46 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   （`getDecoder()`）——别统一；④ AdbShell 构造器必须 package-private。
   `Process.waitFor(2, TimeUnit.SECONDS)`/`Process.pid()` 在 minSdk26/compileSdk35
   可用（之前报错全是 import 遮蔽连锁）。
+
+### dispatch 统一回环 + 主页实况化（2026-10-21，v1.28-v1.31/vc29-32）
+
+用户质疑「为何依旧需要 shell 回环 / 主界面是否过时」触发代码审计，发现三套
+互相矛盾的叙述并全部修正：
+
+- **现状审计（v1.28 之前）**：所有触发入口（BootReceiver/ChainService/主页
+  按钮）实际调 `triggerChain` = **app-uid 直跑**（第七轮 101KB 日志判死的
+  路径：seccomp/SELinux 拒 tracefs/perf/configfs 三原语）；完整回环实现
+  `triggerChainLoopback`+`writeTriggerScript` **零调用**；BootReceiver 头
+  注释还在描述回环 dispatch。共享 KASLR gate 读 `ksu_kaslr`，但**设备内
+  没有产出方**（trigger.sh 无 KS_KASLR_ONLY 轮）→ fresh boot BOOT_COMPLETED
+  永远 skip = 纯设备自足有硬缺口。
+- **v1.28 修复**：三个入口全部切 `triggerChainLoopback`（shell uid 经本地
+  adbd，链 setsid 脱离 app 存活）；direct `triggerChain` 标 `@Deprecated`
+  保留参考；**trigger.sh 开头内置廉价 KASLR 轮**
+  （`LD_PRELOAD=$D/preload.so KS_KASLR_ONLY=1 sh -c true`，shell uid
+  perf 可用，失败不阻断全链）→ `readyToTrigger` gate 退役为 warning +
+  UI 状态显示（fresh boot 自足闭环补齐）；回环通道故障落
+  `FAIL:回环通道不可用: <原因>` state。
+- **主页实况化**：`probeVerdict()` 三态——OK / NO_LISTENER（refused /
+  Failed-to-connect / connect-timed-out）/ NO_AUTH（auth/CNXN/rejected/
+  reset/EPIPE/closed/EOF/Read-timed-out），各配可操作文案（NO_AUTH 解释
+  「授权弹窗在无 USB 数据连接时被系统立即关闭」）；「链触发可用性」=
+  通道 ✓ + 本 boot KASLR ✓（KASLR 缺只提示不阻塞——trigger.sh 自足）。
+- **NetworkOnMainThreadException 根因（v1.29 实锤）**：MainActivity.refresh()
+  一直在**主线程**跑 TCP 探测 → StrictMode 必抛 → 主页探测**从未成功过**
+  （历史「回环不可达」文案全是误导）。修：探测移子线程 + applyProbe 回填；
+  ServicesActivity 本就在线程里不受影响。
+- **probe 退避 + single-flight（v1.30/31）**：失败探测指数退避
+  （4s→8→16→32→60s cap，成功复位，手动刷新 force bypass）；单飞互斥
+  （AtomicBoolean，败者返回缓存失败或 busy marker）——没有互斥时并发调用
+  方会同时穿过退避检查（streak 每 200ms 递增的踩踏实证）。adbd 侧骚扰从
+  4s/次 降到 60s/次。
+- **Read timed out 归 NO_AUTH（v1.31）**：connect 成功后读超时 = adbd 扣着
+  授权握手（其日志 `prompting user to authorize key` 实证有监听）——
+  通用 `timed out` 关键词曾把它误归 NO_LISTENER。判序：先 Read-timed-out
+  → NO_AUTH，再 refused/connect-timed-out → NO_LISTENER。
+- **设备失联模式**：Tailscale 双 IP（oppo→100.80.86.28 / node→100.71.26.6）
+  同时不可达 = 设备休眠断网（非重启——`sys.boot.reason.last` 未变）；
+  亮屏后恢复。`node.tail5809d2.ts.net`→100.71.26.6 是 **app 自建
+  tailscaled 的独立 tailnet IP**，host 不在该 tailnet 不可达，连接一律用
+  oppo 名或 100.80.86.28。
