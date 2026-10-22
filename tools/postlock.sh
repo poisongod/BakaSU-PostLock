@@ -113,7 +113,7 @@ if [ ! -f "$ADBKEY_DIR/postlock_adbkey" ] || [ ! -f "$ADBKEY_DIR/postlock_adbkey
   # 2048", 2026-10-23: every line of adb_keys was in that broken format,
   # so no key ever verified and the app's AUTH dead-ended in a prompt the
   # framework auto-denies for TCP sources).
-  "$ab" keygen "$ADBKEY_DIR/postlock_adbkey" >/dev/null
+  ab keygen "$ADBKEY_DIR/postlock_adbkey" >/dev/null
   sed -i "s/ .*/ postlock_bootstrap/" "$ADBKEY_DIR/postlock_adbkey.pub"
   echo "generated fresh adb keypair at $ADBKEY_DIR (APP APK MUST RE-EMBED IT)"
 fi
