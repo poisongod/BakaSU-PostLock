@@ -1284,3 +1284,30 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   候选修复生效证据，待设备上线后核实该日志特征行（killpost w=0 inuse=0）与后续
   drain/root=1；若确认，wave convert 满页死锁正式告破，剩余死点回到 route 段
   `opening ashmem`（g8 类 fake 表 open 槽 panic）。
+
+## 考试一合格达成（2026-10-22 08:55，boot 4ceee4ab）——mmgrab 根因修复实测全通
+
+- **so ca1b89bc（release_child_handoff）一次过**：`pre-sweep inuse=0 frozen=1` →
+  `killpost w=0 inuse=34`（首波 kill 后瞬时仍 34，多波继续磨）→ **13 波
+  `waves=13 taken=12 owned=1 sc=0`** → drain → `physrw done=1 root=1
+  read_ok=1 write_ok=1 rw64=1/1 uid=2000->0 selinux=1->0 setenforce=0`。
+  满页死锁（30+ 轮 inuse 恒 34）正式告破，回归点 ffec4212 判决由实战闭环。
+- **判据全链**：CHAIN_EXIT_DONE ✓ + DONE 后 130s+ 无 reboot ✓ +
+  `POSTLOCK-RESTORE-OK`（在 `/data/local/tmp/postlock_restore.log`，**不在
+  chain.log**——验收 grep 别找错文件）✓ + kernelsu.ko 加载 +
+  `ksu_debug_manager_appid` root 读 **10279** ✓（shell cat 读出**空**是权限假象，
+  参数文件 4096B 存在）+ ksud running + `/product/bin/su` overlay +
+  su --daemon + Permissive ✓。
+- **BakaSu 蓝卡**：「工作中 Built-in」+ 0 超级用户 0 模块（真驱动真 store）。
+  驱动 `v4.2.0-rc3-8450dd28-dirty@BakaSU (35220/5)` vs 管理器 `(35236/5)`——
+  **版本号不同但蓝卡不红**（app 已自升级 35236，UAPI 5==5 即绿）；SELinux 宽容。
+- **取证**：`/tmp/opencode/exam/ui_exam1.png`（蓝卡截图）+
+  `plock_chain.SUCCESS_root1.log`（已 pull 设备侧备份）。
+- **链日志/restore 日志分工**：chain 走 `plock_chain.log`；restore.sh 输出在
+  `postlock_restore.log`（含 `driver-already-loaded`/`WARN-phantom-settings`）。
+- **Tailscale 通道备忘**：host Windows Tailscale 曾整体停止（`tailscale.exe up`
+  拉起后恢复）；设备 oppo = `100.80.86.28:5555` direct；`100.71.26.6` 是另一台
+  android 节点（node）非主设备；LAN `192.168.8.10` 会 No route。
+  guard.sh 用 `GUARD_SERIAL=100.80.86.28:5555` 覆盖默认序列号。
+- **考试一（shell 域老师卷）至此合格**。下一步：考试二 = untrusted_app 域
+  app BOOT_COMPLETED 自跑全链（`triggerChain` direct），M5 app 域 KASLR 自举。
