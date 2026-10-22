@@ -1524,6 +1524,51 @@ i%30 的 60s 打印间隔，故冻结期 gate poll 永远静默**。排查任何
   bootstrap（Java 侧 SPAKE2+，Shizuku 移植路线：TLS+Conscrypt exporter+native
   BoringSSL SPAKE2，`RikkaApps/Shizuku` 的 `manager/adb/` + `jni/adb_pairing.cpp`
   是完整参考）。
+
+### app 内 adb AUTH 三层根因定案 + v1.41.5（2026-10-23 下午）——上条 NO_AUTH 归因被推翻
+
+**app 侧 AdbShell 从未真正成功过 AUTH**，三层根因叠加（逐层实测定案）：
+
+1. **签名算法错（AdbShell 通病，v1.41.4 修）**：ADB AUTH 的 20 字节 token 是
+   **现成 SHA-1 digest**，adbd 验 `RSA_sign(NID_sha1, token)` = 手动包
+   `DigestInfo{SHA-1}` 前缀 + raw RSA；Java `SHA1withRSA` 会把 token **再 hash
+   一遍** → 必败 → 死在 RSAPUBLICKEY 的 prompt。修法 = 手工 PKCS#1 v1.5 type1
+   block（`00 01 FF..FF 00` + 15B DigestInfo 头 `302130090605...0414` + token）+
+   `RSA/ECB/NoPadding` 私钥操作（Shizuku `AdbKey.sign()` 同款）。
+2. **adb_keys 全是坏行（v1.41.5/2aa7bd07 修）**：adbd 日志
+   `E/adbd: Invalid base64 key 2048` ×2 = **整个文件无任何可用 key**——源是
+   `tools/postlock.sh` 手拼 `"2048 " + DER-base64`（旧 openssl 路径，非标准
+   android_pubkey 结构）。修：key 生成改 `adb keygen`（产物 `40 00 00 00` 开头
+   的 modulus_size_words 结构）+ sed 换 comment 为 `postlock_bootstrap`；
+   restore.sh 段 `grep -v "^2048 "` 清坏行再 append。**app assets key 同步换成
+   这把新 key**（pem=PKCS#8，pub=标准格式）。
+3. **adbd 拒 loopback 源 AUTH**：官方 client + 同 key 实测——`connect
+   127.0.0.1:5555` 恒 `unauthorized`（完整 RSAPUBLICKEY 交换后仍拒），外部 IP
+   秒过 → **app 只能连设备自身 tailnet IP**（`PostLock.LOOP_HOST=100.71.26.6`，
+   经 tailscaled userspace 回环、算远源可授权；v1.41.3）。
+   prompt 的 auto-deny 机制在此补完 v1.31 旧观察：AdbDebuggingManager
+   `authWindow=0 / lastConnectionTime=0`（纯 TCP 无 USB-attach 授权窗口）→
+   85ms `Denying adb confirmation`——**非锁屏原因，TCP 源 prompt 恒死**。
+
+**v1.41.5（装机 vc41）组合**：signToken + 标准 key + `LOOP_HOST=100.71.26.6`
++ WanChannel（shell 会话部署 nativeLibraryDir/libtailscaled.so → temp、run-as
+拷 state、nohup 起 uid2000 tailscaled `@postlock-tsd-sh`，pgrep 快路径幂等）+
+autostart 序（app-uid daemon 先 bootstrap 网络栈 → 4s → WanChannel 升级 shell）
++ tsKeepalive/Services self-heal 全走 WanChannel 优先。**WanChannel 依赖
+adb_keys 好行 = 依赖 restore.sh 跑成功一轮**。
+
+**链 panic 事故（当日，重演满页教训）**：非 fresh boot（cdc19086，活跃使用中）
+跑 `postlock.sh`（已改 detached：`setsid nohup ... & echo DETACHED`）→ **链触发
+即 panic**（`postlock_chain.log` 都没创建、transport 先僵死）→ reboot →
+app-uid tailscaled 上线 ~1min 被 HANS 冻结 → **双 tailscale 节点永久 offline，
+无 USB，host 失联**。教训固化：**postlock.sh/run_fops 只在 fresh boot + 息屏
+guard 下跑**（guard.sh 策略），活跃使用中触发 = 必炸（AGENTS 满页节 11 次重启
+的共同点重演）；detached 只防 host timeout，不防链本身在脏 SLUB 上炸。
+**恢复依赖解冻窗口**：app 15min alarm tick 带 10s 白名单 → WanChannel（AUTH
+仍败，adb_keys 未修）→ fallback `startTailscaled` → app-uid daemon 短暂上线
+（~10-86s）→ host 每 12s `adb.exe connect` 撞窗口（`/tmp/opencode/
+reconnect_loop.sh`）。**恢复后顺序：fresh reboot → guard 息屏跑 postlock.sh
+（写好行 adb_keys）→ app tick WAN ALIVE 实证 → 再 reboot 验自举**。
 - **修 HANS 之外的权限引导**：OPPO 自启动管理组件 = `com.oplus.safecenter/
   .startupapp.view.StartupAppListActivity`（action `com.oplus.safecenter.
   permission.startup.StartupAppListActivity`），**需 `oplus.permission.
