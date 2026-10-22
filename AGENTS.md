@@ -1431,6 +1431,30 @@ i%30 的 60s 打印间隔，故冻结期 gate poll 永远静默**。排查任何
 副作用：三保险（wakelock/FSI/alarm 拉前台）若用户不在设备旁可能保不住
 前台（本次 19:07 布防后仍冻），考试轮的保活验证要盯 wchan 而非只看 rlog。
 
+**冻结期 keepalive/tailscaled 机制定案（2026-10-22 深夜，v1.38/v1.39 实证）**：
+- **冻结期 alarm 行为 = fire 后广播挂起，解冻瞬间 flush**：due 落在冻结窗口时
+  dumpsys pending 条目消失、stats wake 不更新、logcat 无 fire 痕迹（曾误判
+  「被 cancel/丢弃」）——实际 AlarmManagerService 已 fire，broadcast 队列等
+  uid 解冻。**定案实验**：拉前台后 30s 内挂起 tick 立即执行
+  （`onReceive TS_KEEPALIVE → alive → gate not ready → armed`，1792673177827）
+  + re-arm。**keepalive 链是延迟自愈、不是断链**；冻结期完全静止（无解冻
+  事件则永不 flush——解冻来源 = 用户开 app / 前台操作 / 偶发系统窗口）。
+- **v1.39 `setAlarmClock`**（commit 9230e3e）：AlarmClock 类型 = 真 exact
+  （`windowLength 0`，对比 setExactAndAllowWhileIdle 在本机被合批成
+  `windowLength 674999`=11min）+ 免 SCHEDULE_EXACT_ALARM。冻结期结局与
+  setExact 相同（都是挂起到解冻），但零窗口 + 最高豁免类，保留为主路径，
+  exact+idle 降 fallback，再 setRepeating。
+- **daemon 冻结不杀、解冻秒级恢复**：tailscaled 被 HANS 冻时停调度、网络断
+  （host `status` 见 `oppo offline, last seen` 恰对齐冻结窗）；解冻后 40s
+  内日志恢复（`derp-20 connected; connGen=2` + netcheck + endpoints 重协商，
+  20:46 本地实证）。**pid 不变（同一进程），不是重启**。
+- **HANS 冻结是 uid 级**：app 主进程、chain 线程、tailscaled 一并冻结——
+  「开机自启 Tailscale」的 app 侧工程已闭环（BOOT_COMPLETED +61s 起 daemon /
+  三层自愈 / tick 解冻 flush / v1.38 tick-gate dispatch），**冻结期服务断是
+  OPPO 系统行为，app 内无解**：唯二出路 = 用户 OPPO 白名单（允许后台/
+  自启动，一次性设置）或 PostLock 保持前台（考试轮 SOP 已含）。日常通道
+  LAN 192.168.8.10 主力 + Tailscale 解冻自愈的格局与用户决策一致。
+
 **BOOT_COMPLETED 正式考试轮 SOP**（app v1.35+，gateDiag 见 622766a）：
 1. 前置：app 未 stopped（禁 force-stop；若已 force-stop 则 am start 一次）；
    switch postlock=true；payload v3 已解包（.ver 校验）。
