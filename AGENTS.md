@@ -1367,6 +1367,29 @@ v1.7 判决的三死点）：
 receiver.log 定案后走 BOOT_COMPLETED 正式轮（不 force-stop + 上线即泄题 +
 30min awaitKaslr 窗口 + MainActivity 前台）。
 
+**force-stop 的最严重后果实例（2026-10-22 13:10 实测，设备失联 30+ 分钟）**：
+归档轮我 force-stop 了 app → reboot 后 app 处于 stopped → BOOT_COMPLETED 被
+exclude-stopped 排除 → PostLock 永不自启 → **tailscaled 也不自启（它的自启靠
+app BOOT_COMPLETED）→ tailnet 断 → adb（唯一通道，USB 已退役）不可达**。
+**教训升级：force-stop 不只是「害死一次广播」，而是「设备自锁到用户手动开
+一次 app 为止」**——考试轮/攻关轮一律禁止 force-stop；杀链用精确 kill。
+（诊断轮 LAUNCH 之前 force-stop 是可接受的例外——LAUNCH 手动触发不依赖
+BOOT_COMPLETED——但 reboot 前必须确保 app 未 stopped：force-stop 过就先
+am start 一次再 reboot。）
+
+**BOOT_COMPLETED 正式考试轮 SOP**（app v1.34+ 三保险就绪，cd63740）：
+1. 前置：app 未 stopped（禁 force-stop；若已 force-stop 则 am start 一次）；
+   switch postlock=true；payload v3 已解包（.ver 校验）。
+2. `adb reboot` → 等 boot_completed=1 + tailnet 恢复。
+3. 上线即跑泄题轮：`KS_KASLR_ONLY=1` shell 起链写 `/data/local/tmp/ksu_kaslr`
+   （出题人合法，30min awaitKaslr 窗口内 app 自己消费）。
+4. app 自己走：BOOT_COMPLETED → panic guard → switch → keep-alive 三保险
+   （wakelock 亮屏 + FSI 锁屏全屏 + AlarmClock +5s，任一生效保 MainActivity
+   前台免 HANS 冻结）→ ChainService FGS → awaitKaslr → triggerChain direct。
+5. 验收 = 判据全链（root=1 + DONE + RESTORE-OK + 120s 无 reboot）+ BakaSu
+   蓝卡 Built-in。receiver.log（run-as cat files/postlock/receiver.log）+
+   chain.log 双落盘归因。一次 reboot 一轮考试，链内多次重试只算一次。
+
 ## 考试连续性规则（2026-10-22 用户裁决）
 
 - **连续三次考试合格才算完成**——不是考三次合格（中间失败则**连续计数归零重来**）。
