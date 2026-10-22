@@ -316,12 +316,23 @@ fi
 # chain via KS_COLDSTART -- the -c string is only the constructor's
 # carrier process, so it is a one-liner again.
 CHAIN_OUT=/data/local/tmp/postlock_chain.log
-# DETACHED (setsid nohup): a synchronous ab shell would die with the host
-# timeout / adb drop and leave the chain half-way through the route --
-# dangling fops state that panics on the next misc open (AGENTS; round
-# c23b8a27->e4eaa672).  The chain survives adb disconnects; the poll
-# below reads the log file instead of the stream.
-ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; setsid nohup env LD_PRELOAD=$STAGE/preload.so $TRIGGER_ENV /system/bin/sh -c 'echo CHAIN_EXIT_DONE' > $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
+# DETACHED via a device-side script file: a synchronous ab shell dies with
+# host timeouts and leaves the chain half-way through the route -- dangling
+# fops state that panics on the next misc open (AGENTS; round c23b8a27->
+# e4eaa672).  Inlining `setsid nohup ... &` into the adb shell line raced
+# adbd's session teardown: the background job never exec'd and even
+# $CHAIN_OUT stayed absent (2026-10-23).  Writing trigger.sh first (base64
+# to dodge quoting) and nohup-ing IT is the run_fops.sh pattern that
+# survived every round.
+TRIGGER_SCRIPT=$STAGE/trigger.sh
+TRIG_B64=$(mktemp)
+printf '#!/system/bin/sh\nenv LD_PRELOAD=%s %s /system/bin/sh -c %s\n' \
+  "$STAGE/preload.so" "$TRIGGER_ENV" "'echo CHAIN_EXIT_DONE'" | base64 -w0 > "$TRIG_B64"
+ab push "$TRIG_B64" $STAGE/trigger.b64 >/dev/null
+ab shell "base64 -d $STAGE/trigger.b64 > $TRIGGER_SCRIPT && chmod 755 $TRIGGER_SCRIPT" \
+  || echo "WARN: trigger script write failed"
+rm -f "$TRIG_B64"
+ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; nohup sh $TRIGGER_SCRIPT > $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
   || echo "WARN: detach failed (see $CHAIN_OUT)"
 
 # --- wait for the async KS_COLDSTART restore -----------------------------
