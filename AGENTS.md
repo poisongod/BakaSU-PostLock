@@ -1377,7 +1377,20 @@ app BOOT_COMPLETED）→ tailnet 断 → adb（唯一通道，USB 已退役）�
 BOOT_COMPLETED——但 reboot 前必须确保 app 未 stopped：force-stop 过就先
 am start 一次再 reboot。）
 
-**BOOT_COMPLETED 正式考试轮 SOP**（app v1.34+ 三保险就绪，cd63740）：
+**tailscaled 自启真相（2026-10-22 用户观察「tailscale 没开机自启」定案）**：
+BootReceiver 的 `tailscale autostart`（`:87` `sp.getBoolean("tailscale", false)`
+→ `PostLock.startTailscaled`）是 commit **`9914de8`**（switch semantics 改版）
+加的——**装机 v1.34（5e96d85 构建）源码里 grep 为 0，根本不存在这段代码**。
+即：**历次 boot 后 45s~90s 的快速 tailnet 上线全是用户手动开 app 拉起的**，
+不是自启；boot 574de6c0 失联 14 分钟正是因为没人手动开。pref
+`services/tailscale` 一直是 true（开关不缺），缺的只是代码。
+**v1.35（622766a，2026-10-22 14:11 构建，已装机）包含 autostart + gateDiag**
+——从它起 BOOT_COMPLETED → startTailscaled 自启才真正闭环；验收看
+logcat `tailscale autostart: starting tailscaled` 行。装 v1.35 前的任何
+「为什么没自启」疑问一律先查「装的版本含不含 9914de8」
+（`git show <vN>:...BootReceiver.java | grep -c autostart`）。
+
+**BOOT_COMPLETED 正式考试轮 SOP**（app v1.35+，gateDiag 见 622766a）：
 1. 前置：app 未 stopped（禁 force-stop；若已 force-stop 则 am start 一次）；
    switch postlock=true；payload v3 已解包（.ver 校验）。
 2. `adb reboot` → 等 boot_completed=1 + tailnet 恢复。
