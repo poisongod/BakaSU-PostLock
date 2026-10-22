@@ -1311,3 +1311,11 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   guard.sh 用 `GUARD_SERIAL=100.80.86.28:5555` 覆盖默认序列号。
 - **考试一（shell 域老师卷）至此合格**。下一步：考试二 = untrusted_app 域
   app BOOT_COMPLETED 自跑全链（`triggerChain` direct），M5 app 域 KASLR 自举。
+
+## 考试连续性规则（2026-10-22 用户裁决）
+
+- **连续三次考试合格才算完成**——不是考三次合格（中间失败则**连续计数归零重来**）。
+- 一次考试 = 一次独立完整合格（fresh boot 起链 → 判据全链 → 蓝卡 Built-in）；
+  同一轮内链的多次重试只算这一次考试。
+- **考试一当前连续计数：1/3**（2026-10-22 08:55 boot 4ceee4ab 首合格，
+  取证 /tmp/opencode/exam/）。第 2 轮 reboot 重考开始。
