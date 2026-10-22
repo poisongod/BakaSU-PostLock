@@ -1322,3 +1322,8 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 - **考试一第 2 轮合格（2026-10-22 10:48，boot 446cfc13）**：reboot fresh 首链
   load 1.10 起链 ~60s 一次过（root=1/DONE/restore/appid=10279/蓝卡 Built-in 全绿）。
   **连续计数 2/3**。取证 ui_exam1_r2.png + SUCCESS_r2.log。
+- **考试一第 3 轮合格（2026-10-22 11:04，boot 085ca556）**：load 1.51 起链 ~100s
+  一次过，全判据 + 蓝卡 Built-in。取证 ui_exam1_r3.png + SUCCESS_r3.log。
+- **🏁 考试一连续三次合格完成（3/3）**：三轮独立 fresh boot 全部一次过、零失败
+  （4ceee4ab / 446cfc13 / 085ca556），三张蓝卡截图齐全（exam/ 目录）。
+  根因修复 ca1b89bc 在三个独立 boot 上稳定复现。**下一场：考试二（app 域）连续三次。**
