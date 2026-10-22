@@ -1416,6 +1416,21 @@ com.postlock.boot.TS_KEEPALIVE` → rlog 应出 `dead -> restarting` +
 BOOT_COMPLETED 被 exclude）。rlog 时间戳 = `System.currentTimeMillis()` 毫秒，
 与 host `date +%s%3N` 同域可直接对齐。
 
+**HANS cgroup 冻结 = 后台静默的总根因（2026-10-22 晚实证，boot 6e5c0807）**：
+app uid 后台即被 OPPO freezer 冻（**FGS/perceptible 不免疫**——dumpsys 显示
+`prcp F/S/FGS` 照冻）。**判据 = `run-as cat /proc/<pid>/task/<chain-tid>/wchan`
+显示 `__refrigerator`（state=D）**；解冻后变 `futex_wait_queue_me`（state=S）。
+一次 21 分钟冻结统一解释当晚全部「诡异」：`gate poll i=30` 29 分钟不打印
+（awaitKaslr 线程冻着）、rlog 静默窗口 19:07→19:28、broadcast `result=0`
+但 145s 后才执行、exact alarm fire 后队列条目消失（receiver 未及 re-arm）。
+**解冻实证 = `am start MainActivity` 拉前台，45s 内线程恢复 + rlog 恢复**
+（第七轮「前台可见=免冻」再次验证）。alarm 触发带
+`temporaryAppAllowlistDuration=10000`（10s 白名单）——**tick 能执行但 10s <
+i%30 的 60s 打印间隔，故冻结期 gate poll 永远静默**。排查任何「app 不干活」
+先查 wchan，别再从 rlog/alarm/广播三条线分别猜（当晚全猜错过一轮）。
+副作用：三保险（wakelock/FSI/alarm 拉前台）若用户不在设备旁可能保不住
+前台（本次 19:07 布防后仍冻），考试轮的保活验证要盯 wchan 而非只看 rlog。
+
 **BOOT_COMPLETED 正式考试轮 SOP**（app v1.35+，gateDiag 见 622766a）：
 1. 前置：app 未 stopped（禁 force-stop；若已 force-stop 则 am start 一次）；
    switch postlock=true；payload v3 已解包（.ver 校验）。
