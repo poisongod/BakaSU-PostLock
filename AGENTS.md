@@ -1486,3 +1486,46 @@ i%30 的 60s 打印间隔，故冻结期 gate poll 永远静默**。排查任何
 
 ## 番茄规则取消（2026-10-22 用户裁决）
 - 「不需要拿番茄了」——`com.dragon.read` 重启后**不再需要主动拉回**（原铁律作废）。
+
+### Tailscale 常驻通道与 termux adb 实测（2026-10-23 上午，boot cdc19086）
+
+- **HANS 冻结实锤（uid 级）**：app BOOT_COMPLETED autostart → tailscaled 随 app 起
+  （ETIME==uptime），`Starting→Running` + DERP connected 后 **boot+~86s 即被冻结**
+  （cgroup `freezer:/frozen`，两次实测窗口 10s~60s）→ tailnet 断（host 视角
+  node `offline, tx>0 rx=0`）。**纯 app 方案 tailnet 只有「开机一闪」窗口，无实用价值**。
+- **shell uid2000 tailscaled = 常驻正解**（已实测 active direct + tailnet adb 通）：
+  host adb（postlock key）shell 会话里 `nohup /data/local/temp/tailscaled
+  --tun=userspace-networking --socket=@postlock-tsd-sh --state=/data/local/temp/ts.state &`；
+  state 用 `run-as com.postlock.boot cat files/ts.state` 复制 app 登录态（machine
+  key/profile 在内，免重新登录；同 NodeID 双连会互踢，shell 的胜出）。**shell 域
+  不被 HANS 冻结/清理**，tailnet 跨小时稳定；reboot 后需重跑（app 自启的 app-uid
+  实例会在窗口期先上线，可再被 shell 实例顶替）。temp 目录 tailscaled 二进制
+  跨 reboot 存活（本轮 push 源文件已删仍可用）。
+- **host 通道铁律**：**WSL adb 连不了 tailnet**（WSL2 NAT，100.64/10 路由在
+  Windows 主机）——tailnet adb 一律走 **Windows `adb.exe` + Windows Tailscale**
+  （`adb.exe connect 100.71.26.6:5555`）；LAN 通道（192.168.8.10:5555）照旧。
+  设备 tailnet 节点：`node`=100.71.26.6（PostLock tailscaled）；`oppo`=
+  100.80.86.28（官方 app，无自启权限，弃用）。
+- **termux android-tools 实测**（deb `android-tools_37.0.0p1-3_aarch64` + 9 依赖包
+  abseil-cpp/brotli/fmt/libc++/liblz4/libprotobuf/pcre2/zlib/zstd，共 118 文件
+  17MB，物料在 app 仓 `build/adbtx-prebuilt/` 未 commit）：`LD_LIBRARY_PATH` +
+  `HOME` 指向可写目录即可跑（`adb version/pair/connect` 全过；HOME 不设会
+  `mkdir //.android` EROFS）。批量 push 用 **tar.gz 单文件**（`dir/.` 递归 push
+  必 EOF）。**pairing 协议可用但 pairing key 不进 5555 信任链**：pair 成功后
+  5555 仍 unauthorized（disconnect/kill-server 重试均无效），wireless debugging
+  自己的 connect 端口行为也不稳（offline/refused）——**5555 只认 adb_keys**
+  （授权弹窗点一次 = 永久跨 reboot）。OPPO 开无线调试只能走设置 UI
+  （`adb_wifi_enabled` 写 1 无效）；配对码对话框 = 无线调试页「使用配对码配对
+  设备」，码刷新即作废（旧码 pair 报 protocol fault）。
+- **app NO_AUTH 红字定因**：app 内置 key（assets `postlock_adbkey.pem`）与 host
+  `postlock_adbkey` **是不同的两把**；app key 的 pub 只在链成功后的 restore.sh
+  写回 adb_keys → fresh boot 恒 NO_AUTH，**链成功一轮即自愈**（文案自证）。修复
+  候选：assets 换 host 同款 key（host key 已在 adb_keys，立即可用）/ pairing
+  bootstrap（Java 侧 SPAKE2+，Shizuku 移植路线：TLS+Conscrypt exporter+native
+  BoringSSL SPAKE2，`RikkaApps/Shizuku` 的 `manager/adb/` + `jni/adb_pairing.cpp`
+  是完整参考）。
+- **修 HANS 之外的权限引导**：OPPO 自启动管理组件 = `com.oplus.safecenter/
+  .startupapp.view.StartupAppListActivity`（action `com.oplus.safecenter.
+  permission.startup.StartupAppListActivity`），**需 `oplus.permission.
+  OPLUS_COMPONENT_SAFE`**，普通 app/am 均 SecurityException——只能引导用户
+  手动开（app 详情页 intent 兜底）。
