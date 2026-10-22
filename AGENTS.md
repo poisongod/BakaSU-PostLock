@@ -1312,6 +1312,61 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 - **考试一（shell 域老师卷）至此合格**。下一步：考试二 = untrusted_app 域
   app BOOT_COMPLETED 自跑全链（`triggerChain` direct），M5 app 域 KASLR 自举。
 
+## 考试二排查（2026-10-22 下午，第 1-2 轮诊断）——BOOT_COMPLETED 双因死点 + app 域链 ca1b89bc 推进实况
+
+**BOOT_COMPLETED 两次没到链的双因定案**（当前 boot f8978a50 实测）：
+- **force-stop 后的 app 处于 stopped 状态 → reboot 后 BOOT_COMPLETED 被
+  exclude-stopped 排除**（AOSP 经典行为：force-stop 的包收不到开机广播直到
+  被手动启动一次，且错过不补投）。**铁律：任何 boot 前的 force-stop 都会害死
+  下一次 BOOT_COMPLETED**——考试轮前禁 force-stop（写 switch 改用 app 内
+  UI/不重启的操作；真 force-stop 了也别指望 boot 后 am start 能补救广播）。
+- **手动 LAUNCH 发给后台被 HANS 冻结的 app → onReceive 不执行**：`am broadcast`
+  报 `result=0` 只代表广播投递成功，冻结进程无法调度 receiver——拉前台解冻后
+  同一条 LAUNCH 立即生效（实测 .ver/state/dispatch 线程全变）。
+- **boot 洪峰几分钟冲光 logcat 的 PostLockBoot 行** → 已加落盘日志
+  `files/postlock/receiver.log`（BootReceiver 全分支 + ChainService
+  gate/FGS + triggerChain 入口，64KiB 轮转，run-as 可读，commit 70ba915）。
+  归因 receiver 静默失败以后只认这个文件。
+
+**app 域链 ca1b89bc 推进实况**（LAUNCH 诊断轮 + 前台保活，远超第七轮
+v1.7 判决的三死点）：
+- **已过**：slide（泄题 KS_SLIDE_SKIP=1 + 共享 ksu_kaslr）✓ → collision
+  （真阳性：post-pile baseline=27→30 掉回基线）✓ → **mm_struct scan ✓**
+  → payload nonce 注入 + skbdelta 写 + drain 8192 + sends 896 +
+  prepare storm 1088 ✓ → pselect route calls=1 success=1 ✓ → CFI fix52
+  表 dump（ioctl 槽=真 ashmem 地址 rv=8）✓ → win enter q0=1 ✓。
+- **mm_struct scan 的命门 = MainActivity 前台保活**：shell 域同 scan **2 秒
+  命中**（纯计算）；app 转后台后 cgroup CPU 配额掐纯计算 scan **180× 慢**，
+  6+ 分钟不命中表象似卡死（`start finding` 后无中间日志——每 1TB 才打一行，
+  无日志≠卡死）。BOOT_COMPLETED 自跑链必须保 MainActivity 前台
+  （receiver startActivity 被 AOSP 拦，第七轮已证；FSI/AlarmManager 待选）。
+- **当前死点 = win +5s 页死**：`win tick +0~4s dead=0 → +5s dead=1`
+  （ioctl 槽读 ENOTTY = payload 页被回收/表清零）→ phys prepare abort →
+  `pselect route done step=8`（!installed）→ root=0 安全退出无 panic。
+  **= 抽签非结构**：AGENTS 已录 shell 已知模式「win enter 后 3-6s tbl=0 页死轮」；
+  shell 的 leak_child/collision 与 app 在 win+4~5s **完全同一时刻**发生但 shell
+  页活到 +25s+；**memcg 假说已证伪**（apps 组 limit=LLONG_MAX、failcnt=0、
+  kmem 未启用、全局 free 充足）；两域结构时序逐行同构（shell 成功轮同样打
+  `phys prepare produced no page` 后重试 convert owned=1 成功）。
+  **对策 = fresh boot 多轮抽签**（同考试一 payload 捕获经验）。
+
+**归因教训（防再犯）**：
+- `cfgfs read set-fail ENOTTY` **不是**表空/通道死的充分证据——fops.c:1699
+  fix44 注释明言 ENOTTY 两种语义：route landed 的**成功标志**（fake fops 不实现
+  SET_NAME）vs 页死后 ioctl 槽清零。唯一可靠归因 = **diff shell 成功轮
+  （SUCCESS_r3.log）同位置日志**：win tick/fix52/route 段逐行对照。
+- `post-pile count=5` 只是重复计数，**真伪判据 = target 是否掉回 baseline**。
+- pgrep `-f` 自匹配陷阱（模式串含在 sh 命令行）踩过三次：诊断用
+  `ps -A -o PID,UID,ARGS` 或 `[e]cho` 括号技巧。
+- app 域轮次结束（step=8 fail path `skip cfgfs restore`）misc.fops 残留
+  dangling fake 表——轮间有第三方 open misc 的 panic 风险（g8 同款），
+  同 boot 连跑诊断有代价，重要轮次先 reboot。
+
+**下步**：装 receiver.log 版 APK（70ba915/13:23 构建）→ fresh boot LAUNCH
+诊断盯页死复现率（页活轮次即深入 wave/physrw/restore 拿 app 域 root=1 数据）→
+receiver.log 定案后走 BOOT_COMPLETED 正式轮（不 force-stop + 上线即泄题 +
+30min awaitKaslr 窗口 + MainActivity 前台）。
+
 ## 考试连续性规则（2026-10-22 用户裁决）
 
 - **连续三次考试合格才算完成**——不是考三次合格（中间失败则**连续计数归零重来**）。
