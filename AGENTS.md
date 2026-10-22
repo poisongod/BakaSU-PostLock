@@ -1319,3 +1319,6 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
   同一轮内链的多次重试只算这一次考试。
 - **考试一当前连续计数：1/3**（2026-10-22 08:55 boot 4ceee4ab 首合格，
   取证 /tmp/opencode/exam/）。第 2 轮 reboot 重考开始。
+- **考试一第 2 轮合格（2026-10-22 10:48，boot 446cfc13）**：reboot fresh 首链
+  load 1.10 起链 ~60s 一次过（root=1/DONE/restore/appid=10279/蓝卡 Built-in 全绿）。
+  **连续计数 2/3**。取证 ui_exam1_r2.png + SUCCESS_r2.log。
