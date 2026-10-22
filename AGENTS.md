@@ -1390,6 +1390,32 @@ logcat `tailscale autostart: starting tailscaled` 行。装 v1.35 前的任何
 「为什么没自启」疑问一律先查「装的版本含不含 9914de8」
 （`git show <vN>:...BootReceiver.java | grep -c autostart`）。
 
+**开机自启通道攻克达成（2026-10-22 晚，v1.37 / cd05040，boot 6e5c0807 零干预终验）**：
+reboot → +61s `tailscale autostart fired` → daemon 9323 `Starting -> Running`
++ derp connected → `status: active; direct`（全程零人工，只轮询验收）。
+三层自愈架构（v1.37 落地，`PostLock.ensureTailscaled` 统一 probe+start 幂等）：
+1. **ChainService dispatch 线程头部 ensure**——Athena o-kill 杀 app→AMS 11s 拉回
+   时秒级救 daemon（此前只能等 15min tick）；同服务 `onCreate` 起 **2min 探活
+   Handler**（FGS 存活期 = gate 等待 + 链跑窗口，恰是 alarm 最不可靠时）。
+2. **exact alarm 链式 tick**：`setExactAndAllowWhileIdle` 单发 + `tsKeepalive`
+   finally re-arm（SecurityException → setRepeating fallback）。**别改回
+   setRepeating**——实测非精确 tick 被 OPPO doze 推迟 159s+ 不响（对照首次
+   +19s 响，屏灭后恶化）。
+3. BOOT_COMPLETED autostart（9914de8 起）不变。
+**死因链实锤（logcat 归因法）**：`AthenaService: OplusClearSystemService: Killing
+<app> o-kill(40)` → `PhantomProcessRecord {9307:<app>:libtailscaled.so} died`
+——OPPO 清后台杀主进程，tailscaled 作为 phantom 连带（与 round10 phantom trim
+同族）；HANS 亦观察到冻结 `[app, tailscaled]` 后 `unfreeze ... exitFF`。
+**手动 tick 测试法**：`am broadcast -n com.postlock.boot/.BootReceiver -a
+com.postlock.boot.TS_KEEPALIVE` → rlog 应出 `dead -> restarting` +
+`armed (exact+idle 15min)`（v1.37 标志文案）。
+通道事实更新：LAN `192.168.8.10` 会 `No route to host`（用户「常驻」仍出现，
+别当唯一通道）；reboot 后 tailnet ~132s 恢复（官方 app 临时通道 + 我们 autostart
+并存，`com.tailscale.ipn` 在跑不冲突——两者各持自己的 state）。
+**install -r 后必须 am start 解锁 stopped**（本轮再次踩实：不解锁下次
+BOOT_COMPLETED 被 exclude）。rlog 时间戳 = `System.currentTimeMillis()` 毫秒，
+与 host `date +%s%3N` 同域可直接对齐。
+
 **BOOT_COMPLETED 正式考试轮 SOP**（app v1.35+，gateDiag 见 622766a）：
 1. 前置：app 未 stopped（禁 force-stop；若已 force-stop 则 am start 一次）；
    switch postlock=true；payload v3 已解包（.ver 校验）。
