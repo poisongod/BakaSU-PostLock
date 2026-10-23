@@ -1547,6 +1547,17 @@ RESTORE-OK → 120s 无 reboot → 蓝卡 Built-in。取证
 `/tmp/opencode/exam2/SUCCESS_r2_fe30e85d.{log,png}`。**连续计数 2/3**，
 第 3 轮 = 决胜轮。
 
+- **🏁 考试二连续三次合格完成（3/3，2026-10-23 16:25）**：第 3 轮 boot
+  `962fdea8`——泄题 24s 就绪、链 `waves=21 taken=20 owned=1` → root=1
+  （uid 10293→0、selinux 1→0）→ CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK →
+  120s 无 reboot → kernelsu+ocsk → 蓝卡「工作中 Built-in」。取证
+  `/tmp/opencode/exam2/SUCCESS_r3_962fdea8.{log,png}`。
+  **三轮（2be7494f / fe30e85d / 962fdea8）全部一次过、零失败、零 panic**——
+  paste 泄题 + live-preference + 波次 24 的修复组合在三个独立 fresh boot
+  上稳定复现。**考试二（untrusted_app 域学生卷）至此收官；两场考试均 3/3。**
+  成功率注记：合格三轮的 convert 用波 12/16/21（上限 24 内），
+  `rel=68/68` 全程恒真——owned 是唯一抽签变量，24 波上限给了足够余量。
+
 **轮 SOP（照此跑第 2/3 轮）**：install 后 am start 解锁 stopped → reboot →
 boot_completed 后 `am start` 拉前台 → 起泄题轮（`KS_PREPARE_HALT=1800` 完整
 TRIGGER env，detached，poll `ksu_payload` 出现**本轮 boot_id** + `H=1`——注意
