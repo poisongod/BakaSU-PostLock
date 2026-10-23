@@ -1103,7 +1103,7 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   中间一轮（11:56 boot）链 root=1 后死于 self-patch cfgfs 循环（进程消失
   无 panic，dmesg 不可读），fail 放大器 reboot 换 boot 即过。
 
-
+## 考试制度（2026-10-21 用户最终裁决，覆盖旧「禁 shell」严格版）
 
 **出题人 = opencode（AI）；shell 域 = 老师；untrusted_app 域 = 学生；设备 = 考场。**
 **两次标准考试**，各自独立，均须达标 = 链 `root=1` → kernelsu.ko 加载 → BakaSu 蓝卡「工作中 Built-in」（真驱动真 store，无欺骗）：
