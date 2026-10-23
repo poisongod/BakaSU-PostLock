@@ -1113,6 +1113,42 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
 **出题人权限（合法）**：泄题（shell 域全部辅助——KS_KASLR_ONLY 轮、共享 KASLR 文件、代读写、回环递答案——考前/考中均合法，含 app 经 loopback **只跑泄题轮**）；降难度（改考纲/参数/原语——KS_SLIDE_SKIP、faith gate、静态 fallback、pselect shift 静态预计算、把某题移出考卷用预置答案）。
 **红线 = 泄题 ≠ 代考**：shell uid 跑完整链是考试一内容；考试二的链必须 app uid 自己跑完（`triggerChain` direct），loopback dispatch 全链 = 代考 = 不合格。
 
+## gate 不消费致同 boot 二次链卡死事故 + ran_boot 修复（2026-10-23，app vc54/02b1146）
+
+**事故链**（boot 6bcd094c，非 panic——bootreason=reboot 人工重启）：
+马拉松 round 2 泄题阶段被我停掉（detached 泄题轮继续跑至成功，写
+ksu_kaslr/ksu_payload=本 boot 值 → **gate 转 ready**）→ 我为测 app 新加的
+实时日志功能连发两次 `am broadcast ...TS_KEEPALIVE`（tick 走
+`tick: gate satisfied -> keepalive dispatch`，BootReceiver:116）→
+**同 boot 先后两条链**：链 A 成功（v3_d 截图 kschini✓ocsk✓Permissive），
+链 B 在脏 boot paste 死页 → route 卡死（`pselect Tier-0 capping 12->1`、
+`waiter requeue_pi errno=110`，chain.log win +14s 戛止）→ **设备僵死 13min**，
+用户长按重启。**根因 = gate 不消费**：已有防重入（sDispatching 原子 +
+pgrep 活子进程）只拦并发，链 A 跑完后 pgrep 查不到 → 顺序重复放行。
+考试轮每轮 reboot 从未暴露；「停马拉松+同 boot 连续操作」炸出。
+
+**修复（vc54）**：`triggerChain ENTER` 即写 `files/postlock/ran_boot=<boot_id>`
+（**失败也消费**——fail amplifier 语义本就要求换 boot 重试）；
+`readyToTrigger(Context)`/`gateDiag(Context)` 前置 `alreadyRanThisBoot`，
+覆盖 BOOT_COMPLETED/tick/gate poll 全部入口；LAUNCH 调试后门照旧绕过 gate；
+UI readiness 显示「本 boot 已跑过」；诊断串加 `ran=` 字段。
+**验法**：dispatch 后任何 tick 打 `ran=1 rdy=false` 且不再 ENTER。
+
+**取证教训**：
+- **chain.log 每次 dispatch 截断重写**——链 A 日志被链 B 覆盖（只有截图
+  证据）；归因「有几条链」先看 chain.log 首行 pid 是否与最后 pid 不同。
+- **receiver.log 会出 NUL 稀疏段**（本次 17:16-17:37 整段丢 dispatch 行），
+  grep 见「匹配到二进制文件」必须 `grep -a`；NUL 后行还在但段内行永久丢失
+  ——关键事件归因要与截图/文件 mtime 交叉。
+- app 域广播 `result=0` ≠ 执行（HANS 冻结排队），先拉前台再发。
+- 设备「消失」判别三步：ping LAN+tailnet 双断而 host 网关通 = 设备层；
+  重连后 `getprop ro.boot.bootreason`：`reboot`=人工/命令重启，
+  `kernel_panic`=panic——**本次事故是僵死非 panic**，route 卡死无用户态
+  防御（与旧「route pselect 内核自旋 4min」同族）。
+- **postlock 开关（services.postlock）**是用户可手关的（ServicesActivity:146），
+  关闭后 keepalive 的 gate 段静默跳过（**不打任何行**——排查「tick 行消失」
+  先读 `run-as cat shared_prefs/services.xml`）。
+
 ### PostLock-Boot v1.32（app 独立仓 poisongod/PostLock-Boot）= 考场工具合规版
 - 三入口（BootReceiver/ChainService/MainActivity）全部切 `triggerChain`（app-uid direct = 考场路径）；`triggerChainLoopback` 降级 PRACTICE SCAFFOLD ONLY（脚手架，零调用点，仍用于 probe/Tailscale 探测）。
 - KASLR gate 恢复为练习期安全网：BOOT_COMPLETED 时共享 `ksu_kaslr` stale/missing → skip + setState `WAIT_KASLR`（UI 可见），不盲跑防 panic 循环；LAUNCH 广播照旧免 gate。终态自足 KASLR（M5 cfgfs physmap 扫）落地后 gate 随脚手架退役。
