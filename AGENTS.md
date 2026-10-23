@@ -1075,7 +1075,35 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   tailscaled 的独立 tailnet IP**，host 不在该 tailnet 不可达，连接一律用
   oppo 名或 100.80.86.28。
 
-## 考试制度（2026-10-21 用户最终裁决，覆盖旧「禁 shell」严格版）
+### WAN 通道根因终审 + 修复达标（2026-10-23 下午，vc47/8593be3）
+
+三层根因叠加（逐层实测定案，最终根因是字符串 bug）：
+1. **`SOCK` 双后缀（真根因）**：`WanChannel.SOCK="postlock-tsd-sh"`（已含 `-sh`），
+   模板又拼 `"$SOCK[-]sh"` → 实际模式 `postlock-tsd-sh[-]sh` **永远匹配不到
+   daemon**——自 v1.41.5 起所有 pgrep 快路径/轮询判定失效（WAN_DEAD）、pkill
+   杀不到旧 daemon（`address already in use`）。修 = 模式裸 `$SOCK`
+   （脚本 sh cmdline 不含 socket 名，自匹配安全）。
+2. **adbd 拒 loopback 源 + tailnet 栈黑洞**：app 域 connect `100.71.26.6`
+   走系统路由（userspace 栈无 root 不接管路由）→ 4s 超时黑洞。修 =
+   **hairpin 候选**（`loopHosts()` 枚举本机非 loopback IPv4 优先——hairpin
+   到 wlan0 IP 直达 adbd，源非 127.x 不触发 AUTH 拒绝）+ tailnet IP 兜底，
+   4 处 connect 全走 `connectLoop()`。
+3. **inline cmd 的 shell,v2 环境**：deploy 逻辑改 base64 push 脚本 +
+   `sh path` 执行（quoting-free 传输；pgrep 在普通设备 sh 里验证可用）。
+   另 pkill 后 8s drain + SIGKILL 兜底（abstract socket 释放竞态）。
+- **验收达标（用户标准）**：fresh reboot → BOOT_COMPLETED +~50s
+  `wan ensure: ALIVE`（冷部署抢在 HANS 86s 前）→ shell uid daemon 常驻 →
+  host 每 30s `adb connect 100.71.26.6:5555`+id **20/20 全通（13:01-13:11）**。
+- 排障教训：「pgrep 不命中但 ps 命中」先查**模式字符串本身**（常量拼接重复），
+  再怀疑环境 quoting；hairpin（设备 connect 自身 LAN IP:5555）是 app 域
+  AUTH 的可靠通道，不依赖任何 daemon 栈。
+- 回锁后链（third round）本轮实测：12:18 boot 链 payload 死安全退出；12:25
+  fresh boot 链 `POSTLOCK-RESTORE-OK` + verify 全绿（root/kernelsu Live/
+  daemon/appid=10279/Permissive）——**postlock.sh 全链恢复通道正常**。
+  中间一轮（11:56 boot）链 root=1 后死于 self-patch cfgfs 循环（进程消失
+  无 panic，dmesg 不可读），fail 放大器 reboot 换 boot 即过。
+
+
 
 **出题人 = opencode（AI）；shell 域 = 老师；untrusted_app 域 = 学生；设备 = 考场。**
 **两次标准考试**，各自独立，均须达标 = 链 `root=1` → kernelsu.ko 加载 → BakaSu 蓝卡「工作中 Built-in」（真驱动真 store，无欺骗）：
