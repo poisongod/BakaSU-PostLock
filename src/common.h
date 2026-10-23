@@ -542,6 +542,14 @@ int slide_leak_kernel_base(void);
  * rounds) so app-uid rounds of the SAME boot can boot past the perf leak
  * (denied to untrusted_app) without the slide fallback.  Best-effort. */
 void ks_persist_kaslr_file(void);
+/* Payload-page handoff for exam-2 app-uid rounds: a shell/root round of
+ * the same boot captures+verifies the payload page (tp oracles live only
+ * there) and holds it (KS_PREPARE_HALT), persisting its base via
+ * ks_persist_payload_file; the app-uid round pastes it with
+ * ks_payload_paste (KS_PAYLOAD_PASTE=1) instead of blind-draining into a
+ * garbage fops table.  Best-effort / returns 0 on any mismatch. */
+void ks_persist_payload_file(void);
+int ks_payload_paste(void);
 /* Append DONE rc=0 to $KS_STATE_FILE synchronously from the root=1
  * contract line's process — the tail panic beats any poller. */
 void ks_lock_contract_state(void);

