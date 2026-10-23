@@ -1512,6 +1512,44 @@ i%30 的 60s 打印间隔，故冻结期 gate poll 永远静默**。排查任何
   （4ceee4ab / 446cfc13 / 085ca556），三张蓝卡截图齐全（exam/ 目录）。
   根因修复 ca1b89bc 在三个独立 boot 上稳定复现。**下一场：考试二（app 域）连续三次。**
 
+## 考试二第 1 轮合格（2026-10-23，boot 2be7494f）——paste 泄题 + 三处修复后 app 域 root=1 蓝卡
+
+**连续计数：1/3**（取证 `/tmp/opencode/exam2/SUCCESS_r1_2be7494f.{log,png}`）。
+判据全链：app uid 10293 自己跑完 `triggerChain ENTER` → root=1（uid 10293→0、
+selinux 1→0）→ CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK → 120s 无 reboot →
+kernelsu+ocsk 双模块 → BakaSu 蓝卡「工作中 Built-in」（驱动 35220/5、管理器
+35236/5、UAPI 5==5）。
+
+**过关的三处代码修复（今日依次落地）**：
+1. `reload_payload_base` live-preference 前置（cfc3de1a）：r4（boot 2050b352）
+   paste 成功但 route 的 pvo 窗口检查（app 域静态 physmap 窗口）拒了泄题轮
+   实测 base → `skip attempt=1` route calls=0 安全败。修 = `skb_payload_base!=0`
+   直接 return 1 提到函数头；文件 adopt 路径保留 pvo 把关。
+2. release 诊断 + 波次上限（a245d677）：r5/r6 `killpost inuse=34 +20=0` 恒定
+   （ffec4212 mmgrab 症状）连续 owned=0。`release_child_handoff` 改返回 0/1 +
+   batch kill 行打 `rel=ok/total`。**r7 实测 `rel=68/68` 全成功 → handoff 修复
+   一直正常，r5/r6 owned=0 纯属 8 波太短的抽签**；同轮 app env
+   `KS_WAVE_FLAT_MAX 8→24`、`KS_PIPE_MAX_ATTEMPTS 2→3`，12 波 `taken=11 owned=1`。
+3. 方案 F payload paste（d2fa8611 主仓 + app vc42-50）：shell 泄题轮
+   `KS_PREPARE_HALT=1800` 持页写 `/data/local/tmp/ksu_payload`
+   （boot_id+base+kaslr），app 链 `KS_PAYLOAD_PASTE=1` 三重校验消费。
+   app 域永久无 perf/tp oracle（SELinux 拒 untrusted_app perf_event_open，
+   errno=13 非 seccomp）→ 盲 prepare 必死 → paste 是唯一出路，属合法泄题。
+
+**r5/r6 失败模式备案**（同修复后仅差波次抽签）：r5 死 physrw
+`wave flat x8 owned=0`；r6 死更早 `collision wait spun out` → owned=0——
+两轮均 paste/route/open/fix52 全通过后安全失败（fail path pi_cleanup →
+neutralize → 无 panic），fail amplifier reboot 即重抽。
+
+**轮 SOP（照此跑第 2/3 轮）**：install 后 am start 解锁 stopped → reboot →
+boot_completed 后 `am start` 拉前台 → 起泄题轮（`KS_PREPARE_HALT=1800` 完整
+TRIGGER env，detached，poll `ksu_payload` 出现**本轮 boot_id** + `H=1`——注意
+旧 boot 残留文件的 boot_id 里可能含 "1" 别误判）→ host 循环 `am start`
+MainActivity 保活（HANS 免疫）→ receiver.log 见 `triggerChain ENTER` → 链
+`CHAIN_EXIT_DONE` → restore.log `POSTLOCK-RESTORE-OK` → 120s boot 不变 →
+截图蓝卡。泄题轮 prepare 可能 retry 上百次（r7 恰在 72/72 最后一轮成功）——
+耐心 poll，gate 因 ksu_kaslr 旧 boot 值正确保持 rdy=false 不会提前 dispatch。
+
 ## 番茄规则取消（2026-10-22 用户裁决）
 - 「不需要拿番茄了」——`com.dragon.read` 重启后**不再需要主动拉回**（原铁律作废）。
 
