@@ -1700,10 +1700,22 @@ static int memx_take_sv(pid_t child) {
  * purges the queued skb -> fput(memfd) -> mem_close -> mmdrop, dropping
  * the pin so the mm finally frees.  pre avoided this by recv'ing +
  * closing sv immediately (open_memfd) and closing the fd later. */
-void release_child_handoff(pid_t child) {
+int release_child_handoff(pid_t child) {
   int sv = memx_take_sv(child);
-  if (sv >= 0)
+  if (sv >= 0) {
     close(sv);
+    return 1;
+  }
+  /* take miss = this child's sv[0] was never registered (or already
+   * taken): the handoff fd stays queued in SOME socket and keeps
+   * mmgrab pinned -> killpost inuse=34 forever.  Rate-limited: a fully
+   * broken table prints 3 lines per chain, enough to attribute. */
+  static int miss_logged;
+  if (miss_logged < 3 || (miss_logged % 64) == 0)
+    pr_warning("release child pid=%d: no sv registered (leak persists) "
+               "miss#%d\n", (int)child, miss_logged);
+  miss_logged++;
+  return 0;
 }
 
 static int recv_memfd(int sv, int timeout_ms) {

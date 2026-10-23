@@ -636,7 +636,7 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
          * (always leaks); 50ms is the next rung down.  If this leaks
          * too the verdict is "any mm held past a few ms is claimed" and
          * the convert route must switch away from mm_struct pages. */
-        int kill_sent = 0, reaped = 0, werr = 0;
+        int kill_sent = 0, reaped = 0, werr = 0, rel_ok = 0, rel_miss = 0;
         for (int k = w + 1 - CONVERT_HOLD_WAVES; k <= w; k++)
           for (size_t i = 0; i < wave_sz; i++)
             if (wave_pids[k * wave_sz + i]) {
@@ -656,13 +656,17 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
                * actually frees.  Without this the reap leaves mm_count
                * pinned and inuse stays 34 forever (see
                * release_child_handoff in util.c). */
-              release_child_handoff(wp);
+              if (release_child_handoff(wp) > 0)
+                rel_ok++;
+              else
+                rel_miss++;
               wave_pids[k * wave_sz + i] = 0;
             }
           }
         }
-        pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d\n", w,
-                kill_sent, reaped, werr);
+        pr_info("pipe batch kill w=%d sent=%d reaped=%d werr=%d rel=%d/%d\n",
+                w, kill_sent, reaped, werr, rel_ok,
+                rel_ok + rel_miss);
         taken_wave = w;
         /* The just-killed children's mm_structs are not always reclaimed
          * by the time waitpid returns (TLB/RCU/memcg tail), and every

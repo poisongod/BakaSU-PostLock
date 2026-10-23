@@ -488,7 +488,7 @@ pid_t clone_child(void);
 pid_t clone_leak_child(void);
 int open_memfd(pid_t child);
 void kill_child(pid_t child);
-void release_child_handoff(pid_t child);
+int release_child_handoff(pid_t child);
 void close_reclaim_sockets(void);
 void ks_diag_fd(const char *tag, int fd);
 void ks_diag_table(const char *tag);
