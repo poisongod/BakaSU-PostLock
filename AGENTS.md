@@ -1674,7 +1674,42 @@ marathon4 round 4 **同款复现**（root_stage_dirty 未拦——第二遍在**
 - 验证判据：child 死轮链打 `self-patch flip disabled` 后安全退出
   （root=0、无第二遍 seccomp 行、无 panic）→ 换 boot 重试。
 
-## 番茄规则取消（2026-10-22 用户裁决）
+## 马拉松 route pselect panic + 归档覆盖事故 + panic guard 实战漏报（2026-10-23 晚）
+
+**route pselect 抽签 panic（marathon5b round1，boot bac0faa4，pstore 实锤）**：
+链死在 `route pselect enter attempt=1`（root 之前）——`Comm: ks_consumer`、
+`pc=_raw_spin_trylock+0x1c`（`ldr w8,[x8]` x8=0x3，fdset 小整数被当指针）、
+栈 `rt_mutex_adjust_prio_chain → rt_mutex_adjust_pi → __sched_setscheduler →
+sched_setattr`——即第六轮定案的「app uid pselect fdset 布局错位」物理机制。
+**PASS/PANIC 轮配置全同**（shift=0 / slot=0 / chmod EACCES 四轮 PASS 全有），
+round_04 PASS 轮 boot 早期同样有 oops——**纯抽签，不在 root_stage_dirty/
+self-flip kill switch 覆盖面内**（死点在 root 之前）。fail amplifier reboot
+重抽即可；该签名再次出现先对照本节，别误判为 kill switch 失效。
+另：`pselect chmod slot file errno=13`（slot 文件 root 644 残留、shell 写拒）
+在 PASS 轮同样出现，是常态非异常。
+
+**归档覆盖事故（已修 commit `0c688bf0`）**：`tools/exam2_marathon.sh` 归档
+路径固定 `$OUTDIR/round_%02d`——每场马拉松同号轮**覆盖上一场**：marathon5 r4
+PASS 归档摧毁了 marathon4 r4 的 panic pstore 原文（round_05 boot_id 也不再是
+marathon3 r5 的 b04eec8b）——**两轮 panic 的 258KB pstore 原文已丢失**（AGENTS
+文字归因在，原文挖不动了）。修复：`RDIR=$OUTDIR/run_<MMDD_HHMM>/round_%0N`
+每场独立子树 + `panic_archive` 先写 `result=PANIC…`（round_01 曾显示上任
+住户遗留的 PASS）。**教训：定时归档目录禁止固定路径复用。**
+
+**panic guard 实战漏报（AGENTS「待实战确认」项定案）**：真 panic 后 boot
+（ro.boot.bootreason=`kernel_panic,fatal_exception`）的 BOOT_COMPLETED **guard
+没拦**——receiver.log `gate pass switch_postlock=true`（有 gate pass 即 guard
+已过，且 `panic guard passed reason=` 行在 tail 截断外——取证时 grep 结果别用
+小 `tail -N` 截关键行）。机制：`bootReason()` 先试 history（**app 域 exec
+getprop 照样空读**）→ fallback 第一 `persist.sys.oplus.boot_reason`（app 域
+唯一可读）**其值不含 panic 关键词**（实测现值 `reboot`，与 history 首行
+`reboot,shell,…` 格式不同源——疑 OPPO 服务只在特定场景写它，panic 时未更新）
+→ `ro.boot.bootreason`（含 kernel_panic，排最后）被短路 → fail-open。
+**待办**：下次真 panic 后 boot 立即发 `am broadcast …LAUNCH --ez panicCheck
+true` 抓当时各 prop 的 app 域实读值，再定 `looksLikePanic` 扩展或换判据源。
+当前对马拉松无害（fail amplifier 自己管重试；guard 若真拦了反而会关掉
+postlock 开关挡住每场第一轮）。
+
 - 「不需要拿番茄了」——`com.dragon.read` 重启后**不再需要主动拉回**（原铁律作废）。
 
 ### Tailscale 常驻通道与 termux adb 实测（2026-10-23 上午，boot cdc19086）
