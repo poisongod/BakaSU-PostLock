@@ -1642,12 +1642,37 @@ Kernel panic - not syncing: Fatal exception → watchdog 重启
 - 副作用评估：physrw gate 失败轮（dirty=0）照常重试；root 段早期失败
   （spawn/地址准备，未写内核）dirty=0 照常重试；成功轮不受影响。
 
-**未定案最后一环**（待复现）：self patch 的 cfgfs 写后卡 90s 的确切位置——
-静态考古确认写原语（cfgfs/pipe_phys_write）**无用户态重试循环**（单次调用
-wr=40 返回），若卡在内核回调内则用户态 deadline 熔断无效。复现时取证要点：
-pstore 栈若再出现，看 init Oops 的完整寄存器（x2x 损坏指针前缀与链日志地址
-对照）+ chain.log 死点前后有无 `root self syscall setgid` 行（有 = 死在 flip
-之后的步骤，无 = 死在 flip 写序列内）。
+**未定案最后一环**（~~待复现~~ **已复现并定案**，见下节）：self patch 的 cfgfs
+写序列卡 90s——静态考古确认写原语（cfgfs/pipe_phys_write）无用户态重试循环
+（单次调用 wr=40 返回），卡在内核回调/序列内则用户态 deadline 熔断无效。
+
+## self-flip panic 复现定案 + 禁用修复（2026-10-23 晚，boot cf4d5f87，so `0eba9857`）
+
+marathon4 round 4 **同款复现**（root_stage_dirty 未拦——第二遍在**同一个
+`install_android_root` 调用内**的 self patch 分支，不重新进函数，修复注释
+已预告此边界）。chain.log 签名与 round5 逐行同构：
+```
+第一遍 seccomp → cred patched uid=0/0 → child timeout alive=0 wst=9(SIGKILL)
+→ child result done=0 cap=窗口外垃圾(…b388，两轮低 12 位相同)
+→ fail path neutralize/pipe clear → self patch 分支第二遍 seccomp+task prepared
+→ cfgfs 写序列卡 90s+ → init release_task Oops → Fatal panic
+```
+- **root child 死因**：wst=9=SIGKILL 且链自身不主动 kill（诊断后仅 return 0）
+  ——疑 `install_android_root` 入口的 `patch_oplus_root_check` 抽签未生效 →
+  child `setuid(0)` 触发 OPPO OPLUS_ROOT_CHECK 被 force_sig（ocsk.ko 此时
+  未加载——它是 restore 阶段才 finitmod 的）。
+- **决定性证据**：两场马拉松全部 PASS 轮（marathon3 r1-4、marathon4 r1-3）
+  root 路径 = `root child result done=1`，**从不进 self patch 分支**；
+  self flip（`root self syscall setgid` 行）在全部样本中**零成功记录**、
+  两次 panic 全部命中它。
+- **修复 = kill switch 禁用 self flip 写序列**（root.c:1443 分支开头）：
+  child 死于第一遍写之后 → `pr_warning("self-patch flip disabled (panic
+  path)")` → guard disarm + neutralize（安全排雷保留）→ `goto
+  self_patch_skip` 跳过整个 seccomp+flip+ksud+su+finitmod 序列 → 函数尾
+  `fake_gki_release` + return 0 → fail path → fail amplifier reboot 换
+  fresh boot（新 boot ocs patch 重抽签，child 可能存活走 done=1 路径）。
+- 验证判据：child 死轮链打 `self-patch flip disabled` 后安全退出
+  （root=0、无第二遍 seccomp 行、无 panic）→ 换 boot 重试。
 
 ## 番茄规则取消（2026-10-22 用户裁决）
 - 「不需要拿番茄了」——`com.dragon.read` 重启后**不再需要主动拉回**（原铁律作废）。

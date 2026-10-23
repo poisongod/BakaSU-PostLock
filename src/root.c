@@ -1441,6 +1441,23 @@ int install_android_root(int fd) {
    * flip OUR cred only when the child path failed, because our flip opens
    * OUR kill window and ends the run mid-chain. */
   if (opt_patch_self && !root_child_done) {
+    /* PANIC-PATH KILL SWITCH (marathon3 r5 boot b04eec8b + marathon4 r4
+     * boot cf4d5f87, identical signature): first-pass writes all landed
+     * (seccomp/cred/caps/selinux), root child SIGKILLed (wst=9, likely
+     * OPLUS_ROOT_CHECK firing on its setuid when the entry-point ocs patch
+     * missed), then this branch re-ran seccomp+task-prepare+flip over the
+     * half-patched state; both rounds stalled ~90s mid-sequence (no
+     * "root self syscall setgid" line ever printed) and panicked the box
+     * via init release_task Oops -> Fatal exception.  Every PASS round in
+     * both marathons had root_child_done=1 and never entered here; the
+     * self flip has zero recorded successes.  Neutralize (safe landmine
+     * clearing) then fail fast; the fail amplifier reboots into a fresh
+     * boot where the ocs patch re-rolls and the root child may survive. */
+    pr_warning("root child dead after first-pass writes; self-patch flip "
+               "disabled (panic path); neutralize + fail fast for reboot\n");
+    fops_guard_set_expect(0);
+    ks_neutralize_fake_fops_close(fd);
+    goto self_patch_skip;
     /* v4 pre-flip defuse: the uid0 monitor SIGKILL may end this process on
      * any instruction after our own cred flip (v3 4619b3e7: flip ->
      * SIGKILL(137) -> exit tail never ran -> do_exit tore down a still-dirty
@@ -1630,6 +1647,7 @@ int install_android_root(int fd) {
    * thread can only return from do_pselect_fake_lock_route safely if
    * that landed -- pi_ok=0 already held forever above.
    */
+self_patch_skip: /* kill switch above jumps here: neutralized, not flipped */
   fake_gki_release(fd);
 
   pr_info("root self exiting (PI safe; control -> kernelsu driver) done=%d\n",
