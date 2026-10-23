@@ -332,6 +332,7 @@ extern atomic_int pipe_prepare_request;
 extern atomic_int pipe_prepare_done;
 extern atomic_int pi_cleanup_done;
 extern atomic_int self_root_ok;
+extern atomic_int root_stage_dirty;
 extern atomic_int waiter_exited;
 extern atomic_int owner_exited;
 int ks_pi_cleanup(int fd);

@@ -1120,7 +1120,7 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
 ksu_kaslr/ksu_payload=本 boot 值 → **gate 转 ready**）→ 我为测 app 新加的
 实时日志功能连发两次 `am broadcast ...TS_KEEPALIVE`（tick 走
 `tick: gate satisfied -> keepalive dispatch`，BootReceiver:116）→
-**同 boot 先后两条链**：链 A 成功（v3_d 截图 kschini✓ocsk✓Permissive），
+**同 boot 先后两条链**：链 A 成功（v3_d 截图 kernelsu✓ocsk✓Permissive），
 链 B 在脏 boot paste 死页 → route 卡死（`pselect Tier-0 capping 12->1`、
 `waiter requeue_pi errno=110`，chain.log win +14s 戛止）→ **设备僵死 13min**，
 用户长按重启。**根因 = gate 不消费**：已有防重入（sDispatching 原子 +
@@ -1602,6 +1602,52 @@ MainActivity 保活（HANS 免疫）→ receiver.log 见 `triggerChain ENTER` �
 `CHAIN_EXIT_DONE` → restore.log `POSTLOCK-RESTORE-OK` → 120s boot 不变 →
 截图蓝卡。泄题轮 prepare 可能 retry 上百次（r7 恰在 72/72 最后一轮成功）——
 耐心 poll，gate 因 ksu_kaslr 旧 boot 值正确保持 rdy=false 不会提前 dispatch。
+
+## 稳性马拉松 round5 真 panic（2026-10-23，boot b04eec8b）+ root_stage_dirty 修复
+
+马拉松 marathon3（12 轮）round 1-4 全 PASS 后 round 5 抓到**真 kernel_panic**
+（`ro.boot.bootreason=kernel_panic,null` 实锤，非人工重启）。脚本按 fail amplifier
+自动归档取证到 `/tmp/opencode/exam2/marathon/round_05/`（**pstore.txt 258KB 在新
+boot 上可读**——含完整 panic 栈；chain.log 1.5MB；receiver/payload_hold/restore
+日志齐全）。取证结构：pstore 的 pstore 文本区有 OCR 式损坏（`grep -a` + 容忍
+错字），`Kernel panic`/`Call trace`/`Comm:` 锚点仍可用。
+
+**panic 现场**（内核时间 245.4s，链 ENTER 后 ~180s）：
+```
+init(PID 1) Oops:96000005 → lr: release_task+0x38 ← do_wait ← wait4
+HeapTaskDaemon: Unable to handle kernel paging request at ffffffeb8ea488b8
+（physmap 窗口外垃圾段，与链日志里坏 cap 地址 ffffffeb8e77b388 同前缀）
+Kernel panic - not syncing: Fatal exception → watchdog 重启
+```
+
+**时序重建**（chain.log root 段 204 行逐行对齐）：
+1. 第一轮 root 写阶段全部成功：`root seccomp patched` → `root cred patched
+   uid=0/0` → `caps patched` → `selinux 1->0`（内核内存已写）；
+2. root child 超时被 SIGKILL（`root child timeout alive=0 wst=9`，未走到
+   insmod/coldstart——round 4 同位置有这两行，round 5 全缺）；
+3. fail path：pi_cleanup → neutralize → pipe clear（count=2→0）；
+4. self patch 分支（`opt_patch_self && !root_child_done`）**又跑一遍** seccomp
+   patch + task prepared + cfgfs 写序列——**卡在此处 90s+ 无日志**（armed 持续）；
+5. 系统级破坏显形：init `release_task` 踩坏数据 Oops → Fatal panic。
+（注意 `cfgfs write target=d5000000 ×146` 是 root 段正常操作分布，非 146 次
+重试循环；round 1-4 没炸是因为 root child 正常完成、不走 self patch 重入路径。）
+
+**修复 = `root_stage_dirty`（so sha `908ce328`，三层防御）**：
+- `main.c` 定义 `atomic_int root_stage_dirty` + `common.h` extern；
+- `root.c install_android_root` 入口：dirty 则拒绝重入（纵深防御）；
+- `root.c` 写阶段入口（`patch_task_seccomp` 前）置位——此后任何失败都不可重试；
+- `fops.c` attempt 循环（1927）：`install_child_root` 失败后若 dirty →
+  `break` → `goto fail` 安全退出，fail amplifier reboot 换 clean boot。
+- `reset_main_route_state` **不清** dirty（同进程重跑链本就危险，持久拒绝）。
+- 副作用评估：physrw gate 失败轮（dirty=0）照常重试；root 段早期失败
+  （spawn/地址准备，未写内核）dirty=0 照常重试；成功轮不受影响。
+
+**未定案最后一环**（待复现）：self patch 的 cfgfs 写后卡 90s 的确切位置——
+静态考古确认写原语（cfgfs/pipe_phys_write）**无用户态重试循环**（单次调用
+wr=40 返回），若卡在内核回调内则用户态 deadline 熔断无效。复现时取证要点：
+pstore 栈若再出现，看 init Oops 的完整寄存器（x2x 损坏指针前缀与链日志地址
+对照）+ chain.log 死点前后有无 `root self syscall setgid` 行（有 = 死在 flip
+之后的步骤，无 = 死在 flip 写序列内）。
 
 ## 番茄规则取消（2026-10-22 用户裁决）
 - 「不需要拿番茄了」——`com.dragon.read` 重启后**不再需要主动拉回**（原铁律作废）。

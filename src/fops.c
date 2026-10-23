@@ -1928,6 +1928,17 @@ post_verify:
       installed = 1;
       break;
     }
+    if (atomic_load(&root_stage_dirty)) {
+      /* round5 panic guard: the root stage wrote kernel memory (seccomp/
+       * cred/caps/selinux) and then failed (root child SIGKILLed).  A fresh
+       * attempt would re-run the whole root stage over the half-patched
+       * state -- the second pass corrupted shared structures and panicked
+       * the box (init release_task Oops -> Fatal exception).  Fail fast and
+       * let the fail amplifier reboot into a clean boot instead. */
+      pr_warning("root stage dirty after attempt=%d; refusing further "
+                 "attempts on half-patched kernel state\n", attempt);
+      break;
+    }
     if (pipe_cache_gate_ok && physrw_read_ok && physrw_write_ok &&
         physrw_read64_ok && physrw_write64_ok) {
       break;

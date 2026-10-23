@@ -25,6 +25,12 @@ atomic_int route_pi_release;
 atomic_int route_pi_released;
 atomic_int pi_cleanup_done;
 atomic_int self_root_ok;
+/* round5 panic (2026-10-23, boot b04eec8b): cred/caps/selinux all patched,
+ * root child SIGKILLed, then a SECOND full root pass (seccomp+flip) ran on
+ * the half-patched kernel state; 90s later init release_task Oops -> Fatal
+ * exception panic.  Set once the root write stage starts; any later failure
+ * must fail-fast instead of retrying the whole root stage. */
+atomic_int root_stage_dirty;
 atomic_int waiter_exited;
 atomic_int owner_exited;
 static pthread_t g_waiter_thread;
