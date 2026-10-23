@@ -23,7 +23,11 @@ T_HOLD=1200     # 等泄题就绪（r7 曾 18 分钟 72/72）
 T_DISPATCH=900  # 等 triggerChain ENTER（gate 30min 窗口，通常 30s）
 T_CHAIN=900     # 等 CHAIN_EXIT_DONE（通常 30-60s）
 
-mkdir -p "$OUTDIR"
+# 每场马拉松独立子目录：固定 round_0N 路径会被下一场同号轮覆盖
+# （2026-10-23 事故：marathon5 r4 PASS 覆盖了 marathon4 r4 的 panic pstore 原文）。
+RUN_TAG=$(date +%m%d_%H%M)
+RDIR=$OUTDIR/run_$RUN_TAG
+mkdir -p "$RDIR"
 RL=$OUTDIR/results.log
 log() { echo "[$(date '+%F %T')] $*" | tee -a "$RL"; }
 
@@ -71,6 +75,7 @@ refocus() {
 panic_archive() {
   local rd=$1 why=$2
   mkdir -p "$rd"
+  echo "PANIC $why" > "$rd/result"   # 防复用旧目录时 PASS 遗留误导（2026-10-23）
   log "PANIC! $why -- 归档取证到 $rd"
   sh_ab 'run-as com.postlock.boot cat files/postlock/chain.log' > "$rd/chain.log" 2>/dev/null
   sh_ab 'run-as com.postlock.boot cat files/postlock/receiver.log' > "$rd/receiver.log" 2>/dev/null
@@ -84,7 +89,7 @@ panic_archive() {
 }
 
 for ROUND in $(seq 1 "$MAX_ROUNDS"); do
-  RD=$OUTDIR/round_$(printf '%02d' "$ROUND")
+  RD=$RDIR/round_$(printf '%02d' "$ROUND")
   mkdir -p "$RD"
   log "===== round $ROUND/$MAX_ROUNDS 开始 ====="
 
@@ -97,6 +102,7 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
   fi
   log "round $ROUND: boot=$NB"
   echo "$NB" > "$RD/boot_id"
+  ROUND_BOOT_MS=$(date +%s%3N)  # rlog 时间戳与 host 同域(ms)，本轮 ENTER 判新基准
 
   sh_ab 'am start -n com.postlock.boot/.MainActivity >/dev/null; echo ok' >/dev/null
 
