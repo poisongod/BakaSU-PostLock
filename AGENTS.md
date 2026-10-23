@@ -1541,6 +1541,12 @@ kernelsu+ocsk 双模块 → BakaSu 蓝卡「工作中 Built-in」（驱动 35220
 两轮均 paste/route/open/fix52 全通过后安全失败（fail path pi_cleanup →
 neutralize → 无 panic），fail amplifier reboot 即重抽。
 
+**第 2 轮合格（2026-10-23 16:17，boot fe30e85d）**：泄题 13/72 就绪、链
+`waves=16 taken=15 owned=1` → root=1（uid 10293→0 selinux 1→0）→
+RESTORE-OK → 120s 无 reboot → 蓝卡 Built-in。取证
+`/tmp/opencode/exam2/SUCCESS_r2_fe30e85d.{log,png}`。**连续计数 2/3**，
+第 3 轮 = 决胜轮。
+
 **轮 SOP（照此跑第 2/3 轮）**：install 后 am start 解锁 stopped → reboot →
 boot_completed 后 `am start` 拉前台 → 起泄题轮（`KS_PREPARE_HALT=1800` 完整
 TRIGGER env，detached，poll `ksu_payload` 出现**本轮 boot_id** + `H=1`——注意
