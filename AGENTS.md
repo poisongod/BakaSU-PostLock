@@ -189,6 +189,38 @@ uid=2000->0` + verify OK）。依赖四件套（缺一即 prepare 死/CFI 必 mi
 ≤56 候选）；② Enforcing 下 tracefs 读原语（kprobe fetch 无 sudo 代写）；③ slot
 文件/skbdelta 的无 root 可写路径（fresh 设备天然满足，本机被 root 644 文件卡住）。
 
+### 红卡「管理器版本与内核驱动版本不匹配」= 冷 boot 驱动未加载（2026-10-24 已修）
+
+- **定性**：kernelsu.ko 只在本 boot 存活，冷启动（bootreason=cold）后模块消失 →
+  ReSukiSU 检测链 ioctl（ksu_driver fd）miss → fallback `prctl(0xdeadbeef)`
+  命中**设备自带 KernelPatch** → 拿回 KP 版本 ≠ 管理器 35236 → 红卡报
+  「版本不匹配」。**不是版本号真不匹配**（35220/5 驱动 vs 35236/5 管理器 UAPI
+  5==5 一直蓝卡），也不是补丁被升级冲掉。判别：`ls /sys/module/kernelsu`
+  不存在即此类。
+- **修复 = 跑一轮完整恢复**（app 域 gate 路径，本轮实测）：等 load<2.0 → 泄题轮
+  （marathon 同款 `KS_PREPARE_HALT=1800`，本轮 24s 就绪）→ gate 自动 dispatch
+  （本轮「gate satisfied after 372s」正常，无需 LAUNCH 补）→ 链 root=1 →
+  self finitmod 加载 kernelsu.ko+ocsk.ko、`ksu_debug_manager_appid=10279`、
+  daemon、Permissive → 蓝卡「工作中 Built-in」。**gate 时序注意**：等 ENTER 时
+  别用「开始轮询的时刻」当 BOOT_MS 界——泄题就绪后 gate 可能已经 ENTER（本轮
+  差 9s 被误判成旧 ENTER，多余的 LAUNCH 侥幸被防重入挡住——同 boot 二次链是
+  事故高发项，见 ran_boot 一节）。
+- **本轮遗留疑案（shell 域 postlock.sh panic）**：`ADB=` 覆盖后 postlock.sh
+  触发的 shell 域链走完 root + restore（`restore OK` 打出、脚本开始 verify）后
+  **90 秒内 `kernel_panic,fatal_exception` 重启**，驱动随之丢；链 stdout 尾部是
+  **`cfgfs read set-fail errno=25(ENOTTY)` 无限循环**（target 恒定
+  `ffffff9b51639051`），pstore 本次为空拿不到栈；host/assets so 均为 kill
+  switch 版 0eba9857（排除旧 so）。app 域 gate 路径同 boot 恢复成功 = 对照组。
+  **下次跑 postlock.sh 前先意识到此未定案**；复现时先抓
+  `/data/local/tmp/postlock_chain.log` 的 cfgfs 循环段与 pstore。
+- **postlock.sh 使用两坑（2026-10-24 实测）**：① `command -v adb` 会选中 WSL 的
+  `/usr/bin/adb`（看不到 adb.exe 的设备）→ 假报 `no device`，必须
+  `ADB=/mnt/c/WINDOWS/system32/adb.exe` 显式覆盖；② host adb.exe 现在会**同时
+  连着 LAN 192.168.8.10:5555 与 tailnet 100.71.26.6:5555**（同一台设备两条
+  通道，host 已可达自建 tailnet），多设备时 `ab get-state` 报 more than one →
+  脚本判 `no device`——跑脚本前 `adb disconnect` 掉非目标通道（断单个连接不在
+  kill-server 红线内）。
+
 ### 红卡「获取root权限失败」根因 + grant.c v3 + coldstart 依赖链（2026-10-08 已验证修复）
 
 **红卡判定链**：`HomePage.kt:306` `ksuVersion!=null && !isRootAvailable` →
