@@ -317,6 +317,28 @@ EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
 
+# --- wait for system quiet ----------------------------------------------
+# 2026-10-24 PM verdict: 5/5 rounds failed (collision panic x2, route
+# ENOTTY x2, ks_owner CPU0 hard-lock x1) ALL launched during the
+# post-boot recovery storm at 1-min load 2.45-4.80, while every morning
+# pass launched at 1.10-1.51.  High load = third-party SLUB/page-cache/
+# fork traffic interfering with exactly the primitives those rounds die
+# on (futex timing, payload-page survival, wave owner slots).  Each boot
+# settles to ~1.4 after several minutes -- WAIT FOR IT.
+step "wait for system quiet (1-min load < 2.0)"
+quiet=0
+for i in $(seq 1 240); do   # up to 20 min
+  l=$(ab shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | grep -o '^[0-9][0-9.]*' | head -1)
+  li=$(echo "$l" | sed 's/\.//' | tr -cd '0-9')
+  if [ -n "$li" ] && [ "$li" -lt 200 ] 2>/dev/null; then
+    log "quiet after $((i*5))s (load=$l) -> GO"
+    quiet=1
+    break
+  fi
+  sleep 5
+done
+[ "$quiet" = 1 ] || log "WARN-quiet-timeout (still triggering; expect storm-phase risk)"
+
 # --- ONE exploit run ----------------------------------------------------
 # stale restore.log survives in /data/local/temp across reboots (temp
 # is NOT wiped) -- without this the wait loop below false-positives on
