@@ -2223,3 +2223,32 @@ env → **行为与 fix67 完全等价**（探测无害但永远不触发）。�
   fix67 清零只在「页内容=put 写入」前提下成立；页不可信时关闭即炸弹——
   **统一解释 fail 轮残留延迟爆炸家族**。fail 轮判明后立即 reboot 规则不变。
 - 取证归档 commit `3d98ea4f`（docs/forensics/round2*）。
+
+**δ 考古终局（2026-10-25，kernsrc sm6375-v15 源码链全查）**：
+- 发送链 = **TCP**（keep_cli AF_INET，3863「AF_UNIX frags are always…」）：
+  `tcp_sendmsg_locked` → `sk_page_frag(sk)` → `gfpflags_normal_context`
+  命中 → **`current->task_frag`（per-task）**；`fork.c:983 tsk->task_frag.page=NULL`
+  （新 pthread 必清）→ `skb_page_frag_refill` page=NULL 分支 `offset=0` +
+  `alloc_pages(order=3)` → copy 到页[0..0x8000) → **理论 p=0 铁定**。
+- `SKB_FRAG_PAGE_ORDER=3`、`skb_copy_to_page_nocache(page, pfrag->offset=0)`、
+  `iov.iov_base=skb_buf`、put 锚 `skb_buf+chunk+0`、表铺 `fo=0..0x8000 每0x80`
+  ——全链无 +1；base 全页对齐（0x…0000）。
+- `k` 语义定案：`ks_tp_cands` `phys_est=base-ks_direct_map_base`、
+  `true_pfn = est + k*0x40000`——**KASLR 1GB 段索引**（b082adf8 k=10:
+  3397216-775776=10×0x40000 ✓；round2 k=1: 929128-666984=1×0x40000 ✓），
+  **与页内相位无关**。
+- **观测 p=1 主相位 5/6**（fix52 dump 读 base+OFF+1 得完整 canonical、
+  misc_open 读页[0x1071]=V、fops_table_base()=fake+VOFF 补偿——run9/run11
+  实战自洽）；**round2 p=0 反常 1/6**（x21=V>>8）。理论 p=0 与观测 p=1
+  的 1 字节差**穷举未定位**（已排除：task_frag offset / iov / put 锚 /
+  pfn 对齐 / k 段 / 表铺网格 / fix68 SET_NAME）——**残余未建模变量**。
+- **route 前探测数学死路（定案勿再试）**：opening ashmem 是 route 后第一
+  踩点（misc_open blr open 槽）；dump/verify 都在 opening 之后；guard/probe
+  fd 是 route 前真表（pread 恒 0）；两段式 voff 切换（先写 fake+0 开一次再
+  改 fake+1）两步各有一侧必炸——**窗口滑 1 字节重叠 7 字节，canonical 8B
+  与全 0 8B 不可共存**，且 p=1&voff=0 读 [SHOW尾,V0..V6] 跳 0xffff….38ff
+  低字节 0xff 不对齐照样 panic。
+- **工程结论 = p 抽签是结构性 fail amplifier**（~1/6 p=0 → opening
+  alignment panic → fatal_exception 重启），无 route 前判别通道——
+  **既有规则（失败判明即 reboot 重考、计数归零）就是正确处置**；fix68
+  探测段保留（物理无害，将来若有 tracefs 通道可激活）。
