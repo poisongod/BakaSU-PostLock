@@ -2011,3 +2011,33 @@ reconnect_loop.sh`）。**恢复后顺序：fresh reboot → guard 息屏跑 pos
 - app 仓 vc66/1.66（白底渲染+rlog 前缀+restore mirror），主仓 837aad48
   （utils.h/postlock.sh/marathon），preload.so sha `5d36089b`——链侧前缀
   首次实战待下轮链（装机 15:51，截图验证白底+tag/error 染色正常）。
+
+### events 决定性实验定案：有害，永久门控（2026-10-24 组合轮，boot 59ded42f）
+
+`KS_RUN_KSUD_EVENTS=1` 全链轮（新日志格式首次实战）——**三事件 rc=0 跑成，
+但副作用实锤**：① `ksud services/boot-completed` 在 boot 后期重放把
+**zygote64 + system_server 打死且不回来**（`ps` 0/0 持续 60s+，`dumpsys`
+无响应，`settings put` 报 `Can't find service: activity`）→ framework 半瘫；
+② overlay mount 无果（shell `ls /product/bin/su` Permission denied = stock
+ro 未挂，verify 红）；③ `adb reboot`（property 路径）都发不出——**必须
+`adb shell 'reboot'`（toybox reboot 直接 syscall）才能重启**。与上 boot
+`kernel_panic,bug` 时间窗疑云同源。**结论：KS_RUN_KSUD_EVENTS 默认 0 永久
+保持**；模块激活（Zygisk 注入等）需另找安全路径，别再走「boot 后期重放
+三事件」。链侧日志无 ksud 行 = events 是 restore 侧动作（链 root 后
+KS_COLDSTART），链 root=1 无恙——破坏全在 restore 三事件之后。
+
+### 双括号修复 + vc67 段序（2026-10-24 下午，so 7642aac7 / app vc67）
+
+- **链日志前缀曾打成 `[[b.. ..]]` 双层**：`ks_log_prefix()` 返回值已含
+  `[]`，8 处 printf 的 `"[%s] "` 又包一层——sed 修 8 处为 `"%s "`。
+- **「为什么最新的在上面」定案（用户报告）**：`buildLogBody` 固定
+  receiver 段在上、chain 段在下——链跑完后 receiver.log 还在追加
+  （tick/BOOT_COMPLETED），最新行跑到静止 chain.log 段上面。vc67 改
+  **两段按各自 mtime 排序、新写的段贴底**（视口锚底=最新，全面板「越
+  往下越新」成立）。装机截图验证：底部 = receiver.log 段（最新写入方）。
+- **restore `PPID=1` 白等 120s**：KS_COLDSTART fork 后链先退，restore 被
+  过继 init——exit-wait 拿 PPID=1 等满 60×2s 上限（无害但浪费），
+  待改「PPID 非链 pid 时跳过等待」。
+- **overlay mount 静默失败盲区**：restore.sh overlay 段 mount 命令无
+  `|| log WARN-...` 兜底——失败时 restore.log 零痕迹（本轮 verify 红
+  但日志无从判断 mount 死因），待补。
