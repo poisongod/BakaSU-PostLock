@@ -324,6 +324,7 @@ extern uintptr_t fake_left;
 extern uintptr_t fake_fops;
 extern uintptr_t expected_misc_fops;
 extern size_t fops_voff;
+extern int fops_voff_detected;
 extern uintptr_t binwrite_target;
 #define fops_table_base() (expected_misc_fops ? expected_misc_fops : fake_fops)
 int reload_payload_base(void);

