@@ -2147,3 +2147,43 @@ dispatch 的链，防跨域误判）。装机截图 vc69_unify 标题「链日�
   **neutralize 失败 = 几乎必然 panic**，抽签已坍缩成确定性。
 - 修复主攻点不变（round6 节）：fail path 第二写通道恢复 owner/fops 真值，
   或 route 未 landed 不挂表——**在 4 连败面前这已不是优化而是阻塞项**。
+
+### fix64-67 route panic 根因链闭环 + 全链首次通过（2026-10-24 晚，boot b082adf8）
+
+**fix64/65 route pselect panic（shift=13/0 两签名）真根因 = nfds=576 把 fdset
+挤出内核栈**：`core_sys_select`（fs/select.c）本内核分配 **6 个位图**
+（in/out/ex + res_in/res_out/res_ex），堆/栈分界 `size > sizeof(stack_fds)/6`
+= 42B；FDS_BYTES(576)=72B > 42 → **整个 fdset kmalloc 上堆**。route 注入堆上，
+内核栈上 stale S 从未被覆盖 → S.lock=NULL → `_raw_spin_trylock+0x1c`
+（x0=NULL）。与 shift 完全无关（fix64 shift=13 / fix65 shift=0 同签名）。
+**fix66（e3143a60）= 回滚 nfds=320（40B≤42 栈路径硬上限，321+ 即堆）+
+shift=0 simple layout**——行为金标准（exam2 三轮全绿配置）。do_select 只读
+in/out/ex、只写 res_*，nfds=320 时 route 值在 word0-14 输入区不受破坏。
+
+**fix66 实测：route 段首次 land**（`simple layout shift=0 wps=5`、
+`pselect returned success=1`、`fix52 cfi table ok`、`pre_fops OK rb=8`、
+`win tick +3s dead=0`）——随即死**新死点**：pipe_prepare 的 clone child
+exit → `filp_close blr x21`，x21=0x1000000000000012（pstore pc=0x12、
+SP/PC alignment、lr=filp_close+0x54）。
+
+**fix67（63f86571）根因 = fake 表 close 路径槽从未写入 = payload 页残留**：
+fd 的 f_op=fake+1 → filp_close 读 flush 于 table[0x79..0x80]、__fput 读
+release 于 table[0x81..0x88]。`put_fake_fops_table` 无 FOPS_FLUSH_OFF、
+`refresh_fake_fops_text` slots[] 也无 flush——这些字节是 pipe/skb prepare
+在页上留的任意数据（本轮恰 table[0x79]=0x12、table[0x80]=0x10，与 pstore
+x21 完全吻合）。**exam2 三轮成功全靠残留恰好=0（cbz 跳过）**——正是用户
+判定的未建模变量（缺一次写入，非概率）。且 RELEASE=ASHMEM_RELEASE 本身
+是潜在 bug：首字节落 table[0x80]（flush 错位读区内，KASLR 决定是否非 0
+重新武装雷）。只有收尾 ks_neutralize 会扫该 span，而链在 neutralize 之前
+clone child 就 exit。修复 = put 写 RELEASE=0 + 清 0x78..0x97；refresh（+1
+锚）slots 加 FLUSH/RELEASE/0x88=0。__fput 跳过 NULL release，探测 fd 的
+ashmem 区泄漏几 KB 无害。
+
+**fix66+67 全链验证成功（boot b082adf8，22:53-22:54）**：route land →
+cfi rv=8/8 → win → `pipe physrw root=1 uid=2000->0 selinux=1->0` →
+`neutralize ok=1 verified=1` → `closed fake-fops probe fd` 安全 →
+`pipe_prepare_child reaped`（fix66 panic 死点安全过）→ CHAIN_EXIT_DONE →
+`POSTLOCK-RESTORE-OK` + kernelsu.ko Live + Permissive + daemon +
+appid=10279 → 150s+ 无 reboot → **BakaSu 蓝卡「工作中 Built-in」**
+（驱动 35220/5 vs 管理器 35237/5，UAPI 5==5）。取证
+`/tmp/opencode/fix67_success/`。
