@@ -140,20 +140,20 @@ static inline const char *ks_log_prefix(void) {
     } while (0)
 #else
 #define pr_error(fmt, ...) do { \
-        printf("[%s] " COLOR_RED "[!] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("%s " COLOR_RED "[!] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
         if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        printf("[%s] " COLOR_RED "[-] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("%s " COLOR_RED "[-] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        printf("[%s] " COLOR_YELLOW "[*] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("%s " COLOR_YELLOW "[*] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        printf("[%s] " COLOR_GREEN "[+] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("%s " COLOR_GREEN "[+] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #endif
@@ -175,20 +175,20 @@ static inline const char *ks_log_prefix(void) {
 #else
 #define PR_TIDP (int)syscall(SYS_gettid)
 #define pr_error(fmt, ...) do { \
-        printf("[%s] " COLOR_RED "[!][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
+        printf("%s " COLOR_RED "[!][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
         if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        printf("[%s] " COLOR_RED "[-][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
+        printf("%s " COLOR_RED "[-][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        printf("[%s] " COLOR_YELLOW "[*][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
+        printf("%s " COLOR_YELLOW "[*][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        printf("[%s] " COLOR_GREEN "[+][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
+        printf("%s " COLOR_GREEN "[+][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #endif
