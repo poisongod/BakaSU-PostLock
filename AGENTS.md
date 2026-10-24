@@ -2188,7 +2188,7 @@ appid=10279 → 150s+ 无 reboot → **BakaSu 蓝卡「工作中 Built-in」**
 （驱动 35220/5 vs 管理器 35237/5，UAPI 5==5）。取证
 `/tmp/opencode/fix67_success/`。
 
-### round2/round2b 两连败判明 + fix68 探测定性（2026-10-25）——新考试轮计数 1/3
+### round2/round2b 两连败判明 + fix68 探测定性（2026-10-25）——新考试轮第 2 轮失败归零 0/3
 
 **fix68（commit 73f034b3，so 27be27bd）= 结构性无效探测**：baseline 段（route 前）
 读 fake+FOPS_OPEN_OFF 对比 want——但 **cfgfs 读通道的本质 = `pread(fd)` 经
@@ -2264,3 +2264,15 @@ Permissive / daemon / appid=10279 verify 全绿）→ 120s+ boot_id 不变 →
 35237/5 UAPI 5==5、无越狱徽章）。取证
 `/tmp/opencode/exam/SUCCESS_redo1_3046f63f/{ui.png,chain.log,restore.log}`。
 fix68 版 so（27be27bd）首考通过 = 行为与 fix67 等价的实证。
+
+**新考试轮第 2 轮失败（2026-10-25 07:38，boot 50a2bd5e）→ 计数归零 0/3**：
+quiet-gate 等 1085s（开机风暴 load 13.5→1.99 恰好放行，本轮内存满载 11.3G/11.4G、
+loadavg 虚高源自 D 状态进程而非 CPU——top 690% idle）→ payload gate 一次过
+（k_hit=k_true=9）→ route attempt=1 + fix52 cfi ok + verify rv=8/8（07:38:46）
+→ **40 秒后 `phys prepare skipped: payload table dead tbl=0 rv=-1 queue=1` ×7**
+（win 段页死 = round2b 同款抽签家族，本次死在 cfi 之后 40s 窗口）→
+`pipe-physrw-summary done=0 root=0` → CHAIN_EXIT_DONE → cfi fail path →
+**neutralize 失败 → fd-hold 残留**（`holding fake-fops files alive; safe until
+reboot`——已知假承诺）。**判明即归零 + 立即 reboot**（reboot 命令超时 = teardown
+fd-hold SIGKILL 预期），取证 `/tmp/opencode/exam/FAIL_redo2_50a2bd5e/`。
+新 boot `ab956984`（reason=reboot,shell）。
