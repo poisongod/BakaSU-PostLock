@@ -158,8 +158,12 @@ set -e
 # parent never goes away.
 CHAIN_PID=\$PPID
 i=0
-while kill -0 \$CHAIN_PID 2>/dev/null && [ \$i -lt 60 ]; do sleep 2; i=\$((i+1)); done
-log "chain pid \$CHAIN_PID exit-wait done (\$((i*2))s)"
+if [ "\$CHAIN_PID" -gt 1 ] 2>/dev/null; then
+  while kill -0 \$CHAIN_PID 2>/dev/null && [ \$i -lt 60 ]; do sleep 2; i=\$((i+1)); done
+  log "chain pid \$CHAIN_PID exit-wait done (\$((i*2))s)"
+else
+  log "chain already exited (reparented to init) - skip exit-wait"
+fi
 mkdir -p $TMP
 chcon u:object_r:shell_data_file:s0 $TMP
 chmod 777 $TMP
@@ -271,7 +275,9 @@ SUW
     cp /data/adb/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
     chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
   fi
-  mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin
+  mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin || log WARN-overlay-mount
+else
+  log "overlay wrapper already present"
 fi
 # --- late-load module stage (2026-10-24) -------------------------------
 # The driver insmods long after boot, so ksud's boot events never fire
@@ -312,6 +318,11 @@ sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
 
 # --- ONE exploit run ----------------------------------------------------
+# stale restore.log survives in /data/local/temp across reboots (temp
+# is NOT wiped) -- without this the wait loop below false-positives on
+# the PREVIOUS boot's POSTLOCK-RESTORE-OK (observed 2026-10-24 round
+# where the chain panicked before ever forking restore).
+ab shell 'rm -f /data/local/tmp/postlock_restore.log' 2>/dev/null || true
 step "trigger exploit (constructor blocks until rooted; then script runs as uid0)"
 
 # Tier-1 assist (APatch still present — pre-final-lock testing):
