@@ -2187,3 +2187,39 @@ cfi rv=8/8 → win → `pipe physrw root=1 uid=2000->0 selinux=1->0` →
 appid=10279 → 150s+ 无 reboot → **BakaSu 蓝卡「工作中 Built-in」**
 （驱动 35220/5 vs 管理器 35237/5，UAPI 5==5）。取证
 `/tmp/opencode/fix67_success/`。
+
+### round2/round2b 两连败判明 + fix68 探测定性（2026-10-25，考试计数归零 0/3）
+
+**fix68（commit 73f034b3，so 27be27bd）= 结构性无效探测**：baseline 段（route 前）
+读 fake+FOPS_OPEN_OFF 对比 want——但 **cfgfs 读通道的本质 = `pread(fd)` 经
+**fake 表 read 槽跳 `CONFIGFS_READ_ITER`**（confused deputy，ashmem_area.name 当
+configfs_buffer）；route 前 fd 走真表 `ashmem_read` **恒返回 0**。两轮
+`rb=0×5 + chmod errno=13` 完全一致是 baseline 常态非异常 → det 恒 -1 → 回落
+env → **行为与 fix67 完全等价**（探测无害但永远不触发）。δ 探测与被探测对象
+鸡生蛋：能读 fake 表内容的时刻（cfi 段）route 已 landed、δ 已生效，探测无意义。
+代码保留（route 前若将来有 tracefs/kprobe 通道可激活），**勿再指望它**。
+
+**δ 相位抽签定案（round2, boot 24e39de8, δ=0 → misc_open panic）**：
+- 发送结构考古（kernsrc sm6375-v15 `unix_stream_sendmsg`）：`size ≤
+  SKB_MAX_HEAD(0)+UNIX_SKB_FRAGS_SZ ≈ 0x8E80`；`SKB_DATA_DELTA = -0xE80` =
+  0x10000 发送时 skb1 head 长度（3712B）；deterministic（KS_RECLAIM_DETERMINISTIC
+  =1）强制 delta=0 → 0x8000 单发、headlen=0、frags order-3 frag offset=0。
+- **理论预测 p=0 恒定**（页[X]=buf[X]，voff=0 才对），**但 4 轮实测 p=1**
+  （b082adf8 fix52 `base+OFF+1` 读出完整 canonical；exam2 三轮同）；仅 24e39de8
+  p=0（misc_open x21=`V>>8`=0x00ffffff… 完全吻合 buf[0x1071..0x1078] 错位）。
+  **理论与观测差 1 字节，来源未定案**（headlen=0 模型下不可能——未建模变量候选，
+  下一轮考古点：payload 实际发送 iov 结构 / 是否 sendpage 路径）。
+- **单 voff 无法双 p 安全（数学死路）**：voff=1 窗口 buf[0x1070..0x1077]=V
+  canonical（p=1 ✓）vs buf[0x1071..0x1078]=V>>8 非对齐（p=0 → blr alignment
+  panic）；滑动 1 字节重叠 7 字节，canonical 8B 与全 0 8B 不可能共存。p=0 轮
+  = fail amplifier 必炸项（探测通道不存在，无法 route 前判别）。
+- **round2b（boot 5e6abbe2）= win +5s 页死**（storm 内存压力已知抽签家族）：
+  cfi 段与成功轮逐行同款（fix52 rv=8×4、cfi table ok、win enter dead=0 持续 4s），
+  `+5s dead=1` → phys prepare abort → root=0。非 fix68 回归。
+- **fd-hold「safe until reboot」是假承诺**：daemon 挡 SIGTERM/INT/…但 SIGKILL
+  不可挡；reboot teardown SIGKILL `ks_fd_hold` → put_files_struct →
+  filp_close+0x54 读 flush 槽 = payload 页残留 → **SP/PC alignment panic**
+  （新 boot 3046f63f reason=kernel_panic,fatal_exception pstore 实锤）。
+  fix67 清零只在「页内容=put 写入」前提下成立；页不可信时关闭即炸弹——
+  **统一解释 fail 轮残留延迟爆炸家族**。fail 轮判明后立即 reboot 规则不变。
+- 取证归档 commit `3d98ea4f`（docs/forensics/round2*）。
