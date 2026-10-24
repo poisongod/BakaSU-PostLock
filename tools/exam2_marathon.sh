@@ -145,14 +145,14 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
     [ "$st" = "1" ] && { panic_archive "$RD" "round $ROUND dispatch 等待期 boot_id 变化"; exit 97; }
     refocus
     R=$(sh_ab 'run-as com.postlock.boot grep "triggerChain ENTER" files/postlock/receiver.log 2>/dev/null | tail -1')
-    case "$R" in
-      *ENTER*)
-        TS=$(echo "$R" | grep -oE '^[0-9]+')
-        # 只认本轮 boot 后的 ENTER（时间戳与 host 同域 ms）
-        if [ -n "$TS" ] && [ "$TS" -gt "$ROUND_BOOT_MS" ]; then
-          DISPATCHED=1; break
-        fi ;;
-    esac
+    # 统一日志前缀 [b<boot8> HH:mm:ss.SSS]（2026-10-24）：行首不再是
+    # epoch ms，直接比本 boot 的 boot_id 头；旧格式行无 [b 前缀自动不匹配。
+    CB=$(sh_ab 'cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null' | tr -d '\r')
+    if [ -n "$CB" ]; then
+      case "$R" in
+        *"[b$CB "*ENTER*) DISPATCHED=1; break ;;
+      esac
+    fi
   done
   if [ "$DISPATCHED" != "1" ]; then
     log "round $ROUND: FAIL 未 dispatch -- reboot 进下一轮"

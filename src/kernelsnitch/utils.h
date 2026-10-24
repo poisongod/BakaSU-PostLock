@@ -41,6 +41,47 @@ static inline void pr_flush(void) {
  * fork so pr_error uses _exit instead of exit. */
 extern int ks_child_no_atexit;
 
+/* Unified log prefix "[b<boot8> <HH:MM:SS>]" -- every pr_* line starts with
+ * boot_id (first 8 chars of /proc/.../boot_id, stable for the whole boot)
+ * followed by wall-clock time, so a line copied out of context still says
+ * which boot and when.  Thread-local because the chain logs from many
+ * threads concurrently.  Format sits BEFORE any ANSI color byte (visual
+ * line start == boot id) and existing substring greps (root=1, win tick,
+ * POSTLOCK-*) keep matching. */
+static inline const char *ks_log_prefix(void) {
+  static __thread char pfx[24];
+  static __thread int boot_ok = 0;
+  if (!boot_ok) {
+    int fd = open("/proc/sys/kernel/random/boot_id", O_RDONLY);
+    if (fd >= 0) {
+      char b[64];
+      ssize_t n = read(fd, b, sizeof(b) - 1);
+      close(fd);
+      if (n >= 8) {
+        /* "[bXXXXXXXX " = 11 bytes, time appended from offset 11 each call */
+        pfx[0] = '[';
+        pfx[1] = 'b';
+        memcpy(pfx + 2, b, 8);
+        pfx[10] = ' ';
+        pfx[11] = 0;
+        boot_ok = 1;
+      }
+    }
+    if (!boot_ok) {
+      memcpy(pfx, "[b???????? ", 11);
+      pfx[11] = 0;
+      boot_ok = 1;
+    }
+  }
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  struct tm tm;
+  localtime_r(&ts.tv_sec, &tm);
+  snprintf(pfx + 11, sizeof(pfx) - 11, "%02d:%02d:%02d]",
+           tm.tm_hour, tm.tm_min, tm.tm_sec);
+  return pfx;
+}
+
 #ifndef HIDEMINMAX
 #define MAX(X,Y) (((X) > (Y)) ? (X) : (Y))
 #define MIN(X,Y) (((X) < (Y)) ? (X) : (Y))
@@ -99,20 +140,20 @@ extern int ks_child_no_atexit;
     } while (0)
 #else
 #define pr_error(fmt, ...) do { \
-        printf(COLOR_RED "[!] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_RED "[!] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
         if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        printf(COLOR_RED "[-] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_RED "[-] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        printf(COLOR_YELLOW "[*] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_YELLOW "[*] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        printf(COLOR_GREEN "[+] %s:%d " COLOR_DEFAULT fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_GREEN "[+] %s:%d " COLOR_DEFAULT fmt, ks_log_prefix(), __FILE__, __LINE__, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #endif
@@ -134,20 +175,20 @@ extern int ks_child_no_atexit;
 #else
 #define PR_TIDP (int)syscall(SYS_gettid)
 #define pr_error(fmt, ...) do { \
-        printf(COLOR_RED "[!][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_RED "[!][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
         if (ks_child_no_atexit) _exit(-1); else exit(-1); \
     } while (0)
 #define pr_warning(fmt, ...) do { \
-        printf(COLOR_RED "[-][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_RED "[-][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_info(fmt, ...) do { \
-        printf(COLOR_YELLOW "[*][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_YELLOW "[*][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #define pr_success(fmt, ...) do { \
-        printf(COLOR_GREEN "[+][t%d] " COLOR_DEFAULT fmt, PR_TIDP, ##__VA_ARGS__); \
+        printf("[%s] " COLOR_GREEN "[+][t%d] " COLOR_DEFAULT fmt, ks_log_prefix(), PR_TIDP, ##__VA_ARGS__); \
         pr_flush(); \
     } while (0)
 #endif

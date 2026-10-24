@@ -29,7 +29,9 @@ STAGE=/data/local/tmp/ksu_boot
 TMP=/data/local/temp
 
 die() { echo "postlock: ERROR: $*" >&2; exit 1; }
-step() { echo; echo "==> $*"; }
+# unified log line prefix, same shape as chain/restore/receiver logs
+BOOT8='????????'
+step() { echo; echo "[$BOOT8 $(date +%T)] ==> $*"; }
 
 # --- adb ---------------------------------------------------------------
 if [ -n "${ADB:-}" ]; then
@@ -43,6 +45,8 @@ else
 fi
 ab() { "$ADB_BIN" "$@"; }
 [ "$(ab get-state 2>/dev/null | tr -d '\r')" = device ] || die "no device"
+BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | cut -c1-8)
+[ -n "$BOOT8" ] || BOOT8='????????'
 
 # --- host artifacts ----------------------------------------------------
 step "check host artifacts"
@@ -138,7 +142,9 @@ mkdir -p "$(dirname "$RESTORE_LOCAL")"
 cat > "$RESTORE_LOCAL" <<EOF
 #!/system/bin/sh
 exec >> /data/local/tmp/postlock_restore.log 2>&1
-echo "== restore start \$(date) pid=\$\$ uid=\$(id -u)"
+BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????")
+log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S)" "\$*"; }
+log "== restore start \$(date '+%F %T') pid=\$\$ uid=\$(id -u)"
 id
 ls -ld /data /data/local /data/local/temp 2>&1 || true
 getenforce 2>/dev/null || true
@@ -153,7 +159,7 @@ set -e
 CHAIN_PID=\$PPID
 i=0
 while kill -0 \$CHAIN_PID 2>/dev/null && [ \$i -lt 60 ]; do sleep 2; i=\$((i+1)); done
-echo "chain pid \$CHAIN_PID exit-wait done (\$((i*2))s)"
+log "chain pid \$CHAIN_PID exit-wait done (\$((i*2))s)"
 mkdir -p $TMP
 chcon u:object_r:shell_data_file:s0 $TMP
 chmod 777 $TMP
@@ -161,7 +167,7 @@ echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 # roll back the OMK injector config BEFORE ksud services (which triggers the
 # OMK injection that reads it): the uid:1000 scoop variant caused a
 # kernel_panic on 2026-10-24 (twice); .bak is the original stable config.
-[ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && echo OMK-ROLLED-BACK || echo WARN-no-omk-bak
+[ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && log OMK-ROLLED-BACK || log WARN-no-omk-bak
 # rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
 # a binary some previous round left mapped/executing.
 for f in kernelsu.ko finitmod ocsk.ko preload.so; do
@@ -169,12 +175,12 @@ for f in kernelsu.ko finitmod ocsk.ko preload.so; do
   cp $STAGE/\$f $TMP/\$f
 done
 chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/ocsk.ko $TMP/preload.so
-if grep -q ^kernelsu /proc/modules; then echo driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || echo WARN-finitmod-failed; fi
+if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
 # ocsk: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
-if grep -q ^ocsk /proc/modules; then echo ocsk-already-loaded; else $TMP/finitmod $TMP/ocsk.ko 0 arm=1 || echo WARN-ocsk-finitmod-failed; fi
+if grep -q ^ocsk /proc/modules; then log ocsk-already-loaded; else $TMP/finitmod $TMP/ocsk.ko 0 arm=1 || log WARN-ocsk-finitmod-failed; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
 # precede the app start)
@@ -193,7 +199,7 @@ if grep -q "^2048 " /data/misc/adb/adb_keys 2>/dev/null || ! grep -qF postlock_b
   grep -v "^2048 " /data/misc/adb/adb_keys > $TMP/adb_keys.new 2>/dev/null || true
   cat $TMP/adb_keys.new > /data/misc/adb/adb_keys 2>/dev/null || true
   rm -f $TMP/adb_keys.new
-  cat $STAGE/postlock_adbkey.pub >> /data/misc/adb/adb_keys || echo WARN-adb-keys-append
+  cat $STAGE/postlock_adbkey.pub >> /data/misc/adb/adb_keys || log WARN-adb-keys-append
   chmod 640 /data/misc/adb/adb_keys || true
   chown root:shell /data/misc/adb/adb_keys || true
 fi
@@ -203,14 +209,14 @@ fi
 # persisted value itself at boot and adbd then listens on [::]:5555.
 # Takes effect from the NEXT reboot; harmless when already present.
 if ! grep -qF persist.adb.tcp.port /data/property/persistent_properties 2>/dev/null; then
-  cat $STAGE/pp_adb_tcp.bin >> /data/property/persistent_properties || echo WARN-pp-append
+  cat $STAGE/pp_adb_tcp.bin >> /data/property/persistent_properties || log WARN-pp-append
 fi
 # phantom-process killer off (persist): AMS culled the app-uid chain's
 # >32 clone children as "Trimming phantom processes" (rounds 1/2/4 silent
 # kills).  It is a framework quota reaper, not a security boundary; the
 # setting survives reboots but not a factory reset.  Written via settings
 # (root here; untrusted_app cannot write global settings).
-settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || echo WARN-phantom-settings
+settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || log WARN-phantom-settings
 # fix61 (2026-10-24): the ksud events run BEFORE the overlay build below,
 # not after.  Measured on-device: ksud post-fs-data umounts our freshly
 # mounted /product/bin overlay (the wrapper+ksud upper vanishes, shell
@@ -222,9 +228,9 @@ settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || e
 # KS_RUN_KSUD_EVENTS=1 to enable.  All three events tested safe on a
 # healthy system (14:26-14:39, OMK injector came up clean).
 if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x /data/adb/ksud ]; then
-  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
-  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
-  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
+  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || log WARN-ksud-postfs
+  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || log WARN-ksud-services
+  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || log WARN-ksud-bootcomp
 fi
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
@@ -262,7 +268,7 @@ exec /product/bin/ksud debug su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
   if [ -x /data/adb/ksud ]; then
-    cp /data/adb/ksud $TMP/ovl/tmp/upper/ksud || echo WARN-ksud-cp
+    cp /data/adb/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
     chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
   fi
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin
@@ -289,18 +295,18 @@ fi
 #   (fix59's events gate and fix61's events-before-overlay ordering now
 #   live above the overlay block -- see fix61 there.)
 if [ "\${KS_BOUNCE_ZYGOTE:-0}" = "1" ] && [ -n "\$(pidof zygote64)" ]; then
-  echo "bouncing zygote for late zygisk injection"
+  log "bouncing zygote for late zygisk injection"
   kill -9 \$(pidof zygote64) \$(pidof zygote) 2>/dev/null || true
   i=0
   while [ "\$(getprop sys.boot_completed)" != 1 ] && [ \$i -lt 45 ]; do
     sleep 4; i=\$((i+1))
   done
-  echo "framework back: boot_completed=\$(getprop sys.boot_completed) wait=\$((i*4))s"
+  log "framework back: boot_completed=\$(getprop sys.boot_completed) wait=\$((i*4))s"
 fi
 am force-stop $APP || true
 sleep 1
 am start -n $APP/$ACT > /dev/null 2>&1 || true
-echo POSTLOCK-RESTORE-OK
+log POSTLOCK-RESTORE-OK
 EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
