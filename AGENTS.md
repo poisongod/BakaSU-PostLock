@@ -2188,7 +2188,7 @@ appid=10279 → 150s+ 无 reboot → **BakaSu 蓝卡「工作中 Built-in」**
 （驱动 35220/5 vs 管理器 35237/5，UAPI 5==5）。取证
 `/tmp/opencode/fix67_success/`。
 
-### round2/round2b 两连败判明 + fix68 探测定性（2026-10-25，考试计数归零 0/3）
+### round2/round2b 两连败判明 + fix68 探测定性（2026-10-25）——新考试轮计数 1/3
 
 **fix68（commit 73f034b3，so 27be27bd）= 结构性无效探测**：baseline 段（route 前）
 读 fake+FOPS_OPEN_OFF 对比 want——但 **cfgfs 读通道的本质 = `pread(fd)` 经
@@ -2252,3 +2252,15 @@ env → **行为与 fix67 完全等价**（探测无害但永远不触发）。�
   alignment panic → fatal_exception 重启），无 route 前判别通道——
   **既有规则（失败判明即 reboot 重考、计数归零）就是正确处置**；fix68
   探测段保留（物理无害，将来若有 tracefs 通道可激活）。
+
+**新考试轮第 1 轮合格（2026-10-25 07:17，boot 3046f63f，计数 1/3）**：
+fd-hold panic 后 fresh boot（reason=kernel_panic,fatal_exception），quiet-gate
+5s 放行（load=0.05）→ **payload retry 6/72 后 gate pass（k_hit=k_true=11）→
+route attempt=1 一次过（fix52 cfi ok、verify rv=8/8，p=1 主相位）→ root=1**
+（07:13:35，uid 2000→0、selinux→0、setenforce=0/0）→ CHAIN_EXIT_DONE →
+POSTLOCK-RESTORE-OK（07:13:38，OMK-ROLLED-BACK / driver-already-loaded /
+Permissive / daemon / appid=10279 verify 全绿）→ 120s+ boot_id 不变 →
+**蓝卡「工作中 Built-in」**（0 超级用户 5 模块、驱动 35220/5 vs 管理器
+35237/5 UAPI 5==5、无越狱徽章）。取证
+`/tmp/opencode/exam/SUCCESS_redo1_3046f63f/{ui.png,chain.log,restore.log}`。
+fix68 版 so（27be27bd）首考通过 = 行为与 fix67 等价的实证。
