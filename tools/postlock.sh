@@ -216,13 +216,16 @@ if [ ! -x /product/bin/su ]; then
   mountpoint -q $TMP/ovl/lower || mount --bind /product/bin $TMP/ovl/lower
   mountpoint -q $TMP/ovl/tmp || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp
   mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
-  rm -f $TMP/ovl/tmp/upper/su
+  rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
   # su = compatibility shim, NOT the custom daemon client anymore: on this
   # device /system/bin/su is a kernel-forged KernelPatch fake whose real
   # file ENOENTs on exec (root-context `su -c` fails outright), which
   # broke module WebUIs (YH_YC panel's "状态读取失败") that hardcode
   # `su -c`.  Root callers are already root: pass through to sh -c;
-  # non-root falls back to the KP fake (shell uid is whitelisted).
+  # non-root falls back to the real driver's ksud (cp'd into the overlay
+  # because /data/adb is 0700 and shell cannot exec it there -- fix57:
+  # the old fallback exec'd /system/bin/su which ENOENTs post-relock,
+  # so shell-uid `su -c` failed verify every time).
   cat > $TMP/ovl/tmp/upper/su <<'SUW'
 #!/system/bin/sh
 if [ "\$(id -u)" = 0 ]; then
@@ -232,9 +235,13 @@ if [ "\$(id -u)" = 0 ]; then
   fi
   exec /system/bin/sh
 fi
-exec /system/bin/su "\$@"
+exec /product/bin/ksud debug su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
+  if [ -x /data/adb/ksud ]; then
+    cp /data/adb/ksud $TMP/ovl/tmp/upper/ksud || echo WARN-ksud-cp
+    chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
+  fi
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin
 fi
 # --- late-load module stage (2026-10-24) -------------------------------
@@ -249,12 +256,19 @@ fi
 # the app skip dispatch.  adbd, this script and setsid daemons are not
 # zygote children: unaffected.  Must run BEFORE the am start below so
 # the manager app comes back on a zygisk-injected framework.
+#  fix58 (2026-10-24): bounce is now OFF by default (KS_BOUNCE_ZYGOTE=1
+#   to enable) -- its first automated run at 11:53 killed zygote on the
+#   just-fragile post-chain system and the framework never came back:
+#   device rescue-rebooted ~2min later (bootreason=reboot, driver/ocsk/
+#   overlay all lost).  The manual flow (events -> kill zygote, 08:13)
+#   ran on an already-stable system and was safe; until that window is
+#   understood, re-enable consciously.
 if [ -x /data/adb/ksud ]; then
   timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
   timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
   timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
 fi
-if [ -n "\$(pidof zygote64)" ]; then
+if [ "\${KS_BOUNCE_ZYGOTE:-0}" = "1" ] && [ -n "\$(pidof zygote64)" ]; then
   echo "bouncing zygote for late zygisk injection"
   kill -9 \$(pidof zygote64) \$(pidof zygote) 2>/dev/null || true
   i=0
