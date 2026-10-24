@@ -263,7 +263,16 @@ fi
 #   overlay all lost).  The manual flow (events -> kill zygote, 08:13)
 #   ran on an already-stable system and was safe; until that window is
 #   understood, re-enable consciously.
-if [ -x /data/adb/ksud ]; then
+#   fix59 (2026-10-24): the ksud events block below is now also gated
+#   (KS_RUN_KSUD_EVENTS=1 to enable, default OFF).  After bouncing was
+#   turned off, two more rounds still died ~1min after POSTLOCK-RESTORE-
+#   OK (12:09 root-write-stage panic, 12:21 post-restore panic) -- ksud
+#   events is the one block present in every incident: services starts
+#   OMK injector / YH daemon / HMA late (boot is 10+ min old, keystore2
+#   and system_server are fully up), unlike any boot-time context they
+#   were written for.  Gate it, prove the bare channel is stable, then
+#   re-enable one event at a time.
+if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x /data/adb/ksud ]; then
   timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
   timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
   timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
