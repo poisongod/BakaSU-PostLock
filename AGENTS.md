@@ -221,6 +221,48 @@ uid=2000->0` + verify OK）。依赖四件套（缺一即 prepare 死/CFI 必 mi
   脚本判 `no device`——跑脚本前 `adb disconnect` 掉非目标通道（断单个连接不在
   kill-server 红线内）。
 
+### 模块「无法正常工作」根因 + late-load 模块阶段固化（2026-10-24 已修，app v1.61）
+
+- **根因两层**：① 恢复流程（restore/coldstart）只加载驱动 + ocsk + appid，
+  **从不跑 ksud 的 boot 事件**（`/data/adb/ksud` 本体是链 self 路径 05:40 写的，
+  但 post-fs-data/services/boot-completed 无人触发 → 模块脚本从没执行）；
+  ② 驱动是 boot 后期 insmod 的，**zygote 早已启动 → Zygisk Next 没赶上注入
+  窗口** → 所有 zygisk 模块（Zygisk Next/HMA/PIF）失效。非 zygisk 型
+  （OMK 注入 keystore2、YH_YC daemon）靠 ksud services 拉起。
+- **手动修复实测（boot ed47f0ba）**：`su -c "/data/adb/ksud post-fs-data"` →
+  `services` → `boot-completed`（三事件同步返回，各模块脚本输出可见：OMK
+  `injection completed`、YH_YC 监控中）→ **`kill -9 zygote64 zygote`**（init
+  自动重拉；**`ctl.*` setprop 连 su/root 都被 init 属性服务拒**——与
+  `persist.adb.tcp.port` 同类，不随全局 permissive 放行，只能信号）→ 新 zygote
+  带注入（Zygisk Next module.prop 报 `[✓ zygote, ✓ zygote_secondary, Root:
+  ✅KernelSU (35220), UM, AM, ZL]`）→ 5 模块全正常，framework ~40s 恢复
+  （boot_completed=1，驱动/ocsk/zn-daemon/setsid daemon 全保留）。
+- **`ksud soft-reboot` 坑**：阻塞式，20s timeout 截杀会留**半死状态**
+  （`sys.boot_completed=0` 但 zygote 没重启）——补救 = 直接杀 zygote 走 init
+  重拉（`killall` toybox 有、`pidof` 可用）。
+- **固化（两份 restore.sh 同步改：`tools/postlock.sh` heredoc + app assets）**，
+  顺序、位置有讲究：
+  1. **PPID 等链退出**（`CHAIN_PID=$PPID` 快照 + 60×2s 上限，放 `set -e` 后）：
+     bounce 杀 app uid 进程，**app 域链本身就是 app uid**——链还在
+     neutralize 收尾时被杀 = dangling fake fops → 第三方 open misc → panic；
+     `$PPID` 快照 = KS_COLDSTART fork 的链 pid，constructor 收尾完成才返回、
+     宿主才退出，等它死即等收尾完成。
+  2. **ksud 三事件**（`timeout 60/90/30`，WARN-only 兜 `set -e`）。
+  3. **zygote bounce + 轮询 boot_completed**（45×4s=180s）——**必须置于
+     restore 尾部 `am start` 管理器之前**（管理器要在注入好的 framework 上
+     拉起）；BOOT_COMPLETED 会重发但 ran_boot guard 拦 dispatch。
+  4. postlock.sh 的 RESTORE-OK 轮询 **90×2s → 240×2s**（新尾段典型 ~135s）。
+- **staging 刷新**：app `PAYLOAD_VERSION` bump 到 `v5-0eba9857-modstage-20261024`
+  （v1.57 教训：不 bump 设备 files/postlock/restore.sh 永远旧版）；但
+  **ensurePayload 只在链触发路径（triggerChain/dispatchLocked）调**——装机后
+  主页打开**不会**刷 staging——装机当下要手动同步：push 中转 +
+  `run-as com.postlock.boot cp`（别走 stdin 直写，su 吃管道的同族坑）+
+  `.ver` 一起写成新值保持幂等。
+- **PostLock 驱动徽章红卡（v1.60）**：`refreshDriverBadge()` 三态——模块缺失 →
+  红「✗ 未加载（管理器将报无驱动/版本不匹配）」（= BakaSu 冷 boot 红卡的同一
+  状态）；modinfo version（`/sys/module/kernelsu/version`，当前 ko 未导出→null
+  不误判）与管理器 versionName 系列不符 → 红「✗ 管理器版本与内核驱动版本不匹配」。
+
 ### 红卡「获取root权限失败」根因 + grant.c v3 + coldstart 依赖链（2026-10-08 已验证修复）
 
 **红卡判定链**：`HomePage.kt:306` `ksuVersion!=null && !isRootAvailable` →
