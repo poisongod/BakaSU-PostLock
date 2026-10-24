@@ -238,20 +238,15 @@ static int pselect_simple_layout(void) {
            strcasecmp(env, "no") != 0;
   }
 
-#ifdef PSELECT_USE_SHIFTED_LAYOUT
-  /* Target's pselect/futex stack geometry puts the stale waiter S.tree
-   * exactly at the shifted waiter-word array's word-2 base, so the shifted
-   * layout is required even though PSELECT_WAITER_WORD_SHIFT is 0.  The
-   * legacy rule below (shift==0 -> simple) would place S.tree at word0 and
-   * misalign every waiter field by 2 qwords (PI-chain garbage family). */
-  return 0;
-#else
   /*
-   * rodin's proven route used the legacy compact fdset shape.  Targets with
-   * non-zero generated stack overlap need the shifted waiter-word layout.
+   * rodin's proven route used the legacy compact fdset shape; the 6
+   * successful pfum10c48 runs (misc.fops write-verified) also ran this
+   * simple layout with shift==0 (S.tree at word0 -- see target.h).  The
+   * fix65 forced-shifted override was removed with its nfds=576 experiment:
+   * both shift=0/13 panicked because the fdset left the stack, not because
+   * of the layout gate below.
    */
   return PSELECT_WAITER_WORD_SHIFT == 0;
-#endif
 }
 
 static int pselect_probe_mode(void) {
