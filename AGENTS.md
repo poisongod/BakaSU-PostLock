@@ -2069,3 +2069,24 @@ Comm=`pool-1-thread-3`（第三方 app 线程池），x20/x0=垃圾 owner
 host 侧操作照做不误，但设备 reboot 排最前）。g8 家族、fail amplifier
 「放任」决策不变，只是把「何时 reboot」从「下次跑链前」提前到「判明
 失败即刻」。
+
+### round5 锁死轮：ks_owner CPU0 内核自旋僵死（2026-10-24，boot 79ab7e46，非 panic）
+
+pstore（256KB 环形、带墙上时间行精确校时，boot 起点 17:04:25）完整重建：
+- 17:29:25 链触发 → **17:29:54 链日志最后行** `[b79ab7e46 17:29:54] win tick
+  +1s dead=0`（上下文：`physrw enter` / `win enter q0=1` / `pipe counts
+  drain=240` / `pipe child ctx prep=1088`——physrw wave 段早期）；
+- **17:30:10（日志停后 16s）`ks_owner`（PID 22354）CPU#0 RCU self-detected
+  stall 首报** → 17:30:41/17:31:44/17:32:48 三次 `soft lockup CPU#0 stuck
+  22s` → `Freezing of tasks aborted` + hung_task 级联（kthreadd/短进程
+  blocked 60s+）→ CPU0 死拖垮调度；
+- 17:33:05 pstore 见电源键事件（用户开始救机）→ **adb shell/getprop 全超时
+  （transport 活、shell 起不来）、我发的 `adb reboot` 无效** → 用户长按
+  强制重启 → 3000a6b5（bootreason=`reboot`，**非 panic**——pstore 无
+  `Kernel panic` 行）。
+**归因**：physrw/wave 段 `ks_owner` 线程内核态无限自旋——**与 route 段
+`ks_consumer` pselect 自旋（marathon5b）不同线程，属新自旋家族**；无栈
+（OPPO lockup 栈 dump 缺失/pstore 覆盖），用户态无防御（同族定性）。
+**救援备忘：CPU0 级自旋时 `adb reboot` 发不出去，唯一出路 = 长按电源**。
+pstore 读法：shell `cat /sys/fs/pstore/console-ramoops-0`（`ls` 报
+Permission denied 属正常，别被劝退）。
