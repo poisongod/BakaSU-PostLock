@@ -4423,29 +4423,50 @@ static ssize_t cfgfs_read_ex(int fd, uintptr_t target, void *data, size_t len,
   uintptr_t page = target - (uintptr_t)pos;
   put64(blob, CFG_PAGE_OFF - base, page);
 
-  int lfd = cfgfs_lock();
-  errno = 0;
-  int set_ret = try_set_ashmem_name_blob(fd, blob, hi);
-  int set_errno = errno;
-  if (set_ret != 0) {
+  /*
+   * fix56 (2026-10-24): pread returning 0 bytes means the configfs item
+   * produced no data this time -- "the read never happened", NOT "the
+   * target content is garbage".  2026-10-24's five consecutive safe-fails
+   * all died at fix52 with rv=0 / verify r1=0 r2=0 while the 10-22
+   * baseline reads came back rv=8; each retry rewrites the ashmem name
+   * blob, which re-derives the kernel-side prefix state (count), so a
+   * transiently polluted item self-heals on a later attempt.  set-fail
+   * keeps its historical immediate return (ENOTTY carries the
+   * route-landed dual semantics -- fix44 -- and must not be delayed or
+   * reshaped here); only the zero-byte read family is retried.  Success
+   * (rd>0) breaks out on the first attempt so the common healthy path
+   * costs nothing, and the log line keeps its prefix so existing
+   * forensics greps stay valid (new trailing try=%d).
+   */
+  ssize_t rd = -1;
+  int rd_errno = 0;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    int lfd = cfgfs_lock();
+    errno = 0;
+    int set_ret = try_set_ashmem_name_blob(fd, blob, hi);
+    int set_errno = errno;
+    if (set_ret != 0) {
+      cfgfs_unlock(lfd);
+      if (!quiet && env_on("KS_CFGFS_LOG")) {
+        pr_info("cfgfs read set-fail fd=%d target=%016zx ret=%d errno=%d\n",
+                fd, target, set_ret, set_errno);
+      }
+      errno = set_errno;
+      return -1;
+    }
+
+    errno = 0;
+    rd = pread(fd, data, len, pos);
+    rd_errno = errno;
     cfgfs_unlock(lfd);
     if (!quiet && env_on("KS_CFGFS_LOG")) {
-      pr_info("cfgfs read set-fail fd=%d target=%016zx ret=%d errno=%d\n",
-              fd, target, set_ret, set_errno);
+      pr_info("cfgfs read fd=%d target=%016zx len=%zu fill=%u pos=%lld "
+              "page=%016llx hi=%zu set=%d rd=%zd errno=%d try=%d\n",
+              fd, target, len, needs_read_fill, (long long)pos,
+              (unsigned long long)page, hi, set_ret, rd, rd_errno, attempt);
     }
-    errno = set_errno;
-    return -1;
-  }
-
-  errno = 0;
-  ssize_t rd = pread(fd, data, len, pos);
-  int rd_errno = errno;
-  cfgfs_unlock(lfd);
-  if (!quiet && env_on("KS_CFGFS_LOG")) {
-    pr_info("cfgfs read fd=%d target=%016zx len=%zu fill=%u pos=%lld "
-            "page=%016llx hi=%zu set=%d rd=%zd errno=%d\n",
-            fd, target, len, needs_read_fill, (long long)pos,
-            (unsigned long long)page, hi, set_ret, rd, rd_errno);
+    if (rd > 0) break;
+    /* rd==0: retry -- a fresh SET_NAME re-derives the prefix state */
   }
   errno = rd_errno;
   return rd;
