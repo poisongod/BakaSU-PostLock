@@ -46,7 +46,6 @@ ab() { "$ADB_BIN" "$@"; }
 
 # --- host artifacts ----------------------------------------------------
 step "check host artifacts"
-SU_SRC=$REPO/build/embed/su_daemon_aarch64_pie
 PRELOAD_SRC=$REPO/build/pfum10c48/bin/preload.so
 KO_SRC=$REPO/build/embed/kernelsu.ko
 FIN_SRC=$REPO/build/embed/finitmod
@@ -57,10 +56,10 @@ OCSK_SRC=$REPO/tools/ocsk/ocsk.ko
 [ -f "$KO_SRC" ] || die "missing $KO_SRC (ReSukiSU kernelsu.ko build artifact, lives in build/embed/)"
 [ -f "$FIN_SRC" ] || die "missing $FIN_SRC (NDK aarch64-linux-android31-clang -static -O2 -o build/embed/finitmod tools/finitmod.c)"
 [ -f "$OCSK_SRC" ] || die "missing $OCSK_SRC (OPPO kill silencer, tools/ocsk/)"
-if [ ! -f "$SU_SRC" ] || [ ! -f "$PRELOAD_SRC" ]; then
+if [ ! -f "$PRELOAD_SRC" ]; then
   (cd "$REPO" && make PROJECT=pfum10c48 -j"$(nproc)")
 fi
-[ -f "$SU_SRC" ] && [ -f "$PRELOAD_SRC" ] || die "make failed"
+[ -f "$PRELOAD_SRC" ] || die "make failed"
 
 # manager appid (for the ROOT_SCRIPT below; resolve from package manager)
 MUID=$(ab shell "pm list packages -U $APP" | tr -d '\r' | grep -oE 'uid:[0-9]+' | head -n1 | cut -d: -f2 || true)
@@ -69,7 +68,6 @@ MUID=$(ab shell "pm list packages -U $APP" | tr -d '\r' | grep -oE 'uid:[0-9]+' 
 # --- stage payloads (shell-writable, NO root needed) --------------------
 step "stage payloads at $STAGE"
 ab shell "mkdir -p $STAGE" || die "cannot create $STAGE (is /data/local/tmp gone?)"
-ab push "$SU_SRC" "$STAGE/su" >/dev/null
 ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
 ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
@@ -119,9 +117,9 @@ if [ ! -f "$ADBKEY_DIR/postlock_adbkey" ] || [ ! -f "$ADBKEY_DIR/postlock_adbkey
 fi
 ab push "$PP_ENTRY" "$STAGE/pp_adb_tcp.bin" >/dev/null
 ab push "$ADBKEY_DIR/postlock_adbkey.pub" "$STAGE/postlock_adbkey.pub" >/dev/null
-# +x matters: the root child's insmod helper gates on access(fm, X_OK) and
-# runs the su daemon from stage on some paths; adb push lands 666.
-ab shell "chmod 755 $STAGE/finitmod $STAGE/su" >/dev/null 2>&1 || true
+# +x matters: the root child's insmod helper gates on access(fm, X_OK);
+# adb push lands 666.
+ab shell "chmod 755 $STAGE/finitmod" >/dev/null 2>&1 || true
 
 # libkernelsu.so patch + libgrant wrap: RETIRED (2026-10-09) — the app gets
 # version/uAPI/late-load from the real driver fd; do not re-add JNI fakery.
@@ -160,15 +158,17 @@ mkdir -p $TMP
 chcon u:object_r:shell_data_file:s0 $TMP
 chmod 777 $TMP
 echo 262144 > /proc/sys/fs/pipe-user-pages-soft
-# rm-before-cp: a rerun copies over binaries the previous run left running
-# (su daemon executes $TMP/su) -> cp hits ETXTBSY and set -e aborts
-# mid-script. unlink-then-copy is always safe: the old process keeps its
-# unlinked inode, and the daemon/app restart below pick up the fresh file.
-for f in kernelsu.ko finitmod ocsk.ko su preload.so; do
+# roll back the OMK injector config BEFORE ksud services (which triggers the
+# OMK injection that reads it): the uid:1000 scoop variant caused a
+# kernel_panic on 2026-10-24 (twice); .bak is the original stable config.
+[ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && echo OMK-ROLLED-BACK || echo WARN-no-omk-bak
+# rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
+# a binary some previous round left mapped/executing.
+for f in kernelsu.ko finitmod ocsk.ko preload.so; do
   rm -f $TMP/\$f
   cp $STAGE/\$f $TMP/\$f
 done
-chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/ocsk.ko $TMP/su $TMP/preload.so
+chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/ocsk.ko $TMP/preload.so
 if grep -q ^kernelsu /proc/modules; then echo driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || echo WARN-finitmod-failed; fi
 # ocsk: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
@@ -181,8 +181,6 @@ if grep -q ^ocsk /proc/modules; then echo ocsk-already-loaded; else $TMP/finitmo
 if [ -w /sys/module/kernelsu/parameters/ksu_debug_manager_appid ]; then
   echo $MUID > /sys/module/kernelsu/parameters/ksu_debug_manager_appid
 fi
-[ -f $TMP/su.allow ] || { echo 10282 > $TMP/su.allow; echo 10283 >> $TMP/su.allow; echo 2000 >> $TMP/su.allow; }
-chmod 666 $TMP/su.allow
 # --- adb-loopback bootstrap (idempotent) ---------------------------------
 # postlock pubkey -> /data/misc/adb/adb_keys: lets the PostLock app AUTH
 # to adbd and obtain a shell-uid session (the only uid that can run the
@@ -213,17 +211,29 @@ fi
 # setting survives reboots but not a factory reset.  Written via settings
 # (root here; untrusted_app cannot write global settings).
 settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || echo WARN-phantom-settings
-for p in \$(ps -A -o PID=,ARGS= | grep "su --daemon" | grep -v grep | sed "s/ .*//"); do kill -9 \$p 2>/dev/null || true; done
-rm -f $TMP/su.sock $TMP/su.pid
-setsid $TMP/su --daemon >> $TMP/su.log 2>&1 < /dev/null &
-sleep 1
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
   mountpoint -q $TMP/ovl/lower || mount --bind /product/bin $TMP/ovl/lower
   mountpoint -q $TMP/ovl/tmp || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp
   mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
   rm -f $TMP/ovl/tmp/upper/su
-  cp $TMP/su $TMP/ovl/tmp/upper/su
+  # su = compatibility shim, NOT the custom daemon client anymore: on this
+  # device /system/bin/su is a kernel-forged KernelPatch fake whose real
+  # file ENOENTs on exec (root-context `su -c` fails outright), which
+  # broke module WebUIs (YH_YC panel's "状态读取失败") that hardcode
+  # `su -c`.  Root callers are already root: pass through to sh -c;
+  # non-root falls back to the KP fake (shell uid is whitelisted).
+  cat > $TMP/ovl/tmp/upper/su <<'SUW'
+#!/system/bin/sh
+if [ "\$(id -u)" = 0 ]; then
+  if [ "\$1" = "-c" ]; then
+    shift
+    exec /system/bin/sh -c "\$*"
+  fi
+  exec /system/bin/sh
+fi
+exec /system/bin/su "\$@"
+SUW
   chmod 755 $TMP/ovl/tmp/upper/su
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin
 fi
@@ -399,9 +409,10 @@ else
   ab shell "tail -25 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true
 fi
 
-# --- verify as shell (uid 2000 is seeded; uid 0 is NOT in su.allow) -----
+# --- verify as shell (su wrapper: non-root falls to the KP fake, whose
+# whitelist covers shell uid 2000; the wrapper passes root through) ------
 step "verify"
-ab shell "/product/bin/su -c id" | grep -q "uid=0" || die "/product/bin/su failed (daemon/overlay/allow?)"
+ab shell "/product/bin/su -c id" | grep -q "uid=0" || die "/product/bin/su failed (overlay wrapper?)"
 ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
   die "legacy libgrant wrap still set — clear it: setprop wrap.$APP \"\""
