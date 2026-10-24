@@ -2055,3 +2055,17 @@ Comm=`pool-1-thread-3`（第三方 app 线程池），x20/x0=垃圾 owner
 host 侧操作照做不误，但设备 reboot 排最前）。g8 家族、fail amplifier
 「放任」决策不变，只是把「何时 reboot」从「下次跑链前」提前到「判明
 失败即刻」。
+
+### fail 轮残留延迟 38min panic 实锤（2026-10-24 17:27，boot aff1482f→79ab7e46）
+
+下午四连败后**没立即 reboot**、让设备继续跑（装 vc68 等），38 分钟后被
+round4（16:49 route ENOTTY 失败轮）的残留炸了：pstore 栈
+`try_module_get+0x34 ← misc_open+0xd0 ← chrdev_open ← openat`，
+Comm=`pool-1-thread-3`（第三方 app 线程池），x20/x0=垃圾 owner
+`f8ffffffd1f6c84f`——即 fail path neutralize 失败（`set-fail ENOTTY`、
+`owner=-1 tail=-1`）后 misc.fops fake 表残留，第三方 open misc 踩表。
+**认知更新：失败轮残留不是「几分钟窗口」而是随时可炸（≥38min 实测）**
+——**fail 轮判明后必须立即 reboot**，别带残留继续用设备（vc68 装机等
+host 侧操作照做不误，但设备 reboot 排最前）。g8 家族、fail amplifier
+「放任」决策不变，只是把「何时 reboot」从「下次跑链前」提前到「判明
+失败即刻」。
