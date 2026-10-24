@@ -1983,3 +1983,31 @@ reconnect_loop.sh`）。**恢复后顺序：fresh reboot → guard 息屏跑 pos
 - **kernelsu_init.ko** 分析搁置（用户未回应）；v1.57 staging 教训
   （PAYLOAD_VERSION 不 bump 则设备 assets 永远旧版）与 marathon kill
   switch 仍是前序欠账。
+
+### 统一日志格式 + 白底渲染（2026-10-24，vc66/1.66 + 主仓 837aad48）
+
+用户要求「日志格式不好看，以 boot id 开头后跟时间戳」「分不清最新在上还是
+在下」「新行纯黑历史灰」——三层落地：
+
+- **行前缀 = `[b<boot8> <HH:MM:SS>] `**（21 字节，加在最前、ANSI 色码
+  之前）：链日志（utils.h `ks_log_prefix()`，__thread 缓存 boot_id 头 +
+  每次 clock_gettime，两组 printf 宏 %s:%d 与 [t<tid>] 全接）、restore
+  日志（BOOT8+log() 函数，全部 stdout echo 走 log()，重定向行保持 echo）、
+  receiver.log（BootReceiver `[b8 HH:mm:ss.SSS]`，ms 保留与 host %3N
+  对齐）、postlock.sh 段落标题（step() 带 `[BOOT8 HH:MM:SS]`）。
+  **子串 grep 判据零破坏**（root=1、POSTLOCK-RESTORE-OK、win tick 等全是
+  子串匹配）；**mksh 不支持 `>(...)`**（实测 syntax error）——restore 每行
+  包装方案作废，改 log() 函数路线。
+- **白底面板渲染**（colors.xml + MainActivity）：log_bg #FFFFFF /
+  log_history #9AA0A6 灰 / **log_new #000000 纯黑** / log_tag #0B5FA5 /
+  log_error #C62828（tag/error 用深色系保白底可读）；C_LOG_* 常量同步；
+  tag 染色阈值 24→40 字符（新行首让第一个 `] ` 超旧界）；面板标题加
+  「↓ 最新在底部（纯黑），上方渐灰为历史」。批次染色机制不变（最新批
+  纯黑、上一批渐灰）。
+- **连带适配**：exam2_marathon.sh ENTER 判定从 epoch 解析（`^[0-9]+`）改
+  boot8 匹配（`*[b$CB *ENTER*`，旧格式行无 [b 前缀自动不匹配）；marathon
+  虽停跑但脚本保活。sed 复合表达式坑：**replacement 里 `&` = 整个
+  pattern**——`s/&& echo X/&& log X/` 必污染（当轮用 edit 修复）。
+- app 仓 vc66/1.66（白底渲染+rlog 前缀+restore mirror），主仓 837aad48
+  （utils.h/postlock.sh/marathon），preload.so sha `5d36089b`——链侧前缀
+  首次实战待下轮链（装机 15:51，截图验证白底+tag/error 染色正常）。
