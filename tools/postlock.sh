@@ -375,6 +375,11 @@ TRIGGER_ENV="$TRIGGER_ENV KSUD_DST=$STAGE/ksud KSUD_NO_PARENT_INSTALL=1 SU_INSTA
 # real scenario); boot-internal recovery must reboot first anyway.
 TRIGGER_ENV="$TRIGGER_ENV KS_COLDSTART=$STAGE/restore.sh KS_FINITMOD=$STAGE/finitmod KS_KO=$STAGE/kernelsu.ko"
 TRIGGER_ENV="$TRIGGER_ENV KS_PIPE_SLABS=15 KS_PAYLOAD_BASE_FILE=$STAGE/skbdelta"
+# host-side pass-through for restore gates (fix61): export
+# KS_RUN_KSUD_EVENTS=1 / KS_BOUNCE_ZYGOTE=1 before invoking this script
+# to enable them for this round only; unset keeps restore's default (off).
+[ -n "$KS_RUN_KSUD_EVENTS" ] && TRIGGER_ENV="$TRIGGER_ENV KS_RUN_KSUD_EVENTS=$KS_RUN_KSUD_EVENTS"
+[ -n "$KS_BOUNCE_ZYGOTE" ] && TRIGGER_ENV="$TRIGGER_ENV KS_BOUNCE_ZYGOTE=$KS_BOUNCE_ZYGOTE"
 if ab shell "test -x $SU" >/dev/null 2>&1; then
   # only meaningful while a su binary exists (APatch era); empty/absent
   # after relock the preload falls back to direct writes and fails safe
