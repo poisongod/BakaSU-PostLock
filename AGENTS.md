@@ -2116,3 +2116,34 @@ Comm: ks_preload (PID 14769) ；Oops 96000004 DABT → Fatal exception panic
 不进（payload 页死）后必须有**第二写通道把 fake 表的 owner/fops 槽恢复
 真值**（或 route 未 landed 时不挂表），否则进程退出 __fput 必踩。待研
 `fops.c` guard/neutralize 段与 fd 表归属。
+
+### 「shell,untrusted_app 统一日志文件」判决 + round7 自炸复现（2026-10-24 晚）
+
+**物理单文件统一被 SELinux 三层判死**（用户指令 vc69 前实测）：
+- app uid 写 `/data/local/tmp`（shell_data_file）：DAC 666 已过、**SELinux
+  拒 create+write**（run-as 实测 rc=1/touch Permission denied，avc dontaudit
+  静默）；读 OK（app 读主档 258764B 成功）。
+- shell 写 app 私有目录：DAC 0700 拒；run-as 起链=uid 变 app（壳反噬）。
+- 改标签：shell chcon `media_rw_data_file/apk_data_file/system_data_file`
+  **全拒**（setattr 不给）；需 root 链成功窗口 + app 对目标标签 allow 未验
+  ——押注成本高，放弃。
+**落地 = 读侧统一（app vc69）**：`latestChainLog()` 双源按 mtime 择新（app
+私有 chain.log + `/data/local/tmp/postlock_chain.log` 主档），双 inotify
+（files/postlock 目录 + /data/local/tmp 目录过滤 `postlock_chain.log`），
+标题域标「shell 主档 / app 域」。**面板从此 shell 域链日志 app 内实时可见**
+（此前只有 run-as 取证）。ChainService verdict 只读 app 私有（它只监控自己
+dispatch 的链，防跨域误判）。装机截图 vc69_unify 标题「链日志（shell 主档）
+· 写于 18:10」✓。
+
+**round7 = round6 同款自炸复现**（boot 85f4fb4f→15019372，load=1.95 静置
+335s 起链——quiet-gate 首个完整放行轮仍灭，**load 论二次证伪**）：
+- 死点同款：`fops guard read fail ENOTTY`×3 → `set-fail ENOTTY` →
+  `ks_neutralize owner=-1 tail=-1`（payload 页死，写不进清不掉）；
+- pstore 完整栈：`ks_preload` (PID 14789) `Unable to handle kernel paging
+  request at 00ffffdfc0…ec00` → Fatal exception panic（fail exit 18:10:25
+  → ~18:11:50 自炸，85s 内引爆——与 round6 的 __fput/module_put 同族）。
+- **下午统计**：route ENOTTY 4 连（round2/4/6/7）；fail path 自炸 3/4
+  （round4 延迟 38min 第三方踩、round6 40s、round7 85s 链自己踩）——
+  **neutralize 失败 = 几乎必然 panic**，抽签已坍缩成确定性。
+- 修复主攻点不变（round6 节）：fail path 第二写通道恢复 owner/fops 真值，
+  或 route 未 landed 不挂表——**在 4 连败面前这已不是优化而是阻塞项**。
