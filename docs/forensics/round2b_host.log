@@ -1,0 +1,52 @@
+
+[5e6abbe2 00:05:04] ==> check host artifacts
+
+[5e6abbe2 00:05:04] ==> stage payloads at /data/local/tmp/ksu_boot
+
+[5e6abbe2 00:05:06] ==> build restore script (manager uid=10279)
+ls: cannot access '/product/bin/su': No such file or directory
+su: 选项需要一个参数 -- "c"
+请尝试执行“su --help”了解更多信息。
+su: 选项需要一个参数 -- "c"
+请尝试执行“su --help”了解更多信息。
+su: 选项需要一个参数 -- "c"
+请尝试执行“su --help”了解更多信息。
+
+[5e6abbe2 00:05:07] ==> wait for system quiet (1-min load < 2.0)
+[5e6abbe2 00:25:55] WARN-quiet-timeout (still triggering; expect storm-phase risk)
+
+[5e6abbe2 00:25:55] ==> trigger exploit (constructor blocks until rooted; then script runs as uid0)
+DETACHED
+
+[5e6abbe2 00:25:55] ==> wait for restore (KS_COLDSTART fork)
+WARN: restore marker not seen after 180s
+  chain log tail:
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mroute threads joined (waiter exited cleanly)
+    [b5e6abbe2 00:30:02] [32m[+][t12332] [0mpipe-physrw-summary pid=12332 done=0 root=0 kaslr=1 base=ffffffd509080000 slide=00000014f9000000
+    [b5e6abbe2 00:30:02] [32m[+][t12332] [0mpipe physrw pid=12332 done=0 root=0 kaslr=1 read_ok=0 write_ok=0 rw64=0/0 uid=4294967295->4294967295 sid=4294967295/4294967295->4294967295/4294967295 selinux=255->255 setgid=-1 setuid=-1 setenforce=-1/0
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:02] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9001 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mcfgfs write set-fail fd=65 target=ffffff9cd01a9079 ret=-1 errno=25
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mks_neutralize fake fops close slots owner=-1 tail=-1 table=ffffff9cd01a9001 ok=0 verified=0
+    [b5e6abbe2 00:30:03] [31m[-][t12332] [0mexit tail: neutralize FAILED (no pipe child); fd-hold containment, guard -> real-table recovery ffffffd50bbd1e08
+    [b5e6abbe2 00:30:03] [31m[-][t12332] [0mfd-hold daemon pid=27906 holding all chain fds (no pipe child); the fake table close slots are UNCLEARED -- reboot before any re-run
+    [b5e6abbe2 00:30:03] [33m[*][t12332] [0mexit tail: constructor returning
+    CHAIN_EXIT_DONE
+    fd-hold: holding fake-fops files alive (neutralize failed); safe until reboot
+
+[5e6abbe2 00:34:56] ==> verify
+/system/bin/sh: /product/bin/su: inaccessible or not found
+postlock: ERROR: /product/bin/su failed (overlay wrapper?)

