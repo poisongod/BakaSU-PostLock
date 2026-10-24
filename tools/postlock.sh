@@ -145,6 +145,17 @@ id
 ls -ld /data /data/local /data/local/temp 2>&1 || true
 getenforce 2>/dev/null || true
 set -e
+# Wait for the chain itself to finish its exit tail (neutralize/pipe
+# clear) before anything below restarts processes: the zygote bounce
+# kills every app-uid process, and in exam-2 mode the chain IS an
+# app-uid process -- killing it mid-neutralize leaves a dangling fake
+# fops table (third-party misc open -> panic).  $PPID snapshot is the
+# chain pid (coldstart fork); 120s cap for manual reruns where the
+# parent never goes away.
+CHAIN_PID=\$PPID
+i=0
+while kill -0 \$CHAIN_PID 2>/dev/null && [ \$i -lt 60 ]; do sleep 2; i=\$((i+1)); done
+echo "chain pid \$CHAIN_PID exit-wait done (\$((i*2))s)"
 mkdir -p $TMP
 chcon u:object_r:shell_data_file:s0 $TMP
 chmod 777 $TMP
@@ -215,6 +226,32 @@ if [ ! -x /product/bin/su ]; then
   cp $TMP/su $TMP/ovl/tmp/upper/su
   chmod 755 $TMP/ovl/tmp/upper/su
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin
+fi
+# --- late-load module stage (2026-10-24) -------------------------------
+# The driver insmods long after boot, so ksud's boot events never fire
+# and zygote had already started before Zygisk Next could inject: every
+# zygisk module showed "无法正常工作" until these three events + a
+# zygote bounce ran.  ctl.* setprop is rejected by init's property
+# service even as root, so bounce via signal; init respawns zygote and
+# the fresh one picks up the injection (verified: module.prop reports
+# [✓ zygote, ✓ zygote_secondary]).  The bounce restarts the framework
+# (~40s) and re-broadcasts BOOT_COMPLETED -- the ran_boot guard makes
+# the app skip dispatch.  adbd, this script and setsid daemons are not
+# zygote children: unaffected.  Must run BEFORE the am start below so
+# the manager app comes back on a zygisk-injected framework.
+if [ -x /data/adb/ksud ]; then
+  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
+  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
+  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
+fi
+if [ -n "\$(pidof zygote64)" ]; then
+  echo "bouncing zygote for late zygisk injection"
+  kill -9 \$(pidof zygote64) \$(pidof zygote) 2>/dev/null || true
+  i=0
+  while [ "\$(getprop sys.boot_completed)" != 1 ] && [ \$i -lt 45 ]; do
+    sleep 4; i=\$((i+1))
+  done
+  echo "framework back: boot_completed=\$(getprop sys.boot_completed) wait=\$((i*4))s"
 fi
 am force-stop $APP || true
 sleep 1
@@ -341,7 +378,10 @@ ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log;
 # markers: the RESTORE-OK line, or the overlay target it creates.
 step "wait for restore (KS_COLDSTART fork)"
 RESTORE_OK=0
-for _ in $(seq 1 90); do
+# 240x2s=480s: restore now also waits for the chain exit-tail, runs the
+# three ksud module events (~60s) and bounces zygote (~40s framework
+# restart) -- the old 180s was too tight for that tail.
+for _ in $(seq 1 240); do
   if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null" \
      || ab shell "[ -x /product/bin/su ]" 2>/dev/null; then
     RESTORE_OK=1
