@@ -235,6 +235,14 @@ if [ "\$(id -u)" = 0 ]; then
   fi
   exec /system/bin/sh
 fi
+# fix60: ksud debug su is a pipe-fed root shell (no -c flag: passing -c
+# made clap fail with "unexpected argument '-c'").  Feed the command on
+# stdin; EOF makes the su shell exit, and its rc carries the command's.
+if [ "\$1" = "-c" ]; then
+  shift
+  printf '%s\n' "\$*" | /product/bin/ksud debug su
+  exit \$?
+fi
 exec /product/bin/ksud debug su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
