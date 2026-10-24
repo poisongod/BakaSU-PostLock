@@ -32,6 +32,7 @@ die() { echo "postlock: ERROR: $*" >&2; exit 1; }
 # unified log line prefix, same shape as chain/restore/receiver logs
 BOOT8='????????'
 step() { echo; echo "[$BOOT8 $(date +%T)] ==> $*"; }
+info() { echo "[$BOOT8 $(date +%T)] $*"; }
 
 # --- adb ---------------------------------------------------------------
 if [ -n "${ADB:-}" ]; then
@@ -331,13 +332,13 @@ for i in $(seq 1 240); do   # up to 20 min
   l=$(ab shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | grep -o '^[0-9][0-9.]*' | head -1)
   li=$(echo "$l" | sed 's/\.//' | tr -cd '0-9')
   if [ -n "$li" ] && [ "$li" -lt 200 ] 2>/dev/null; then
-    log "quiet after $((i*5))s (load=$l) -> GO"
+    info "quiet after $((i*5))s (load=$l) -> GO"
     quiet=1
     break
   fi
   sleep 5
 done
-[ "$quiet" = 1 ] || log "WARN-quiet-timeout (still triggering; expect storm-phase risk)"
+[ "$quiet" = 1 ] || info "WARN-quiet-timeout (still triggering; expect storm-phase risk)"
 
 # --- ONE exploit run ----------------------------------------------------
 # stale restore.log survives in /data/local/temp across reboots (temp
