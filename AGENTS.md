@@ -2090,3 +2090,29 @@ pstore（256KB 环形、带墙上时间行精确校时，boot 起点 17:04:25）
 **救援备忘：CPU0 级自旋时 `adb reboot` 发不出去，唯一出路 = 长按电源**。
 pstore 读法：shell `cat /sys/fs/pstore/console-ramoops-0`（`ls` 报
 Permission denied 属正常，别被劝退）。
+
+### round6 内核日志定案：链自己引爆自己的 fake fops（2026-10-24 18:00，boot 3000a6b5→85f4fb4f）
+
+load=1.35 静置后起链（quiet-gate 首跑 5s 放行）仍灭——**「恢复风暴/load」
+论就本轮被证伪**（呼应用户「伪命题」判断；前后共线数据无法分因）。这轮
+pstore 抓到**完整链内 panic 栈**（此前轮次要么无栈要么是第三方受害者）：
+
+```
+pc : module_put+0x38/0x194   x20=x0=000e070000080400（垃圾，非规范地址）
+lr : __fput+0x108
+Call trace: module_put ← __fput ← ____fput ← task_work_run ← (返回用户态)
+Comm: ks_preload (PID 14769) ；Oops 96000004 DABT → Fatal exception panic
+```
+
+**机制闭环**：链 17:59:06-11 route 段 `fops guard read fail ENOTTY`×3 →
+`pipe-physrw-summary done=0 root=0` → `cfgfs write set-fail ENOTTY` →
+**neutralize 失败（owner=-1 tail=-1，payload 页死写不进）→ fake fops 表
+残留挂在链持有的 fd 上** → 40 秒后链收尾 close fd → 内核 `__fput` 走
+`file->f_op->owner` 的 `module_put` → owner 槽是垃圾 → Oops → panic。
+**与 round4（第三方 `try_module_get` 同表受害）同一张残留表、两个受害者**
+——round4 等了 38min 被第三方踩，这轮链**自己 close 自己引爆（40s 内）**：
+**neutralize 失败从「概率延迟炸」升格为「几乎必然自炸」**。
+**修复方向（可修工程点，非抽签）**：fail path 的兜底恢复——set-fail 写
+不进（payload 页死）后必须有**第二写通道把 fake 表的 owner/fops 槽恢复
+真值**（或 route 未 landed 时不挂表），否则进程退出 __fput 必踩。待研
+`fops.c` guard/neutralize 段与 fd 表归属。
