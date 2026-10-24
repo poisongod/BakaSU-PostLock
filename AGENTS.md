@@ -1873,3 +1873,113 @@ reconnect_loop.sh`）。**恢复后顺序：fresh reboot → guard 息屏跑 pos
   permission.startup.StartupAppListActivity`），**需 `oplus.permission.
   OPLUS_COMPONENT_SAFE`**，普通 app/am 均 SecurityException——只能引导用户
   手动开（app 详情页 intent 兜底）。
+
+## 2026-10-24 攻关批次：fix56-61（5 连败根因闭环 + 恢复链加固）
+
+### 5 连败根因（症状级 diff → 源码级，闭环）
+
+- 当日 0/5（09:42 panic win 段 / 09:54 payload dead / 10:22 cfgfs 段 panic /
+  10:38 route 段安全失败 / 10:52 息屏轮 nonce capture）全部无残留安全退出或
+  panic 后 reboot。**唯一分叉 = fix52 cfgfs pread：成功轮 `rv=8`（真实函数
+  地址）→ `cfi table ok`；失败轮 `rv=0`（pread 0 字节）→ table garbage 拒死**。
+  上游判定链（nonce `rv=-1 capture=0`、`configfs verify failed r1=0 r2=0`、
+  watchpoint 废、fix42 弱放行 `k_hit==k_true`）**在两天日志同现，不是失败信号**。
+- **rd=0 真语义 = payload 页已死**（页在 route→physrw 窗口被内核回收，page-
+  cache eviction 家族），不是 configfs 通道死：fd=3 早期探测读两天恒 rd=0 属
+  设计内（成功轮 1210 次 rd=8 都在后段）；成功轮也有 11 次 rd=0。重排三次事故：
+  12:09 死在链内 root 写段（events 根本没跑，不该算它头上）。
+- fix56 重试让读有时间窗命中活页 → 死点逐轮后移（fix52 ok → root 写段 →
+  root=1）；**息屏 + load<5 起链**组合下 11:48 / 12:19 / 12:46 三轮 root=1。
+- **load 红线放宽**：本机稳态底噪 4.5（787 进程、11.2G 满载、idle 84%），
+  `<2.0` 只在冷 boot 窗口成立、稳态永远等不到（白等 18 分钟教训）——
+  **判据 = boot_completed 后 load<5 即起链**（10.69 风暴峰值别起）。
+- 12:09 root 写段 panic（cfgfs write .data wr=40 后下一内核操作）= Tier-0
+  layout 猜测偏差家族抽签；12:21 RESTORE-OK 后 ~1min panic（events 开）未定案。
+
+### fix56-61 清单（主仓 = untrusted_app 分支，app 仓 = main，两仓同步）
+
+- **fix56**（主仓 f73c3b13）：`cfgfs_read_ex`（util.c）rd==0 时重试 3 次
+  （每次重写 ashmem name blob 再生内核 prefix state）；set-fail 保持立即
+  返回——ENOTTY 的 fix44 route-landed 双语义不许延迟。成功 rd>0 首轮即出，
+  日志前缀不变只加尾部 `try=%d`（现有 forensics grep 兼容）。
+- **fix57**（41a43344 / b67c5ea）：overlay `/product/bin/su` wrapper 非 root
+  分支从 `exec /system/bin/su`（回锁后 ENOENT → postlock verify 恒挂）改走
+  真驱动 ksud——`/data/adb` 0700 进不去 → **ksud cp 进 overlay upper**。
+- **fix58**：zygote bounce 门控 `KS_BOUNCE_ZYGOTE`（默认 0）。11:53 首次
+  自动实战在链后脆系统上 kill zygote，框架没回来 → ~2min 后 rescue-reboot
+  （bootreason=reboot 非 panic，driver/ocsk/overlay 全丢）；08:13 手动
+  events→kill zygote 在稳定系统安全。
+- **fix59**：ksud events 门控 `KS_RUN_KSUD_EVENTS`（默认 0）。**后续实测
+  修正归因**：三事件（post-fs-data / services / boot-completed）在健康系统
+  单独跑全部安全（14:26-14:39 实测，services 拉起 OMK injector daemon
+  无害）——「events 元凶」的直接证据只剩 12:21 一轮（且 12:09 与 events
+  无关），脆窗口组合验证中，别把 fix59 注释里的旧归因当定案。
+- **fix60**（fc9158f9 / 2b025de）：`ksud debug su` **无 `-c`**（clap 报
+  `unexpected argument '-c'`）——它是管道喂的交互 root shell：wrapper `-c`
+  分支改 `printf '%s\n' "$*" | /product/bin/ksud debug su`（EOF 退出、rc
+  随之）；实测 `echo id | ksud debug su` → `uid=0`。
+- **fix61**（c7e97c0f）：restore 里 **events 挪到 overlay 建立之前**——
+  实测 ksud post-fs-data **umount 我们的 /product/bin overlay**（wrapper+
+  ksud 上层蒸发，shell `ls /product/bin/su` 回落原生 ro 目录 Permission
+  denied），events-after-overlay 必然拆台。61b：host 侧透传两个门控 env；
+  61c：透传行防 `set -euo pipefail`（`[ -n "$VAR" ] && assign` 条件假返回 1
+  必杀脚本，改 `if [ -n "${VAR:-}" ]`）。
+- app vc64/1.64 装机完成（assets 含 fix57-61 restore）；**staging 手动同步
+  仍欠**（ensurePayload 只在链触发路径跑，装机当下要手动同步 files/postlock）。
+
+### shell:s0 域 root 的能力边界（ksud debug su 实测）
+
+- Enforcing 下 shell 域 uid=0 **不能**：mount（tmpfs/overlay 均拒，报
+  `'tmpfs' is read-only`+Permission denied）、写 kernel 挂的 tmpfs:s0（哪怕
+  drwxrwxrwx，换 `context=shell_data_file:s0` 重挂也没用——mount 本身就拒）、
+  `echo 0 > selinuxfs/enforce`、读原生 /product/bin；**能**：写
+  /data/local/temp（shell_data_file f2fs）、跑 ksud 命令、管道提权拿
+  uid=0（`ctx=u:r:shell:s0`）。
+- **overlay 重建只能靠链窗口的 kernel:s0 root**（restore 的 overlay 段），
+  shell 域修不了——overlay 丢了就等下一轮链，别在 shell 域反复 rebuild
+  （当日 4 版脚本全灭的教训）；restore 诊断头 `context=u:r:kernel:s0`
+  就是域差异的直观证据。
+- **Enforcing 会自己回来**：12:46 链窗口 restore 打 Permissive，14:26 实测
+  `enforce=1`（ksud events 或 OPPO 韧性收回，未定案）——别假设 Permissive
+  常驻；`getenforce` 对 shell 报 Permission denied 是设备常态（读
+  `/sys/fs/selinux/enforce` 才真）。
+
+### 当日恢复链里程碑
+
+- 12:46 轮 **60s root=1**（今日最快）+ restore 全绿：`OMK-ROLLED-BACK` /
+  driver-already-loaded / ocsk / Permissive / `POSTLOCK-RESTORE-OK`；手工装
+  fix60 wrapper 后 `/product/bin/su -c id`（shell 身份）→ uid=0 →
+  **BakaSu 蓝卡「工作中 Built-in」**（`/tmp/opencode/redcard/ui_fix60.png`，
+  5 模块真 store、驱动 35220/5 vs 管理器 35236/5 UAPI 5==5）。
+- 链超时 540s 的判定注意：postlock.sh 的 restore 等待循环是 240×2s，marker
+  是 `POSTLOCK-RESTORE-OK` **或** `-x /product/bin/su`（后者会假阳性——
+  只要 overlay 存在就报 OK，与 restore 是否真跑完无关）。
+
+### BakaSU 官方文档要点（bakasu.org/llms.txt，当日 fetch）
+
+- **LKM 是 OPPO 官方标准路线**（OPPO 页：LKM 与一般 GKI 无异；GKI 镜像因
+  OPPO f2fs 改动不可用通用镜像需自编译——回锁环境不适用）。
+- FAQ「模块不工作」= sepolicy 版本不匹配（内核/管理器需**都** ≥34634 或
+  commit 436d333 之后）——我们 35220/35236 **过线不命中**，模块问题确认是
+  ksud events 没跑（fix59/61 方向）。
+- manual-integrate 页是**内核源码级**集成（CONFIG_KSU_MANUAL_HOOK 必查 hook
+  + selinuxfs 静态符号导出）——与 out-of-tree kernelsu.ko 无关，编进 boot
+  时才用；管理器仍在开发（main 外皆测试分支）。
+
+### 前序欠账集中补记（2026-10-23 及更早）
+
+- **自研 su daemon 退役**（主仓 678fc16b、app b8f934e vc63）+ coldstart.sh
+  删除——恢复链不再依赖自研 daemon；YH_YC WebUI 硬编码 `su -c` 的需求由
+  wrapper 兜底（fix57/60 是其完成形态；此前 root 上下文 `su -c` 因
+  `/system/bin/su` 是 KP 伪造 stat ENOENT 全挂，即「YH su-c 根因」）。
+- **OMK 配置回滚**织入两份 restore（主仓 98fc605b、app 42c56cf）——
+  `OMK-ROLLED-BACK` 行当日实测打印；`/tmp/opencode/yh/injector.toml` 是
+  **panic 版勿部署**；OMK 放行 uid:1000 = kernel_panic 源（当日 09:34 实证）。
+- **工厂模式 Attestation key 失败根因**：TEE 无 attestation key（keystore2
+  `Error::Km(ErrorCode(-10003))`）+ OMK scoop 白名单拒绝 engineermode——
+  **窄变量放行实验**（保守顺序：仅引号格式 → scoop 加
+  `com.oplus.engineermode`/`uid:1000`）待稳定 root 后做，每次改后 kill
+  keystore2 重测工厂模式 Key 状态页，panic 立即回滚。
+- **kernelsu_init.ko** 分析搁置（用户未回应）；v1.57 staging 教训
+  （PAYLOAD_VERSION 不 bump 则设备 assets 永远旧版）与 marathon kill
+  switch 仍是前序欠账。
