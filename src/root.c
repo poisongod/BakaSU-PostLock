@@ -1456,7 +1456,12 @@ int install_android_root(int fd) {
     pr_warning("root child dead after first-pass writes; self-patch flip "
                "disabled (panic path); neutralize + fail fast for reboot\n");
     fops_guard_set_expect(0);
-    ks_neutralize_fake_fops_close(fd);
+    if (ks_neutralize_fake_fops_close(fd) != 0) {
+      /* fix62: table slots stayed armed; the exit tail's
+       * close_fake_fops_probe_fd() will retry and, if still failing, flip
+       * the guard to real-table recovery + fork the fd-hold daemon. */
+      pr_warning("kill-switch neutralize failed; exit tail will contain\n");
+    }
     goto self_patch_skip;
     /* v4 pre-flip defuse: the uid0 monitor SIGKILL may end this process on
      * any instruction after our own cred flip (v3 4619b3e7: flip ->
