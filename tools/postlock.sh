@@ -211,6 +211,21 @@ fi
 # setting survives reboots but not a factory reset.  Written via settings
 # (root here; untrusted_app cannot write global settings).
 settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || echo WARN-phantom-settings
+# fix61 (2026-10-24): the ksud events run BEFORE the overlay build below,
+# not after.  Measured on-device: ksud post-fs-data umounts our freshly
+# mounted /product/bin overlay (the wrapper+ksud upper vanishes, shell
+# `ls /product/bin/su` falls back to the stock ro partition and gets
+# Permission denied) -- so events-after-overlay guarantees a broken su
+# even when nothing panics.  Running events first means their mount
+# churn finishes before our overlay lands.  fix59's gate stays (events x
+# post-chain window is still a suspect for the 12:21 panic): default OFF,
+# KS_RUN_KSUD_EVENTS=1 to enable.  All three events tested safe on a
+# healthy system (14:26-14:39, OMK injector came up clean).
+if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x /data/adb/ksud ]; then
+  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
+  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
+  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
+fi
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
   mountpoint -q $TMP/ovl/lower || mount --bind /product/bin $TMP/ovl/lower
@@ -271,20 +286,8 @@ fi
 #   overlay all lost).  The manual flow (events -> kill zygote, 08:13)
 #   ran on an already-stable system and was safe; until that window is
 #   understood, re-enable consciously.
-#   fix59 (2026-10-24): the ksud events block below is now also gated
-#   (KS_RUN_KSUD_EVENTS=1 to enable, default OFF).  After bouncing was
-#   turned off, two more rounds still died ~1min after POSTLOCK-RESTORE-
-#   OK (12:09 root-write-stage panic, 12:21 post-restore panic) -- ksud
-#   events is the one block present in every incident: services starts
-#   OMK injector / YH daemon / HMA late (boot is 10+ min old, keystore2
-#   and system_server are fully up), unlike any boot-time context they
-#   were written for.  Gate it, prove the bare channel is stable, then
-#   re-enable one event at a time.
-if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x /data/adb/ksud ]; then
-  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || echo WARN-ksud-postfs
-  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || echo WARN-ksud-services
-  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || echo WARN-ksud-bootcomp
-fi
+#   (fix59's events gate and fix61's events-before-overlay ordering now
+#   live above the overlay block -- see fix61 there.)
 if [ "\${KS_BOUNCE_ZYGOTE:-0}" = "1" ] && [ -n "\$(pidof zygote64)" ]; then
   echo "bouncing zygote for late zygisk injection"
   kill -9 \$(pidof zygote64) \$(pidof zygote) 2>/dev/null || true
