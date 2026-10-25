@@ -240,7 +240,13 @@ fi
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
   mountpoint -q $TMP/ovl/lower || mount --bind /product/bin $TMP/ovl/lower
-  mountpoint -q $TMP/ovl/tmp || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp
+  # tmpfs sb context (2026-10-25 strict-mode root fix): upper inodes inherit
+  # the tmpfs sb label, so without context= su/ksud land as shell_data_file
+  # and shell loses exec of them the moment enforcing flips (measured:
+  # DAC 777 passes, MAC denies, avc dontaudit-silent).  Fallback keeps the
+  # old behaviour if this kernel rejects context= on tmpfs.
+  mountpoint -q $TMP/ovl/tmp || mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
+    || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp || log WARN-tmpfs-mount
   mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
   rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
   # su = compatibility shim, NOT the custom daemon client anymore: on this
@@ -277,6 +283,9 @@ SUW
     chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
   fi
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin || log WARN-overlay-mount
+  # belt+braces: force the visible labels too (no-op when tmpfs sb context
+  # already covers them; ENOTSUP on xattr-less tmpfs is tolerated)
+  chcon u:object_r:system_file:s0 /product/bin/su /product/bin/ksud 2>/dev/null || true
 else
   log "overlay wrapper already present"
 fi
@@ -313,6 +322,29 @@ fi
 am force-stop $APP || true
 sleep 1
 am start -n $APP/$ACT > /dev/null 2>&1 || true
+# --- SELinux strict end-state (2026-10-25, exam criterion) ---------------
+# Everything above ran as kernel-domain root and does not need
+# Permissive; the terminal state must be Enforcing.  Flip, then probe the
+# shell->su channel exactly the way host verify uses it (shell domain via
+# runcon).  On any failure revert to Permissive + WARN: a blind flip
+# strands the device -- shell has no setenforce permission and avc is
+# dontaudit-silent (measured 2026-10-25 lockout session), so there is no
+# way back once the channel is gone.  Host verify treats enforce=0 as a
+# failed round, so the fallback keeps the device usable without ever
+# faking a pass.
+log "selinux strict: probing shell->su under enforcing"
+if setenforce 1 2>/dev/null; then
+  PROBE=$(runcon u:r:shell:s0 sh -c '/product/bin/su -c id' 2>&1)
+  case "$PROBE" in
+    *uid=0*)
+      log "SELINUX-STRICT-OK enforce=$(cat /sys/fs/selinux/enforce) probe=$PROBE" ;;
+    *)
+      log "WARN-selinux-strict: shell channel blocked under enforcing: $PROBE"
+      setenforce 0 2>/dev/null || true ;;
+  esac
+else
+  log "WARN-selinux-strict: setenforce 1 failed"
+fi
 log POSTLOCK-RESTORE-OK
 EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
@@ -494,6 +526,11 @@ fi
 # whitelist covers shell uid 2000; the wrapper passes root through) ------
 step "verify"
 ab shell "/product/bin/su -c id" | grep -q "uid=0" || die "/product/bin/su failed (overlay wrapper?)"
+# strict-mode exam criterion (2026-10-25): the restore must leave
+# Enforcing on.  restore's own fail-safe reverts to Permissive + WARN on
+# channel failure -- that path must fail the round here, never pass.
+ENC=$(ab shell "cat /sys/fs/selinux/enforce" | tr -d '\r')
+[ "$ENC" = "1" ] || die "SELinux not strict (enforce=$ENC) — see WARN-selinux-strict in restore.log"
 ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
   die "legacy libgrant wrap still set — clear it: setprop wrap.$APP \"\""
