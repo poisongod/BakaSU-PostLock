@@ -2515,3 +2515,27 @@ fix67 util.c:1629 同款写法）：
   `close(conv_fd)`（pipe.c:849）**，非孙进程；flush 污染源（0x78 区
   在 put/refresh 后被谁写）仍未定案——sanitize 是「不信任清槽结果」的
   就地重写，不依赖污染源归因。
+
+### 新考试轮第 6 轮安全失败（2026-10-25 redo11, boot f57ad6f6）→ 维持 0/3——fix71 实证 panic 家族终结 + owned=0 老抽签
+
+gate 20min 超时放行（13:44:53）→ 链 8 分钟走完 → **root=0 安全退出，13 分钟
+无 reboot**。**fix70+71 组合首次实证三连败 panic 家族终结**：fail path 全程
+安全 —— `ks_neutralize ok=1 verified=1` → `exit tail: closed fake-fops probe
+fd=131`（neutralize 后表已恢复，close 安全）→ `pipe_prepare_child reaped`
+（kill child 时 late sweep sanitize 生效）→ `constructor returning` →
+`CHAIN_EXIT_DONE`，pstore 无异常。
+
+**本轮失败根因 = 满页 owned=0 老抽签**（exactly AGENTS 满页节家族）：
+- 24 波打满 `waves=24 taken=23 owned=0`——wave[20] 起目标页
+  `inuse=31 objects=34 frozen=1 freelist=ffffff85102fe180`（34 掉 31 后
+  **卡死不再降**：3 个对象被外人长持有，页永不回 buddy）；
+- `phys wave stuck` → `target not owned after waves; skip drain (fast fail)`
+  → `phys prepare produced no page; abort before gate` → root=0。
+- win 段全程 `dead=0`（+24s 页活）——payload/gate/route/CFI 均正常，
+  死点纯在 convert wave owned 判定。
+
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo11_f57ad6f6/{chain.log,host.log}`；
+  计数维持 **0/3**；安全失败按 fail amplifier reboot 重考（fail path 已不
+  再是 panic 源，但 owned=0 轮的链残留仍按老规则 reboot 换 boot）。
+- **fix71 归因副产品**：flush 污染源仍未定案，但 sanitize 不依赖它——后续
+  轮次若再见 `fix71: flush sanitize failed` 即页死轮（warning-only 安全）。
