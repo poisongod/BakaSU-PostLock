@@ -2756,3 +2756,37 @@ Comm: ks_waiter (PID 16878)
   同样 panic），正确方向是「校验 = 期望值，被污染则重写 put 表」。
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo20_f7d51736/{chain.log,
   pstore.txt,host.log}`；**计数归零 0/3**；boot 9c6d0d87 fresh 直接重考。
+
+### fix73 ioctl 槽校验重写（2026-10-25，redo20 根因链闭环）
+
+**redo20 时序覆写实锤（模型 A，判别数据三轮对照）**：
+- **被污染地址 = 链唯一监控地址**（模型 B 排除）：`cfi pre_fops
+  got=ffffff8c4adc1001`（fd f_op = 表+1）、`fix52 dump/cfgfs read
+  target=表+0x51`（= 内核 do_vfs_ioctl 的 blr 读点 fops_table_base()
+  +FOPS_IOCTL_OFF）——链监控的就是内核用的。
+- **三轮同构读值**：redo18(成功)/redo19(成功)/redo20(panic) 的
+  `...1051` 读值全部 = `tbl` = `text_addr(ASHMEM_IOCTL)`
+  （redo18 `ffffffd6505e2434`/redo19 `ffffffe50c1e2434`/redo20
+  `ffffffe01e3e2434`，cfi verify `want=` 同值）——redo20 在链监控
+  路径上与成功轮**完全一致，非静态配置错误**。
+- **窗口**：redo20 链最后读 17:51:07 = 好值 → panic（内核 315.94s）
+  时同地址 = `0x742cdf60`——**≤数秒内被改写**；窗口内活动 = pipe
+  child 17:51:07 `kernelsnitch setup done` 后进入 collision/prepare
+  （并发写嫌疑最大），主线程只写 0x78/0x80 不碰 0x50。
+- **监控盲区**：fix72 只读写 flush/release（0x78/0x80），ioctl 槽
+  无每秒校验——污染发生在最后一次链读之后无人知晓。
+- `0x742cdf60` 形态 = 32 位字段值（非规范内核指针，pfn/len/offset
+  类），写入者身份未定案（collision/prepare 页写、内核侧结构写入均
+  未排除）——**fix73 不依赖写入者归因**。
+
+**fix73（pipe.c win tick sanitize 块内，so `30b3c0fd`）**：每 tick
+`ks_fetch64(fops_table_base()+FOPS_IOCTL_OFF)` 与
+`text_addr(ASHMEM_IOCTL)` 比对，≠ 则 `configfs_write_once` 重写 +
+`fix73: ioctl slot poisoned value=... want=... rewrite sw=...` 取证行。
+- 与 fops.c cfi table verify 同地址同值语义（fops_table_base() 已含
+  +1 anchor）。
+- **ioctl 槽不能清零**（链自身 cfgfs 序列每读都 blr 它）→ verify-
+  else-rewrite：健康路径 = 1 次 8 字节读、零写入（与 fix72 现状行为
+  完全一致，回归风险极低——fix70 教训对照）。
+- 双向收益：下轮打出 `fix73:` 行 = 污染时刻+前后操作可对照定位写入
+  者；没打且链过 = 污染窗口被 <1s 覆盖压掉。

@@ -1592,6 +1592,38 @@ int install_pipe_physrw(int fd) {
                          "at +%lds\n", (unsigned long long)back, elapsed);
             }
           }
+          /* fix73 (redo20): the IOCTL slot got poisoned (0x742cdf60) in a
+           * <=few-second window AFTER the last chain-side read (fix52 dump
+           * and cfi verify both saw want=text_addr(ASHMEM_IOCTL) at
+           * 17:51:03-07) and BEFORE ks_waiter's next cfgfs ioctl, whose
+           * do_vfs_ioctl blr x20 then IABT'd into the garbage (pstore:
+           * pc=0x742cdf60, x22=ASHMEM_SET_NAME, lr=do_vfs_ioctl+0x380).
+           * Same read/compare/expected-value semantics as fops.c cfi table
+           * verify (fops_table_base()+FOPS_IOCTL_OFF, want=
+           * text_addr(ASHMEM_IOCTL)); the fd's f_op=table+1 anchor is
+           * already baked into fops_table_base().  Unlike flush/release
+           * (zero = cbz-skip safe) the ioctl slot CANNOT be zeroed -- the
+           * chain's own cfgfs read sequence blrs it every call -- so this
+           * is verify-else-rewrite: the healthy path costs one 8-byte read
+           * and zero writes (identical behaviour to fix72's status quo),
+           * a poisoned value is restored within <1s (the same window
+           * shrink fix72 gave flush) and printed for poison-source
+           * forensics. */
+          {
+            uint64_t want_io = (uint64_t)text_addr(ASHMEM_IOCTL);
+            uint64_t cur_io = 0;
+            if (ks_fetch64(fops_table_base() + FOPS_IOCTL_OFF, &cur_io) ==
+                    8 &&
+                cur_io != want_io) {
+              ssize_t iw = configfs_write_once(
+                  g_fops_probe_fd, fops_table_base() + FOPS_IOCTL_OFF,
+                  &want_io, sizeof(want_io));
+              pr_warning("fix73: ioctl slot poisoned value=%llx want=%llx "
+                         "rewrite sw=%zd at +%lds\n",
+                         (unsigned long long)cur_io,
+                         (unsigned long long)want_io, iw, elapsed);
+            }
+          }
         }
       }
       if (pipe_prepare_child > 0) {
