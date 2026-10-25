@@ -2539,3 +2539,24 @@ fd=131`（neutralize 后表已恢复，close 安全）→ `pipe_prepare_child re
   再是 panic 源，但 owned=0 轮的链残留仍按老规则 reboot 换 boot）。
 - **fix71 归因副产品**：flush 污染源仍未定案，但 sanitize 不依赖它——后续
   轮次若再见 `fix71: flush sanitize failed` 即页死轮（warning-only 安全）。
+
+### 新考试轮第 7 轮安全失败（2026-10-25 redo12, boot a0bee093）→ 维持 0/3——owned=0 inuse=31 同型二连
+
+gate 20min 超时放行（14:24:24）→ 链 5 分钟 → root=0 安全退出（14:29:33）。
+**fail path 再次全程安全**（fix70+71 二连实证）：`ks_neutralize ok=1 verified=1`
+→ `closed fake-fops probe fd=95` → `pipe_prepare_child reaped` →
+`CHAIN_EXIT_DONE`，boot 稳定无 panic。
+
+**失败 = redo11 完全同型**：`convert waves=24 taken=23 owned=0` →
+`phys wave stuck ... inuse=31 objects=34 frozen=1 freelist=ffffffffa98f9400`
+→ `target not owned after waves; skip drain (fast fail)` → root=0。
+两轮独立 boot（f57ad6f6/a0bee093）inuse 均卡 **31/34**（3 槽 free 页不回
+buddy），wave[20] 掉 3 后恒定——**波次进页（taken=23）但目标页被 31 个长
+寿命 mm 占满+partial 页不可分配**，24 波 1632 个 wave mm 换不掉。
+win 段全程 dead=0（+28s 页活）——payload/gate/route/CFI/convert 全过，
+死点纯 owned 判定。与考试期成功轮（waves=13/16/21 即 owned=1）对照，
+是 boot 级 mm slab 分布环境差异（满页家族新形态，非代码回归——fix70/71
+只动 close 路径不碰 wave）。
+
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo12_a0bee093/{chain.log,host.log}`；
+  计数维持 **0/3**；reboot 重考（安全失败 + 老规则）。
