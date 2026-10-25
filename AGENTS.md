@@ -2666,3 +2666,22 @@ win tick/fix72 行——信号阻断与周期 sanitize 都没跑到，**既未�
 
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo16_76b54089/{chain.log,
   pstore.txt,host.log}`；计数维持 **0/3**；reboot 重考。
+
+### 新考试轮第 1 轮安全失败（2026-10-25 redo17, boot 8bf581fd）→ 维持 0/3——payload 页死抽签家族
+
+gate <5.0 秒放行（17:02:50 `quiet after 5s (load=4.47)`，且本轮起日志
+不再有 heredoc 反引号误执行的 `ls/su -c` 报错——commit 08f481c1）。链
+两轮 prepare：第一轮 `payload nonce rv=-1 capture=0` → `payload did not
+land` 重试；第二轮走到 `pipe prepare leaked=... base=...` → **`pipe child
+payload table dead before conv tbl=0 rv=-1; failing prepare`** →
+`pipe-physrw-summary done=0 root=0` → fail path。
+**neutralize FAILED (no pipe child)**（失败的 pipe child 已退出，无人写
+表）→ fd-hold 兜底 `holding fake-fops files alive; reboot before any
+re-run` → CHAIN_EXIT_DONE → host verify 死在 `/product/bin/su:
+inaccessible or not found`（链没 root，overlay 没建，预期）。
+**与 fix72 无关**：child 正常 fork 干活（有 `pipe prepare leaked=` 行），
+链死在 phys 段之前（0 条 win tick/fix72 行）——**fix72 第三次未被检验**。
+**失败家族 = payload 页死抽签**（prepare 期间页被回收，redo2b/redo15
+同族已知命门），非新问题。
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo17_8bf581fd/{chain.log,host.log}`；
+  **fd-hold 残留 → 立即 reboot**；计数维持 **0/3**。
