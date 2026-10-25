@@ -3060,3 +3060,17 @@ owned=1` → physrw `done=1 root=1`（21:42:43 第一遍写全绿：selinux earl
 - 处置：取证 `FAIL_redo29_06972b55/{chain.log,pstore.txt,host.log}`；
   **计数归零 0/3**；新 boot 8cbf97fa（SysRq 重启、fresh 无残留）直接
   起 redo30。
+
+### 新考试轮第 1 轮合格（2026-10-25 redo30, boot 8cbf97fa）→ 计数 1/3——fix75 版首考
+
+gate 5s 放行（22:06:11, load=2.13 静置 18min）→ 链 ~5 分钟一次过：
+`root child proceeding uid=0 euid=0`（fix75 哨兵未触发=正常突围）→
+`root child result done=1 uid_after=0` → `pipe-physrw-summary done=1
+root=1` ×3 → `CHAIN_EXIT_DONE` → `POSTLOCK-RESTORE-OK`（22:11:32，
+restore.log 实锤——host tail 未显示属截断）→ verify 全绿 → **120s+
+boot_id 不变** → **蓝卡「工作中 Built-in」+ 0 超级用户 5 模块 +
+驱动 (35220/6) == 管理器 (35252/6) 无红条 + SELinux 宽容 + 无越狱徽章**
+（截图实拍）。dmesg `install fd for ksu manager(uid=10279)` pid=11010 =
+模块加载窗口 usap64 fork 的当前 app 进程 ✓ 天然正确。
+- 取证 `SUCCESS_redo30_8cbf97fa/{ui.png,chain.log,restore.log,host.log}`。
+- **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
