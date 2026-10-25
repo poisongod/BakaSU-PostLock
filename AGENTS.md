@@ -2905,10 +2905,66 @@ dead tbl=0 rv=-1 queue=1` ×10 重试全败（19:35:54→19:36:29）→
 `ks_neutralize ok=0 verified=0`（**页死写不进清表**）→
 `fd-hold containment`（`fake table close slots are UNCLEARED --
 reboot before any re-run`）→ root=0，CHAIN_EXIT_DONE。
-- **归因**：fix69b pin 3MB 成功但 hit 页不在 conn=4 被 pin 范围
-  （或 pin 后页仍被回收）——win 段页死家族（redo17/redo2b 同型），
-  gate 的 `content=0 fv=-1` 强放行说明 payload 内容从一开始就弱。
+- **归因（订正）**：~~gate 的 `content=0 fv=-1` 强放行说明 payload
+  内容从一开始就弱~~——**错**：成功轮 redo22 同位置同样
+  `content=0 (fv=-1) drain=1`，该值非成败差异（gate 走
+  hit_evidence/k 匹配放行是设计行为）。真实死因与 redo26 同查
+  （见下段考古）：win 段页被 alloc 拿走，pin 覆盖状态当时未定案。
 - 无 panic（bootreason=reboot,shell，boot 不变）；但 **fd-hold 残留
   是明确 reboot 信号**（「safe until reboot」假承诺家族）。
 - 处置：取证 `FAIL_redo25_95ed9d58/{chain.log,host.log}`；立即
   reboot；计数维持 **0/3**。
+
+### 新考试轮第 3 轮失败（2026-10-25 redo26, boot 21269a72）→ 维持 0/3——win 段页死考古收敛 + fix74 判别观测
+
+gate 秒放行 → 第一轮 896 sends 全废（`hit=0`，did not land）→
+第二轮重建 8 TCP 连接仅 **19 sends**（conn0 13 + conn1-6 各 1）→
+`fix38 capture conn=0 send=11 gsend=19 pfn=3221168` →
+`pin splice conn=0 bytes=425984 pipes=7 rounds=3` → route
+attempt=1 success → win enter（19:49:57 `q0=1 nonce=好值
+nr=1 tbl=好值`）→ **19:50:00 表死** → `window table dead
+tbl=0 rv=-1` dump 全 rv=-1 → `set-fail ENOTTY(25)` ×N →
+`ks_neutralize ok=0` → fd-hold 收容，root=0。
+
+**考古收敛（代码级，A/B/C 三假说全否）**：
+- **页死机制定案**：ioctl 槽从好值（19:49:57-58 cfgfs fallback
+  读 `...1051 = ffffffd9327e2434`）→ 0（19:50:00 ENOTTY）——
+  `do_vfs_ioctl` 对 NULL 指针**返回 ENOTTY 不 blr**（0=安全失败
+  vs 垃圾值=redo20/23 panic 是污染两形态）→ cfgfs 唯一读通道死。
+  死亡窗口 = win enter 后 1-3s，**与 pipe child fork 风暴同秒**
+  （`prep=1088 spray=204`，19:49:59-50:00）= alloc 流量源。
+- **kprobe 通道整轮 `kprobe denied`**（回锁 tracefs DAC 拒，已知
+  环境常态，0 条 register-fail 日志的原因）→ ks_fetch64 只剩
+  cfgfs fallback → 页死后全读死、`win dead dump` 全 rv=-1 读不到
+  内容形态（值 0 是未初始化不是读到 0）。
+- **A（victim 不在 pin）否**：425984 = 13×32768 精确 = conn0
+  第二轮全量（hit_i=11 ∈ 0..12）；SIOCINQ=416KB 恰等量；第二轮
+  重建连接无第一轮残留；peek 队首 w1 = 第二轮 base。
+- **B（splice 拷贝不 get_page）否**：δ 考古数据在 frag（head
+  0xE80 < 表起点 0x1000）、回环收端正常路径 frags 共享不拷贝。
+- **C（hold pipes 被 sweep 关闭）否**：fix71 在 19:50:14 打
+  `skipping fd sweep`（sweep 没跑）。
+- **pin 字节/rounds 相关性非因果**：redo22（成功）pin 1.1MB/
+  rounds=4 是 **818 sends 第一轮就过**的大流量轮；redo26 是
+  19 sends 第二轮小流量轮——真差异在流量形态不在 rounds 数。
+- **静态不可判定的最后环节**：victim skb frag 页与 tp 命中页
+  （pfn=3221168）的对应关系——收端拷贝若发生在 pin 之前则 splice
+  永远 pin 不到 victim 页（pin 的是拷贝页），此假说与全部观测相容
+  且静态无法与「pipe 真持有」区分。
+
+**fix74（so `457dc8c4`，三处纯增量，不动现有路径）**：
+- **fix74a**：pin 主窗口后对**其余全部 keep conn 单遍 splice**
+  （不 sleep 等待，数据已到齐）——覆盖 hit_i 异步记账错位到邻
+  conn 的可能；日志 `payload pin extra conns bytes=... pipes=...`。
+- **fix74b**：win tick 内 `SIOCINQ>1` 就 splice 到新 pipe（q=1 的
+  'X' 残留跳过）——覆盖主窗口关闭后晚到的 skb；日志
+  `fix74b late pin N bytes at +Ns`。
+- **fix74c 判别观测**：hold pipe fds 存 static 数组，`tee()` 首个
+  hold pipe（复制引用不消费）dump `buf+0x1050` ioctl 槽——pin 后
+  打 `hold dump pin ...`、win 段每 2s 打 `hold dump wintick ...`，
+  三态判读：**ALIVE（base 死后仍好值）= pin 拿到了另一个页（收端
+  拷贝实锤，splice 永远救不了 victim）** / **ZERO = pipe 从没持有
+  该页** / **DIFF = 有写入者在主动改页**——下一轮页死时此行即
+  定案证据。
+- 处置：取证 `FAIL_redo26_21269a72/{chain.log,host.log}`；判明即
+  reboot（boot 已重启）；计数维持 **0/3**。

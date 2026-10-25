@@ -517,6 +517,7 @@ int ks_watch_frees_events(void);
 void pselect_route_preflight(void);
 int pselect_scrub_slot(int fd);
 int reclaim_recv_fd(void);
+void ks_hold_dump(const char *tag);
 void setup_kernelsnitch(void);
 int kernelsnitch_collisions_ready(void);
 int kernelsnitch_collisions_done(void);

