@@ -225,7 +225,7 @@ settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || l
 # fix61 (2026-10-24): the ksud events run BEFORE the overlay build below,
 # not after.  Measured on-device: ksud post-fs-data umounts our freshly
 # mounted /product/bin overlay (the wrapper+ksud upper vanishes, shell
-# `ls /product/bin/su` falls back to the stock ro partition and gets
+# 'ls /product/bin/su' falls back to the stock ro partition and gets
 # Permission denied) -- so events-after-overlay guarantees a broken su
 # even when nothing panics.  Running events first means their mount
 # churn finishes before our overlay lands.  fix59's gate stays (events x
@@ -245,13 +245,13 @@ if [ ! -x /product/bin/su ]; then
   rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
   # su = compatibility shim, NOT the custom daemon client anymore: on this
   # device /system/bin/su is a kernel-forged KernelPatch fake whose real
-  # file ENOENTs on exec (root-context `su -c` fails outright), which
+  # file ENOENTs on exec (root-context 'su -c' fails outright), which
   # broke module WebUIs (YH_YC panel's "状态读取失败") that hardcode
-  # `su -c`.  Root callers are already root: pass through to sh -c;
+  # 'su -c'.  Root callers are already root: pass through to sh -c;
   # non-root falls back to the real driver's ksud (cp'd into the overlay
   # because /data/adb is 0700 and shell cannot exec it there -- fix57:
   # the old fallback exec'd /system/bin/su which ENOENTs post-relock,
-  # so shell-uid `su -c` failed verify every time).
+  # so shell-uid 'su -c' failed verify every time).
   cat > $TMP/ovl/tmp/upper/su <<'SUW'
 #!/system/bin/sh
 if [ "\$(id -u)" = 0 ]; then
