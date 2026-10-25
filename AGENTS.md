@@ -2560,3 +2560,26 @@ win 段全程 dead=0（+28s 页活）——payload/gate/route/CFI/convert 全过
 
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo12_a0bee093/{chain.log,host.log}`；
   计数维持 **0/3**；reboot 重考（安全失败 + 老规则）。
+
+### 新考试轮第 8 轮安全失败（2026-10-25 redo13, boot 378d2a1d）+ fix70 回滚决策 → 维持 0/3
+
+redo13 = owned=0 **三连**（gate 20min 超时放行 15:08 → root=0 安全退出
+15:13:38，fail path 安全三连：neutralize ok=1 / closed probe fd=90 /
+pipe_prepare_child reaped / CHAIN_EXIT_DONE，无 panic）。同 boot 内链自带
+**3 次 convert 重试也全败**（t29121/t7713/t16045 各 24 波 owned=0）。
+
+**owned=0 三连的确定性对照（回滚依据）**：
+- 三轮数据：`rel=68/68`（handoff 释放健康）、`pre-sweep inuse=0`（起点
+  正确）、wave kill 全收割（sent=reaped=68 werr=0）——**wave mm kill 后
+  mm 永不 kmem_cache_free**（inuse 31-34 恒定，24 波不归 0）；
+- **redo11/12/13 全是 fix70+ 的 so（555ce6ef/9800233b/含 fix70），考试期
+  成功轮（redo5/6/7、exam 3+3）全是 fix69b 无 fix70**——3 个独立 boot
+  确定性相关；
+- fix70 的原始归因（孙进程 exit 踩 fake fd）**已被 redo10 推翻**（执行体
+  = pipe_prepare child 本人 `close(conv_fd)`，fix71 才是真修复），其
+  sweep 对 mm free 的破坏机制虽未建立，但错误修复回归 > 无法解释的三连。
+- **决策 = 回滚 fix70（so `70d7d5b6`，commit af1bb39f），保留 fix71**。
+  下轮判据：owned 恢复（waves≈13-24 内 owned=1）→ 定案 fix70 回归；
+  仍 owned=0 → 排除 fix70，深挖 wave mm 泄漏新根因。
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo13_378d2a1d/{chain.log}`；
+  计数维持 **0/3**；reboot 重考。
