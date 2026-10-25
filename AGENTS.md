@@ -2729,3 +2729,30 @@ manager uid=10279 + wrap 空）→ 蓝卡「工作中 Built-in」无红条
 - 取证 `/tmp/opencode/exam/SUCCESS_redo19_a8f169c3/{ui_top.png,
   chain.log,restore.log,host.log}`。
 - **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
+
+### 新考试轮决胜轮 panic（2026-10-25 redo20, boot f7d51736→9c6d0d87）→ 归零 0/3——fake 表 ioctl 槽污染
+
+gate 15s 放行（17:50:34）→ 链走 route（cfgfs read fd=129 rd=8 成功）→
+pipe child kernelsnitch setup（17:51:07 最后日志行）→ **~17:51-17:52
+panic**（bootreason=`kernel_panic,fatal_exception`）。
+**pstore 栈（315.94s 内核时间）**：
+```
+EC = 0x21: IABT (current EL) at 00000000742cdf60
+pc : 0x742cdf60   lr : do_vfs_ioctl+0x380/0x6a0
+x20 = 0x742cdf60（= pc）   x22 = 0x41007701
+Comm: ks_waiter (PID 16878)
+```
+**机制**：`do_vfs_ioctl` 的 `blr x20`（= `file->f_op->unlocked_ioctl`）
+跳进 **fake 表 ioctl 槽里的垃圾值**；x22 解码 = `_IOW(0x77='w', 0x01,
+256)` = **ASHMEM_SET_NAME** = cfgfs 读序列的 ioctl——链自己发的。
+- **家族归因**：与 redo10（flush 槽 0x78 区污染，crash 定位
+  `close(conv_fd)`）、redo15（flush 槽污染 + child 被杀 exit）**同源**，
+  本次砸中 ioctl 槽——**污染范围不止 0x78 区，任何 blr 槽都可能中招**。
+  污染源仍 = put/refresh 之后有人往表区写（fix67 首次归因「pipe/skb
+  prepare 残留」，但 fix67 只清 0x78..0x97，**ioctl 槽不在清理范围**）。
+- **fix72 第四次未被检验**（死点在 win tick 前），且其 sanitize 只覆盖
+  flush/release——**ioctl 槽是 fix72/71 覆盖面之外的新缺口**；注意
+  ioctl 槽**不能清零**（链自己每次 cfgfs read 都要 blr 它，清零 = blr 0
+  同样 panic），正确方向是「校验 = 期望值，被污染则重写 put 表」。
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo20_f7d51736/{chain.log,
+  pstore.txt,host.log}`；**计数归零 0/3**；boot 9c6d0d87 fresh 直接重考。
