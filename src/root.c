@@ -67,6 +67,9 @@ int spawn_root_child(void) {
     close(root_ready_pipe[0]);
 
     prctl(PR_SET_NAME, "ll_root_child");
+    /* fix75: own process group -- if any external killer signals the
+     * inherited pgid (Athena/o-kill style), the root child is not swept. */
+    setpgid(0, 0);
     pr_info("root child forked pid=%d uid=%d\n", getpid(), getuid());
     char ready = 1;
     SYSCHK(write(root_ready_pipe[1], &ready, sizeof(ready)));
@@ -84,6 +87,17 @@ int spawn_root_child(void) {
     struct timespec spin_t0;
     clock_gettime(CLOCK_MONOTONIC, &spin_t0);
     for (;;) {
+      /* fix75 heartbeat: every iteration stamps the last-alive instant +
+       * the uid this task observes (uid flips to 0 the moment the parent
+       * writes our cred).  The parent prints it on collect timeout. */
+      {
+        struct timespec beat;
+        clock_gettime(CLOCK_MONOTONIC, &beat);
+        atomic_store(&root_shared->beat_ns,
+                     (unsigned long long)beat.tv_sec * 1000000000ULL +
+                         (unsigned long long)beat.tv_nsec);
+        atomic_store(&root_shared->beat_uid, (int)getuid());
+      }
       if (atomic_load(&root_shared->go)) {
         break;
       }
@@ -319,10 +333,23 @@ int collect_root_child(void) {
       }
       fclose(wf);
     }
+    /* fix75: last heartbeat -> death instant + observed uid.  beat age
+     * ~0 means the child died this instant; age ~10s means it died right
+     * after fork (before/while the first-pass writes ran).  beat_uid
+     * reveals whether the parent's cred write had already landed. */
+    unsigned long long beat = atomic_load(&root_shared->beat_ns);
+    int beat_uid = atomic_load(&root_shared->beat_uid);
+    struct timespec now_b;
+    clock_gettime(CLOCK_MONOTONIC, &now_b);
+    unsigned long long now_ns =
+        (unsigned long long)now_b.tv_sec * 1000000000ULL +
+        (unsigned long long)now_b.tv_nsec;
+    unsigned long long beat_age_ms =
+        (beat && now_ns > beat) ? (now_ns - beat) / 1000000ULL : 0;
     pr_warning("root child timeout alive=%d waitpid=%d wst=%x state=%c wchan=%s "
-               "pid=%d go=1\n",
+               "pid=%d go=1 fix75 beat_age=%llums beat_uid=%d\n",
                alive, (int)wret, (unsigned)wst, pstate, wchan,
-               (int)root_child_pid);
+               (int)root_child_pid, beat_age_ms, beat_uid);
     return 0;
   }
 

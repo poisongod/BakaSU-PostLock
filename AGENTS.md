@@ -3020,3 +3020,43 @@ OMK-ROLLED-BACK / driver-already-loaded / Permissive）→ verify 全绿
   （redo27 死亡上下文）本轮未出现，route 一次过。
 - 取证 `SUCCESS_redo28_1669f578/{ui.png,chain.log,restore.log,host.log}`。
 - **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
+
+### 新考试轮第 2 轮失败（2026-10-25 redo29, boot 06972b55）→ 归零 0/3——root child SIGKILL 第三次 + fix75 心跳哨兵
+
+gate 155s 放行（21:39:48, load=4.94）→ 链 route/win 全绿（cfi ok、rv=8/8、
+hold dump ALIVE、win tick +20s dead=0）→ `convert waves=15 taken=14
+owned=1` → physrw `done=1 root=1`（21:42:43 第一遍写全绿：selinux early
+/ seccomp mode=0 / cred uid=0/0 / caps / selinux direct 逐行同构成功轮）
+→ **`root child timeout ... wst=9 state=? wchan=?`（21:42:55）无
+`root child proceeding` 行** → kill switch 熔断 → 安全退出
+（neutralize ok=1 verified=1 + CHAIN_EXIT_DONE，fail path 干净三连）。
+**本轮确定性增量（pstore + 成功轮 redo28 对照，全部工具算/工具查）**：
+- **死亡窗口收窄到秒级**：go-wait 是**纳秒 busy-poll**（root.c:87，
+  go 或 getuid()==0 任一即 break）→ child 若活着必在 go=1（21:42:43
+  写完成）后 <1μs 打 proceeding → 无 proceeding = **child 死于
+  fork(21:42:42) → 写完成(21:42:43) 之间**；report 全未初始化
+  （uid_after=-1 pid=0）证实从未突围。
+- **排除清单（确定性）**：① pstore 全文无 `Kill the process of
+  escalation` → OPLUS_ROOT_CHECK 内核路径未触发；370-400s 窗口无
+  oom/force_sig/lmk 记录 → 内核没参与，纯用户态 SIGKILL；② seccomp
+  `mode=0/0 count=0`（disabled）且两轮 patch 行逐字节相同 → 排除
+  seccomp RET_KILL；③ pgid 杀排除（父线程 t11567 同期活着打日志）；
+  ④ comm 必杀排除（redo28 同 comm `ll_root_child` 存活）。
+- **成功轮对照（redo28 chain.log）**：`root child forked` → **同秒
+  `root child proceeding uid=0 euid=0`** → insmod/coldstart →
+  `done=1`——fork→突围全在微秒级，race 窗口极短；失败轮 child 多活
+  1 秒跨到写窗口内被杀。
+- **4.8 分钟后重启 = 外部 SysRq**：pstore 677.95s `sysrq: Kill All
+  Tasks` → 0.67s `reboot: Restarting system with command ''`——
+  **SysRq 触发的重启**（谁写 sysrq-trigger 未定，非链/非 postlock.sh/
+  非我——源码 grep 无 reboot() 调用、脚本无 reboot 逻辑）；boot
+  reason=cold。链已干净退出 4.8 分钟，与重启无因果。
+- **fix75（so `161c033c`）**：① `root_shared` 加 `beat_ns/beat_uid`，
+  child busy-poll **每圈**盖时间戳+观察到的 uid；collect 超时打印
+  `fix75 beat_age=%llums beat_uid=%d`——beat_age 大=fork 后即死、
+  小=刚死；beat_uid=2000=cred 写前、0=写后 → **下轮再现即把死亡
+  时刻对齐到父的写序列**，确定凶手；② child `setpgid(0,0)` 独立
+  进程组（防 pgid 扫杀，无副作用）。
+- 处置：取证 `FAIL_redo29_06972b55/{chain.log,pstore.txt,host.log}`；
+  **计数归零 0/3**；新 boot 8cbf97fa（SysRq 重启、fresh 无残留）直接
+  起 redo30。

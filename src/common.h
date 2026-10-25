@@ -283,6 +283,13 @@ struct root_report {
 struct root_shared {
   atomic_int go;
   atomic_int done;
+  /* fix75: root child heartbeat written every busy-poll iteration.
+   * On collect timeout the parent prints the last beat (age + uid) to pin
+   * the child's death instant against the parent's write sequence --
+   * the redo7/24/29 SIGKILL (wst=9) happens inside the go-wait with a
+   * silent kernel log, and the beat age is the only remaining witness. */
+  atomic_ullong beat_ns;
+  atomic_int beat_uid;
   atomic_int installer_gate;
   atomic_int installer_pid;
   atomic_int installer_errno;
