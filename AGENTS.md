@@ -3153,3 +3153,55 @@ host 展开、设备变量必须 `\$`；wrapper 段是**第二层 `<<'SUW'`（�
 字面）**，两层语义相反，改路径时第一层写 `$TMP/...`（展开）第二层写
 字面即可。生成物校验法：awk 提取 body + 模拟变量 + `sh -n`（fix76 已
 如此验证，两份 restore 关键行 diff 一致）。
+
+### 新考试轮第 1 轮失败（2026-10-26 redo35, boot 075fb409）→ 维持 0/3——restore 翻转后 kernel:s0 exec 死 + host set -e 死 + fix77 委托架构
+
+**双死因全部确定性定案**（设备侧实验闭环，全部工具实测非推断）：
+
+1. **restore 设备侧：setenforce 1 后 kernel:s0 域丧失 exec**——
+   - 实况：`probing` 行（06:20:58, Permissive）成功 → setenforce 1 翻转成功
+     （enforce 卡在 1 至今）→ 两行 `restore.sh[232]: date/printf: inaccessible
+     or not found` → **静默死**（diag/OK 行全无）→ host 480s 无 marker 超时。
+   - **[232]=fi 之谜定案（mksh 行号实验）**：t4.sh 复刻 if/case 结构实测——
+     **case 分支内 log 调用的报错行号被 mksh 映射到 fi 行**（t4: log 在 12 行
+     报 [15]=fi；restore: case 内 log → 报 [232]=fi，esac=229/else=230/
+     231=else-log/fi=232 完全同构）。失败的 log = case `*)` 分支的 WARN
+     （221 行）。顶层 log 行号无偏移（t3 实验 [8]=调用行）。
+   - **date/printf 全是外部命令**（`type` 实测 = `tracked alias for
+     /system/bin/printf|date`，非内建）→ 翻转后 kernel:s0 exec 全拒
+     （EACCES → "inaccessible or not found"，dontaudit 静默零 avc）。
+     PROBE 的 `$(timeout runcon ...)` exec 失败被 `2>&1` 吞进变量 → case
+     静默走 `*)` → WARN 的 log 失败 rc=127 → **set -e 杀脚本**。
+   - 同进程同域，唯一变量 = enforcing 翻转——probing 前成功 vs 翻转后失败
+     = 确定性因果。
+2. **host 侧：570 行 CUR_MUID 赋值**——`su -c 'cat sysfs参数'` 在 enforcing
+   下 EACCES（shell:s0 读不了该参数文件）→ pipefail 赋值 rc=1 → **set -e
+   静默杀 host**（日志尾 = 那行 Permission denied，无 ERROR/OK）。
+3. **WSL interop 挂掉**：`/proc/sys/fs/binfmt_misc/WSLInterop` 条目消失 →
+   adb.exe ENOEXEC（sh fallback 解析报 `Syntax error: word unexpected`）→
+   **postlock.sh 自动走 `command -v adb` = /usr/bin/adb（Linux adb）**——
+   下轮无需改脚本，只需跑前 `adb connect 192.168.8.10:5555` 确认；轮询脚本
+   必须用 /usr/bin/adb 重写。sudo 要密码无法重注册 binfmt。
+
+**fix77 架构（三权限实测定型，主仓+app 仓镜像已同步 commit）**：
+- **权限实测**：① shell:s0 `setenforce 0/1` 全 Permission denied（无翻转权）
+   → 翻转必须 kernel:s0；② shell:s0 enforcing 下 log()/su 全可用（实验 2）
+   → 翻转后工作必须 shell:s0；③ kernel:s0 setenforce 1 成功（redo35 实证）。
+- **结构**：restore 尾部（Permissive）`trap 'print -r -- 0 >
+   /sys/fs/selinux/enforce' USR1`（mksh print 内建，翻转后仍可写——回退保底）
+   → `runcon u:r:shell:s0 sh "$0" --strict-child &` + `sleep 0.3`（保证
+   transition 在 Permissive 期过）→ `setenforce 1`（kernel:s0 翻转）→
+   `wait`（内建）→ `trap -` → `exit 0`（内建）——**翻转后父零外部命令**。
+- **child（--strict-child 分叉，位于 set -e 之前）**：poll enforce=1
+   （10s 窗）→ `/product/bin/su -c id` 探测（= host verify 等价通道）→
+   OK 打 `SELINUX-STRICT-OK`+`POSTLOCK-RESTORE-OK`；FAIL 打 WARN+diag
+   （labels/temp-ksud/wrapper/avc 四项保留）→ `kill -USR1 $PPID` 请求回退
+   → poll 等 enforce=0 观察 → 打 OK。flip 未观察到（10s 超时）→ WARN+OK。
+- **时序优点**：child 观察到 enforce=1 才打 OK → host 见 marker 时 enforce
+   已稳定为 1，verify 无竞态。
+- host 570 行加 `|| true`（值空只触发设计内的 WARN）。
+- 生成物校验：`bash -n postlock.sh` ✓ + awk 提取 heredoc 段**原样执行**
+  （`$(cat)` 注入法不做二次展开是坑——必须原样嵌入真 heredoc）→ `sh -n` ✓
+   275 行；child 分叉 21 行 < set -e 64 行 ✓；两份 restore diff 空 ✓。
+- **通道备忘**：`/product/bin/su -c id` 在 enforce=1 + shell:s0 实测 uid=0 ✓
+   （fix76 temp ksud 通道）——child 探测预期必过。

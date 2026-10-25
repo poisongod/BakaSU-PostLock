@@ -148,6 +148,58 @@ BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????
 # non-gentle exit drops the tail (redo34's log ended mid "probing" with no
 # WARN/OK line ever reaching disk); stderr is unbuffered, lands instantly.
 log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S)" "\$*" >&2; }
+# --- fix77 (redo35 root cause, measured): the instant 'setenforce 1'
+# flips, kernel:s0 loses exec of every /system/bin/* -- log()'s date and
+# printf both died with "inaccessible or not found" (dontaudit-silent, zero
+# avc), the PROBE assignment swallowed its own exec failure via 2>&1, the
+# case silently took *) and set -e killed the script before any WARN/OK
+# line; the host then timed out its 480s marker.  The flip itself stays
+# with kernel:s0 (only domain with setenforce permission -- measured:
+# shell:s0 = Permission denied), but every post-flip step runs in this
+# shell:s0 child, launched while still Permissive.  shell:s0 keeps exec
+# permission under enforcing (measured: log() works there).  On probe
+# failure the child signals USR1; the parent's trap rewrites selinuxfs with
+# mksh builtin 'print' (no exec possible after the flip) so a failed round
+# never strands the device.  Branch BEFORE 'set -e'.
+if [ "\${1:-}" = "--strict-child" ]; then
+  log "strict-child: waiting for kernel:s0 to flip enforcing"
+  ENF=0
+  i=0
+  while [ \$i -lt 100 ]; do
+    ENF=\$(cat /sys/fs/selinux/enforce 2>/dev/null) || ENF=0
+    [ "\$ENF" = "1" ] && break
+    sleep 0.1
+    i=\$((i + 1))
+  done
+  if [ "\$ENF" != "1" ]; then
+    log "WARN-selinux-strict: flip never observed (enforce=\$ENF after 10s)"
+    log POSTLOCK-RESTORE-OK
+    exit 0
+  fi
+  PROBE=\$(timeout 5 /product/bin/su -c id 2>&1) || true
+  case "\$PROBE" in
+    *uid=0*)
+      log "SELINUX-STRICT-OK enforce=\$ENF probe=\$PROBE"
+      log POSTLOCK-RESTORE-OK ;;
+    *)
+      log "WARN-selinux-strict: shell channel blocked under enforcing: \$PROBE"
+      log "diag labels: \$(ls -Z /product/bin/su $TMP/ksud 2>&1)"
+      log "diag temp-ksud control: \$(echo id | timeout 5 $TMP/ksud debug su 2>&1 | head -2)"
+      log "diag wrapper: \$(timeout 5 /product/bin/su -c id 2>&1 | head -3)"
+      log "diag avc: \$(logcat -d 2>/dev/null | grep 'avc:' | tail -4)"
+      kill -USR1 \$PPID 2>/dev/null || true
+      j=0
+      while [ \$j -lt 50 ]; do
+        RV=\$(cat /sys/fs/selinux/enforce 2>/dev/null) || RV=1
+        [ "\$RV" = "0" ] && break
+        sleep 0.1
+        j=\$((j + 1))
+      done
+      log "strict: revert observed enforce=\$(cat /sys/fs/selinux/enforce 2>/dev/null)"
+      log POSTLOCK-RESTORE-OK ;;
+  esac
+  exit 0
+fi
 log "== restore start \$(date '+%F %T') pid=\$\$ uid=\$(id -u)"
 id
 ls -ld /data /data/local /data/local/temp 2>&1 || true
@@ -340,41 +392,31 @@ fi
 am force-stop $APP || true
 sleep 1
 am start -n $APP/$ACT > /dev/null 2>&1 || true
-# --- SELinux strict end-state (2026-10-25, exam criterion) ---------------
-# Everything above ran as kernel-domain root and does not need
-# Permissive; the terminal state must be Enforcing.  Flip, then probe the
-# shell->su channel exactly the way host verify uses it (shell domain via
-# runcon).  On any failure revert to Permissive + WARN: a blind flip
-# strands the device -- shell has no setenforce permission and avc is
-# dontaudit-silent (measured 2026-10-25 lockout session), so there is no
-# way back once the channel is gone.  Host verify treats enforce=0 as a
-# failed round, so the fallback keeps the device usable without ever
-# faking a pass.
-log "selinux strict: probing shell->su under enforcing"
+# --- SELinux strict end-state (fix77: kernel:s0 flips, shell:s0 works) ----
+# Everything above ran as kernel-domain root while Permissive.  The flip
+# must stay with kernel:s0 (measured: shell:s0 has no setenforce
+# permission), but after the flip kernel:s0 cannot exec anything -- redo35
+# proved it: log()'s date+printf both died "inaccessible or not found" and
+# set -e killed the script before any marker.  So probe and logging run in
+# the shell:s0 child launched just before the flip (the --strict-child
+# branch at the top of this file; transition passes because the launch
+# happens while still Permissive).  USR1 trap = probe-failure revert via
+# builtin 'print' (no exec is possible after the flip); a failed probe must
+# never strand the device with a dead shell channel -- avc is
+# dontaudit-silent and shell cannot flip back on its own.
+log "selinux strict: launching shell:s0 worker, then flipping"
+trap 'print -r -- 0 > /sys/fs/selinux/enforce' USR1
+runcon u:r:shell:s0 sh "\$0" --strict-child &
+CH=\$!
+sleep 0.3
 if setenforce 1 2>/dev/null; then
-  # fix76 (redo34): the trailing '|| true' is load-bearing -- under 'set -e'
-  # a nonzero
-  # assignment rc killed the script right here (wrapper's ksud link failed
-  # -> sh -c rc!=0 -> PROBE assignment rc!=0 -> silent exit, no WARN/OK
-  # line).  timeout guards a hung linker.
-  PROBE=\$(timeout 5 runcon u:r:shell:s0 sh -c '/product/bin/su -c id' 2>&1) || true
-  case "\$PROBE" in
-    *uid=0*)
-      log "SELINUX-STRICT-OK enforce=\$(cat /sys/fs/selinux/enforce) probe=\$PROBE" ;;
-    *)
-      log "WARN-selinux-strict: shell channel blocked under enforcing: \$PROBE"
-      # fix76 diagnostics: labels, temp-ksud control (proves the binary
-      # itself is fine), raw linker error, recent avc.  All time-bounded.
-      log "diag labels: \$(ls -Z /product/bin/su $TMP/ksud 2>&1)"
-      log "diag temp-ksud control: \$(echo id | timeout 5 $TMP/ksud debug su 2>&1 | head -2)"
-      log "diag wrapper: \$(timeout 5 /product/bin/su -c id 2>&1 | head -3)"
-      log "diag avc: \$(logcat -d 2>/dev/null | grep 'avc:' | tail -4)"
-      setenforce 0 2>/dev/null || true ;;
-  esac
+  :
 else
   log "WARN-selinux-strict: setenforce 1 failed"
 fi
-log POSTLOCK-RESTORE-OK
+wait \$CH || true
+trap - USR1
+exit 0
 EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
@@ -567,7 +609,12 @@ ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
   die "legacy libgrant wrap still set — clear it: setprop wrap.$APP \"\""
 fi
-CUR_MUID=$(ab shell "/product/bin/su -c 'cat /sys/module/kernelsu/parameters/ksu_debug_manager_appid'" | tr -d '\r')
+# fix77 (redo35 host death): pipefail made this assignment rc=1 when the
+# param file read EACCES under enforcing (shell:s0 cannot read it) and set
+# -e killed the whole verify silently -- no ERROR, no OK, just "cat:
+# Permission denied" as the last line.  Value-empty only triggers the WARN
+# below, which is the designed handling.
+CUR_MUID=$(ab shell "/product/bin/su -c 'cat /sys/module/kernelsu/parameters/ksu_debug_manager_appid'" | tr -d '\r') || true
 [ "$CUR_MUID" = "$MUID" ] || echo "WARN: manager param=$CUR_MUID, want $MUID (app fd may be missing)"
 echo "OK:"
 echo "  $(ab shell "/product/bin/su -c id" | tr -d '\r')"
