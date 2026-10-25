@@ -2968,3 +2968,39 @@ tbl=0 rv=-1` dump 全 rv=-1 → `set-fail ENOTTY(25)` ×N →
   定案证据。
 - 处置：取证 `FAIL_redo26_21269a72/{chain.log,host.log}`；判明即
   reboot（boot 已重启）；计数维持 **0/3**。
+
+### 新考试轮 route pselect panic 第 3 次（2026-10-25 redo27, boot f3e4a70d→1669f578）→ 维持 0/3——fix74 首考死于 route 前
+
+gate 秒放行（20:51:30 quiet load=4.44）→ **12 轮 `payload did not land`**
+（20:52-20:54，3 分钟 gate 风暴；成功轮 redo22 此处 = **0 轮**）→ 第 13 轮
+`gate pass=1` → fix74a/74c 生效（`payload pin extra conns bytes=2818048
+pipes=43`、`hold dump pin ... slot1050=... want=... ALIVE`）→ route armed
+attempt=1 → **pselect enter 后 panic**（`kernel_panic,fatal_exception`）。
+
+**pstore 签名 = redo16/marathon5b 第 3 次逐点同栈**：
+`Comm: ks_consumer`、`pc=_raw_spin_trylock+0x1c`、`lr=rt_mutex_adjust_prio_chain+0x108`、
+fault 地址 = 链日志 `pselect safe lock` 精确值。
+
+**本轮确定性增量（静态层穷尽）**：
+- **ESR=0x96000006 → DFSC=0x06 = Translation fault level 2**：不是 L3、
+  不是 permission——**safe lock 所在 2MB L2 块整块无页表项**（fault 地址
+  距该块尾 1.4MB，不是页临界）。
+- **三轮地址计算完全一致**（delta = target.h `BSS_LOCK_PAD_OFF=0x2e15d00`
+  恒定；text mod 2MB 恒 0x80000）：redo21 成功 `text=ffffffedfd480000
+  lock=ffffffee00295d00`、redo22 成功 `ffffffe268c80000/ffffffe26ba95d00`、
+  redo27 panic `ffffffee73c80000/ffffffee76a95d00`——**同公式同落点，
+  两成功一 fault**。pad = kernel 文件尾 `0x2E15A00`+0x300、页对齐边界
+  `0x2E16000` 内 0x300 字节。
+- **地址区归属自洽**：image=ffffffee 区（perf 泄漏 text）、内核栈
+  sp=`fffffc027afbc60`（vmalloc）、physmap=ffffff94——safe lock 在
+  image bss 语义正确，**排除 slide/offset 计算错误**。
+- **dirty slot 排除**：设备 `/data/local/tmp/.ks_lock_slots` =
+  `21269a72... 1`（redo26 旧 boot 的 mask）≠ 本 boot f3e4a70d → 校验
+  不匹配忽略，链日志无 `dirty lock slots` 行、attempt=1 未被拒。
+- **上下文唯一显著差异 = 12 轮 did not land 的 3 分钟 gate 风暴**
+  （每轮 sends 896 + drain 8192 页的分配释放风暴）vs redo22 零轮直过。
+  image 尾 2MB 块被内核解映射或页表破坏的 boot 级诱因未定案（候选：
+  free_initmem/init 段解映射边界、内存风暴下内核页表异常）。
+- fix74c 三态观测未及页死时刻（route 前 panic），fix74 待下轮检验。
+- 处置：取证 `FAIL_redo27_f3e4a70d/{chain.log,pstore.txt}`；panic 自动
+  reboot 到 fresh 1669f578 直接重考；计数维持 **0/3**。
