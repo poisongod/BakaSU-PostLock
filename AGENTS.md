@@ -3205,3 +3205,16 @@ host 展开、设备变量必须 `\$`；wrapper 段是**第二层 `<<'SUW'`（�
    275 行；child 分叉 21 行 < set -e 64 行 ✓；两份 restore diff 空 ✓。
 - **通道备忘**：`/product/bin/su -c id` 在 enforce=1 + shell:s0 实测 uid=0 ✓
    （fix76 temp ksud 通道）——child 探测预期必过。
+
+### 新考试轮第 1 轮失败（2026-10-26 redo36, boot 55299088）→ 维持 0/3——链 CFI 抽签失败（fix77 未被检验）
+
+quiet gate 165s（load 4.91）→ 链 ~60s → `fix52 cfi table garbage at open
+(ioctl rv=0 全 0)` → `pselect cfi miss attempt=1/12` → `waiter timeout
+pi_cleanup=0` → `pipe-physrw-summary done=0 root=0` → CHAIN_EXIT_DONE
+**安全退出无 panic**（boot 不变）。payload/CFI 弱抽签家族（已知抽签，
+非代码问题）——**restore 没 fork，fix77 首考未被检验**。host 480s 超时
+→ verify `/product/bin/su: inaccessible or not found`（fresh boot 无
+overlay、链没 root，预期）→ `ERROR: su failed` exit。
+取证 `FAIL_redo36_55299088/{chain.log,host.log}`。**判明即 reboot 重考**。
+通道备忘：Linux adb 全程正常；轮询 `poll_redo36.sh` 判据（ROUND_END 720s）
+工作正常。
