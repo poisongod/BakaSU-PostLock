@@ -2320,9 +2320,12 @@ selinux 1→0 setenforce 0/0）→ CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK →
   `KERNEL_SU_UAPI_VERSION` 5→6 最小 bump 重编**（上游 UAPI 6 是加法变更：
   LOOKUP_SYMBOLS 仅 ksud 用且 stage 旧 ksud 不调、PREINIT flag late-load
   不可达 → 不做 32 commits 全量 merge），新 ko sha `f8bcbb45…` 已入
-  `build/embed/kernelsu.ko`（版本串/vermagic 不变，仍 35220）——**验收放
-  第 2 轮考试：蓝卡 Built-in 且无红条（管理器显示 6==6）**。重编命令与
-  全部坑见文末「kernelsu.ko 重编」节。app 新组件路径
+  `build/embed/kernelsu.ko`（版本串/vermagic 不变，仍 35220）。
+  **→ 第 2 轮考试验收实证修复成功（2026-10-25 10:46，boot 491738f2）**：
+  蓝卡「工作中 Built-in」**且无红条**，驱动 `(35220/6)` == 管理器
+  `(35252/6)`（截图实拍）——热替换路线（rmmod EBUSY：管理器进程持
+  driver fd 且 am kill 杀不掉）未走成，红条验收并入考试轮是正确决策。
+  重编命令与全部坑见文末「kernelsu.ko 重编」节。app 新组件路径
   `org.bakasu.bakasu.ui.MainActivity`（`.ui.MainActivity` 已不存在，am start
   用 monkey 或新路径）。
 
@@ -2337,6 +2340,18 @@ loadavg 虚高源自 D 状态进程而非 CPU——top 690% idle）→ payload g
 reboot`——已知假承诺）。**判明即归零 + 立即 reboot**（reboot 命令超时 = teardown
 fd-hold SIGKILL 预期），取证 `/tmp/opencode/exam/FAIL_redo2_50a2bd5e/`。
 新 boot `ab956984`（reason=reboot,shell）。
+
+**归零后第 1 轮合格（2026-10-25 10:46，boot 491738f2）→ 计数 1/3**：
+UAPI 6 红条修复 ko 首次实战（finitmod 经链 restore 加载）。reboot 后
+load<5 起 postlock → quiet-gate 20min 超时放行（10:35:58，稳态 load 4.3
+<2.0 等不到——与 redo5 同型）→ 链 3 分钟一次过：`pipe physrw done=1
+root=1 kaslr=1 read_ok=1 write_ok=1` → CHAIN_EXIT_DONE →
+`POSTLOCK-RESTORE-OK`（10:39:03，kernelsu Live/daemon pid/wrap 空）→
+7min+ boot_id 不变 → **蓝卡「工作中 Built-in」+ 无红条**——驱动
+`(35220/6)` == 管理器 `(35252/6)`，UAPI 6==6 实拍达成。取证
+`/tmp/opencode/exam/SUCCESS_redo6_491738f2/{ui.png,chain.log,restore.log,
+host_postlock.log}`。下一轮（第 2 轮，计数 1/3）照标准 SOP：reboot →
+load<5 → postlock.sh。
 
 ## 构建资产迁移到工作目录 + kernelsu.ko 重编命令（2026-10-25，UAPI 6）
 
