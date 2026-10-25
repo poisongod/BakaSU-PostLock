@@ -144,7 +144,10 @@ cat > "$RESTORE_LOCAL" <<EOF
 #!/system/bin/sh
 exec >> /data/local/tmp/postlock_restore.log 2>&1
 BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????")
-log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S)" "\$*"; }
+# fix76: log to fd2 -- fd1 (the exec redirect) is fully buffered and a
+# non-gentle exit drops the tail (redo34's log ended mid "probing" with no
+# WARN/OK line ever reaching disk); stderr is unbuffered, lands instantly.
+log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S)" "\$*" >&2; }
 log "== restore start \$(date '+%F %T') pid=\$\$ uid=\$(id -u)"
 id
 ls -ld /data /data/local /data/local/temp 2>&1 || true
@@ -270,12 +273,18 @@ fi
 # fix60: ksud debug su is a pipe-fed root shell (no -c flag: passing -c
 # made clap fail with "unexpected argument '-c'").  Feed the command on
 # stdin; EOF makes the su shell exit, and its rc carries the command's.
+# fix76 (redo34): ksud lives in $TMP (shell_data_file), NOT
+# /product/bin (system_file).  shell-domain exec of system_file is
+# dontaudit-silent denied: mmap(PROT_EXEC) fails inside the linker and
+# surfaces as "can't enable GNU RELRO protection ... Permission denied"
+# with ZERO avc records; the identical binary runs fine from $TMP
+# (measured uid=0 root shell under enforcing 2026-10-25).
 if [ "\$1" = "-c" ]; then
   shift
-  printf '%s\n' "\$*" | /product/bin/ksud debug su
+  printf '%s\n' "\$*" | $TMP/ksud debug su
   exit \$?
 fi
-exec /product/bin/ksud debug su "\$@"
+exec $TMP/ksud debug su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
   if [ -x /data/adb/ksud ]; then
@@ -288,6 +297,15 @@ SUW
   chcon u:object_r:system_file:s0 /product/bin/su /product/bin/ksud 2>/dev/null || true
 else
   log "overlay wrapper already present"
+fi
+# fix76: the wrapper execs ksud from $TMP, not /product/bin -- see the
+# wrapper comment (shell cannot exec system_file, dontaudit-silent).
+# Idempotent: runs even when the overlay branch above was skipped, so a
+# stale overlay from a previous boot still gets its wrapper fed.
+if [ -x /data/adb/ksud ]; then
+  cp -f /data/adb/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
+  chmod 755 $TMP/ksud 2>/dev/null || true
+  chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
 fi
 # --- late-load module stage (2026-10-24) -------------------------------
 # The driver insmods long after boot, so ksud's boot events never fire
@@ -334,12 +352,23 @@ am start -n $APP/$ACT > /dev/null 2>&1 || true
 # faking a pass.
 log "selinux strict: probing shell->su under enforcing"
 if setenforce 1 2>/dev/null; then
-  PROBE=$(runcon u:r:shell:s0 sh -c '/product/bin/su -c id' 2>&1)
-  case "$PROBE" in
+  # fix76 (redo34): the trailing '|| true' is load-bearing -- under 'set -e'
+  # a nonzero
+  # assignment rc killed the script right here (wrapper's ksud link failed
+  # -> sh -c rc!=0 -> PROBE assignment rc!=0 -> silent exit, no WARN/OK
+  # line).  timeout guards a hung linker.
+  PROBE=\$(timeout 5 runcon u:r:shell:s0 sh -c '/product/bin/su -c id' 2>&1) || true
+  case "\$PROBE" in
     *uid=0*)
-      log "SELINUX-STRICT-OK enforce=$(cat /sys/fs/selinux/enforce) probe=$PROBE" ;;
+      log "SELINUX-STRICT-OK enforce=\$(cat /sys/fs/selinux/enforce) probe=\$PROBE" ;;
     *)
-      log "WARN-selinux-strict: shell channel blocked under enforcing: $PROBE"
+      log "WARN-selinux-strict: shell channel blocked under enforcing: \$PROBE"
+      # fix76 diagnostics: labels, temp-ksud control (proves the binary
+      # itself is fine), raw linker error, recent avc.  All time-bounded.
+      log "diag labels: \$(ls -Z /product/bin/su $TMP/ksud 2>&1)"
+      log "diag temp-ksud control: \$(echo id | timeout 5 $TMP/ksud debug su 2>&1 | head -2)"
+      log "diag wrapper: \$(timeout 5 /product/bin/su -c id 2>&1 | head -3)"
+      log "diag avc: \$(logcat -d 2>/dev/null | grep 'avc:' | tail -4)"
       setenforce 0 2>/dev/null || true ;;
   esac
 else
@@ -505,8 +534,11 @@ RESTORE_OK=0
 # three ksud module events (~60s) and bounces zygote (~40s framework
 # restart) -- the old 180s was too tight for that tail.
 for _ in $(seq 1 240); do
-  if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null" \
-     || ab shell "[ -x /product/bin/su ]" 2>/dev/null; then
+  # fix76 (redo34): ONLY the OK line counts.  The old `[ -x /product/bin/su ]`
+  # fallback matched the overlay restore had already mounted while restore
+  # was still running its later steps -- verify raced ahead of the strict
+  # block, read enforce=0 and died (false-positive pass).
+  if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null"; then
     RESTORE_OK=1
     break
   fi
@@ -516,7 +548,7 @@ if [ "$RESTORE_OK" = 1 ]; then
   echo "  restore OK; tail:"
   ab shell "tail -8 /data/local/tmp/postlock_restore.log 2>/dev/null" | sed 's/^/    /' || true
 else
-  echo "WARN: restore marker not seen after 180s"
+  echo "WARN: restore marker not seen after 480s"
   ab shell "cat /data/local/tmp/postlock_restore.log 2>/dev/null" | tail -15 | sed 's/^/    /' || true
   echo "  chain log tail:"
   ab shell "tail -25 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true

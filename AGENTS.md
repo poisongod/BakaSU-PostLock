@@ -3107,3 +3107,49 @@ verify ERROR（`/product/bin/su` 不存在=链没 root，预期）。**无 panic
   SIGKILL，复现时用 fix75 同款心跳/核心 dump 手段定位。
 - 处置：取证 `FAIL_redo32_711b31f9/{chain.log,host.log}`；判明即 reboot；
   **计数归零 0/3**。
+
+### 严格模式验收轮 redo33（合格不计数）+ redo34 失败三根因 + fix76（2026-10-25/26）
+
+**判据变更（用户裁决）**：恢复链改 SELinux 严格模式——验收含
+`enforce=1` 硬判据；**严格判据从 redo34 起算，redo33 及以前的宽容合格
+不计新计数**。redo33（boot 41a9cf53）在旧宽容判据下合格，作废不计。
+改造已双仓 commit（主仓 fc2bb347 / app 仓 31ac4e6）：tmpfs `context=`
+根因修复（overlay upper inode 继承 sb 标签，否则 shell_data_file 下
+enforcing 一翻 shell 就 exec 不了 su——measured dontaudit-silent）+
+chcon 兜底 + strict 块 + host verify `enforce=1` die 判据。
+
+**redo34（boot 70da411b）失败 = 链成功 root=1、死在恢复/验收，三根因
+确定性叠加**（取证 `FAIL_redo34_70da411b/{chain.log,restore.log,host.log}`）：
+1. **host RESTORE-OK 假阳性竞态**：判据 `grep OK行 || [ -x /product/bin/su ]`
+   ——restore 建完 overlay（脚本中段）时 `-x` 即真 → host 提前放行 →
+   verify 抢跑在 strict 块之前读 enforce=0 → die。修复 = **只认 OK 行**。
+2. **restore 死于 PROBE 且丢日志**：`PROBE=$(sh -c 'su -c id')` 下
+   wrapper 的 ksud link 失败 → rc≠0 → **`set -e` 在赋值行杀脚本**
+   （无 WARN/OK 行）；且 log() 走全缓冲 fd1，非正常退出丢尾部——日志
+   断在 `probing...`。修复 = `PROBE=$(...) || true` + `timeout 5` +
+   **log() 改 fd2（stderr 无缓冲即时落盘）**。
+3. **ksud link 失败根因 = 标签不是本体**：`/product/bin/ksud`
+   （system_file，overlay tmpfs）在 shell 域 exec 被拒且 **零 avc**
+   （dontaudit 静默），linker 报 `can't enable GNU RELRO protection ...
+   Permission denied`（mmap PROT_EXEC 拒）；**同一二进制 cp 到
+   `/data/local/temp/ksud`（shell_data_file）→ `ksud 4.2.0-rc3-81
+   (uapi 6)` 正常跑、`debug su` 直接 uid=0**（enforce=1 下实测）。
+   修复 = **wrapper 两处 ksud 路径改 /data/local/temp/ksud** +
+   restore 幂等 cp（/data/adb/ksud → temp，chcon 兜底，overlay 分支
+   跳过时也执行）。
+   - 对照标签：sh=shell_exec / toybox=toolbox_exec /
+     linker64=system_linker_exec / su wrapper=system_file（sh 解释执行
+     只需 read ✓，故 wrapper 本身 shell 可跑，死的是它 exec 的 ksud）。
+   - 锁死态恢复钥匙 = temp ksud（shell 域 `echo id | .../ksud debug su`
+     即 uid=0），不用 reboot 也能自举——但按 fail amplifier 本轮仍判明
+     即 reboot。
+4. **顺手修**：PROBE fail 分支加诊断采集（labels/temp-ksud 对照/link
+   复现/logcat avc）进 log；等待文案 180s→480s。
+
+**fix76 教训（代码级）**：postlock.sh 的 restore 是**展开式 heredoc
+（`<<EOF` 无引号）**——body 里**反引号=命令替换会被 host 执行**
+（注释里写 `` `|| true` `` 直接让 host bash 报语法错）、`$TMP/$APP`
+host 展开、设备变量必须 `\$`；wrapper 段是**第二层 `<<'SUW'`（单引号
+字面）**，两层语义相反，改路径时第一层写 `$TMP/...`（展开）第二层写
+字面即可。生成物校验法：awk 提取 body + 模拟变量 + `sh -n`（fix76 已
+如此验证，两份 restore 关键行 diff 一致）。
