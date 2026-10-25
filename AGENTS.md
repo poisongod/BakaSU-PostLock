@@ -3004,3 +3004,19 @@ fault 地址 = 链日志 `pselect safe lock` 精确值。
 - fix74c 三态观测未及页死时刻（route 前 panic），fix74 待下轮检验。
 - 处置：取证 `FAIL_redo27_f3e4a70d/{chain.log,pstore.txt}`；panic 自动
   reboot 到 fresh 1669f578 直接重考；计数维持 **0/3**。
+
+### 新考试轮第 1 轮合格（2026-10-25 redo28, boot 1669f578）→ 计数 1/3——fix74 版一次过
+
+gate 475s 放行（21:31:20, load=4.62）→ 链 ~50 秒：fix74c
+`hold dump wintick ... ALIVE` 全程页活 → `pipe-physrw-summary done=1
+root=1 kaslr=1` → `CHAIN_EXIT_DONE` → `POSTLOCK-RESTORE-OK`（21:32:14,
+OMK-ROLLED-BACK / driver-already-loaded / Permissive）→ verify 全绿
+（uid=0 + kernelsu Live + daemon + manager uid=10279 + wrap 空）→
+**120s+ boot_id 不变** → **蓝卡「工作中 Built-in」+ 0 超级用户 5 模块 +
+驱动 (35220/6) == 管理器 (35252/6) 无红条 + SELinux 宽容 + 无越狱徽章**
+（截图实拍）。dmesg `install fd for ksu manager(uid=10279)` pid=11172 =
+当前 app 进程 ✓（app 进程时刻天然正确，无需 root kill 干预）。
+- fix74 版 so（457dc8c4）首次合格——12 轮 did not land 的 gate 风暴
+  （redo27 死亡上下文）本轮未出现，route 一次过。
+- 取证 `SUCCESS_redo28_1669f578/{ui.png,chain.log,restore.log,host.log}`。
+- **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
