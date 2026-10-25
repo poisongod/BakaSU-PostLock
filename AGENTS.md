@@ -2685,3 +2685,26 @@ inaccessible or not found`（链没 root，overlay 没建，预期）。
 同族已知命门），非新问题。
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo17_8bf581fd/{chain.log,host.log}`；
   **fd-hold 残留 → 立即 reboot**；计数维持 **0/3**。
+
+### 新考试轮第 1 轮合格（2026-10-25 redo18, boot 37c5d8c9）→ 计数 1/3
+
+gate <5.0 秒放行（17:19:24 `quiet after 5s (load=4.79)`，且本轮起
+heredoc 反引号修复生效——日志无 ls/su 误执行报错，08f481c1）。
+链 payload retry 5 轮（`did not land`×5）后第 6 轮 17:04:23
+`payload gate pass=1 (hit=1 nhit2=1)` + `pin splice conn=0
+bytes=589824 rounds=4` → route attempt=1 → win enter → **root=1**
+（17:20:15 `pipe-physrw-summary done=1 root=1 kaslr=1`）→ restore OK
+（OMK-ROLLED-BACK / driver-already-loaded / Permissive / daemon
+pid=17096 / manager uid=10279 / overlay /product/bin/su 就位）→
+verify 全绿（`uid=0` + kernelsu Live + wrap 空）→ 14 分钟无 reboot →
+**蓝卡「工作中 Built-in」无红条**（驱动 35220/6 == 管理器 35252/6、
+0 超级用户 5 模块、SELinux 宽容，截图实拍）。
+- **注意**：本轮 pin `conn=0 bytes=589824` 与 redo8/9 失败轮同款小
+  pin 模式，但链成功——**「小 pin = 必失败」假说不成立**（redo17 同
+  模式失败、本轮同模式成功，pin 覆盖非成败决定变量）。
+- **轮询判据教训**：detached 触发下 `CHAIN_EXIT_DONE` 不回显 host 日志，
+  轮询 grep 它会永远不触发；成功轮结束标志是 host 日志出现
+  `manual check:` / `OK:` 行——下轮轮询加这两个词。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo18_37c5d8c9/{ui.png,ui_top.png,
+  chain.log,restore.log,host.log}`。
+- **连续计数 1/3**；下一轮 reboot fresh boot 重考。
