@@ -2893,3 +2893,22 @@ kill switch 按设计介入（`self-patch flip disabled (panic path)` +
   511 契约行 ≠ restore 跑了**，验收只认 `POSTLOCK-RESTORE-OK`。
 - 处置：取证 `FAIL_redo24_19ce8d61/{chain.log,host.log}`；判明即
   reboot（root stage dirty 半内核态）；计数维持 **0/3**。
+
+### 新考试轮第 2 轮失败（2026-10-25 redo25, boot 95ed9d58）→ 维持 0/3——win 段页死（pin 后仍死）+ neutralize 写不进 fd-hold 收容
+
+gate 170s 放行（19:35:06, load=4.89）→ payload gate 一次过
+（`pin splice conn=4 bytes=3145728 pipes=48 rounds=3`，但
+`content=0 fv=-1` = drain 强放行）→ win tick +5s `dead=0` →
+**+7s `dead=1`**（页被回收）→ `phys prepare skipped: payload table
+dead tbl=0 rv=-1 queue=1` ×10 重试全败（19:35:54→19:36:29）→
+`cfi fail path payload table dead; skip cfgfs restore` →
+`ks_neutralize ok=0 verified=0`（**页死写不进清表**）→
+`fd-hold containment`（`fake table close slots are UNCLEARED --
+reboot before any re-run`）→ root=0，CHAIN_EXIT_DONE。
+- **归因**：fix69b pin 3MB 成功但 hit 页不在 conn=4 被 pin 范围
+  （或 pin 后页仍被回收）——win 段页死家族（redo17/redo2b 同型），
+  gate 的 `content=0 fv=-1` 强放行说明 payload 内容从一开始就弱。
+- 无 panic（bootreason=reboot,shell，boot 不变）；但 **fd-hold 残留
+  是明确 reboot 信号**（「safe until reboot」假承诺家族）。
+- 处置：取证 `FAIL_redo25_95ed9d58/{chain.log,host.log}`；立即
+  reboot；计数维持 **0/3**。
