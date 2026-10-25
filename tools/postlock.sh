@@ -319,19 +319,21 @@ sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
 
 # --- wait for system quiet ----------------------------------------------
-# 2026-10-24 PM verdict: 5/5 rounds failed (collision panic x2, route
-# ENOTTY x2, ks_owner CPU0 hard-lock x1) ALL launched during the
-# post-boot recovery storm at 1-min load 2.45-4.80, while every morning
-# pass launched at 1.10-1.51.  High load = third-party SLUB/page-cache/
-# fork traffic interfering with exactly the primitives those rounds die
-# on (futex timing, payload-page survival, wave owner slots).  Each boot
-# settles to ~1.4 after several minutes -- WAIT FOR IT.
-step "wait for system quiet (1-min load < 2.0)"
+# 2026-10-24 PM verdict history below, but 2026-10-25 the user verdict
+# "do nothing without value" settled it: this host's steady-state load
+# floor is ~4.5 (787 procs, 11.2G RAM), so <2.0 is only reachable in the
+# first seconds after a cold boot -- every round waited the full 20-min
+# timeout before launching (redo5/redo14 both passed after timeout).
+# load was empirically irrelevant to outcomes (user ruling), and the
+# operational launch line is load<5 (AGENTS).  Threshold raised to <5.0
+# (exact-length edit: -lt 200 -> -lt 500, since li = load*100): gate now
+# passes within seconds and skips only the >5.0 boot storm peak.
+step "wait for system quiet (1-min load < 5.0)"
 quiet=0
 for i in $(seq 1 240); do   # up to 20 min
   l=$(ab shell 'cut -d" " -f1 /proc/loadavg' 2>/dev/null | grep -o '^[0-9][0-9.]*' | head -1)
   li=$(echo "$l" | sed 's/\.//' | tr -cd '0-9')
-  if [ -n "$li" ] && [ "$li" -lt 200 ] 2>/dev/null; then
+  if [ -n "$li" ] && [ "$li" -lt 500 ] 2>/dev/null; then
     info "quiet after $((i*5))s (load=$l) -> GO"
     quiet=1
     break
