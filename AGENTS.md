@@ -2873,3 +2873,23 @@ leak/collision 段窗口。
   到 leak/collision 段。
 - 取证 `FAIL_redo23_aad74be2/{pstore.txt,chain.log,host.log}`。
 - **计数归零 0/3**；新 boot 19ce8d61 已 fresh，直接重考。
+
+### 新考试轮第 1 轮失败（2026-10-25 redo24, boot 19ce8d61）→ 维持 0/3——root child SIGKILL 家族（redo7 同款）+ fail path 全程干净
+
+gate 秒放行（19:20:05, load<5）→ 链 74 秒走完第一遍写（19:21:07
+511 flip 契约 `pipe-physrw-summary done=1 root=1`）→ root child
+forked pid=31678（19:21:06）→ **`root child timeout alive=0 wst=9`**
+（19:21:18，SIGKILL 外部杀；`root child proceeding`=0 = child 从未到
+busy-poll 突围，redo7 同款卡点——疑 ocs patch 抽签未生效，child
+setuid 触发 OPLUS_ROOT_CHECK 被 force_sig，ocsk 此时未加载）→
+kill switch 按设计介入（`self-patch flip disabled (panic path)` +
+`root stage dirty refusing further attempts`）→ 安全退出。
+- **fail path 全程干净（fix71/72 家族持续有效）**：双线程
+  `ks_neutralize ok=1 verified=1`、`misc.fops guard -> 0`、probe fd
+  关闭、pipe_prepare_child reaped、`CHAIN_EXIT_DONE`，boot 未变无
+  panic。
+- postlock verify 报 `/product/bin/su inaccessible` = 链没跑 restore
+  （预期，self 路径被 kill switch 熔断）——**注意区分：链 root=1 的
+  511 契约行 ≠ restore 跑了**，验收只认 `POSTLOCK-RESTORE-OK`。
+- 处置：取证 `FAIL_redo24_19ce8d61/{chain.log,host.log}`；判明即
+  reboot（root stage dirty 半内核态）；计数维持 **0/3**。
