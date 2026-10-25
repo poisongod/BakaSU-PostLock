@@ -2583,3 +2583,22 @@ pipe_prepare_child reaped / CHAIN_EXIT_DONE，无 panic）。同 boot 内链自�
   仍 owned=0 → 排除 fix70，深挖 wave mm 泄漏新根因。
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo13_378d2a1d/{chain.log}`；
   计数维持 **0/3**；reboot 重考。
+
+### 新考试轮第 1 轮合格（2026-10-25 redo14, boot 6cb6402a）→ 计数 1/3——fix70 回滚定案
+
+**fix70 回滚对照成立**：回滚版 so（`70d7d5b6`）首考一次过——
+- gate 20min 超时放行（15:35:19）→ 链 22 分钟 → **root=1**（15:57:38
+  `pipe-physrw-summary done=1 root=1 kaslr=1 base=ffffffe025c80000`）→
+  CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK（OMK-ROLLED-BACK / driver-already-
+  loaded / Permissive / daemon / appid=10279）→ 120s boot 不变 →
+  verify（`/product/bin/su -c id` uid=0、kernelsu+ocsk 双模块、Permissive）→
+  **蓝卡「工作中 Built-in」+ 0 超级用户 5 模块、无红条**（截图实拍）。
+- **owned=0 三连（redo11/12/13）定案 = fix70 回归**：回滚后 convert
+  owned 恢复（root=1 即证据），三轮同型失败的唯一变量就是 fix70 sweep。
+  其破坏 mm free 的机制虽未建立，但错误修复回归 > 无法解释的三连——
+  **教训：修复的归因被后续轮推翻时（redo10 推翻 fix70 归因），该修复本身
+  就是首要嫌疑变量**。
+- fix71 保留（fail path 安全三连实证 + 本轮回滚对照未受影响）。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo14_6cb6402a/{ui.png,chain.log,
+  restore.log,host.log}`。
+- **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
