@@ -2790,3 +2790,40 @@ Comm: ks_waiter (PID 16878)
   完全一致，回归风险极低——fix70 教训对照）。
 - 双向收益：下轮打出 `fix73:` 行 = 污染时刻+前后操作可对照定位写入
   者；没打且链过 = 污染窗口被 <1s 覆盖压掉。
+
+### 新考试轮第 1 轮合格（2026-10-25 redo21, boot 9c6d0d87）→ 计数 1/3——fix73 首考 + 红卡「无驱动」根因定案
+
+gate 5s 放行（18:39:51）→ 链 77 秒一次过：root=1（18:41:08
+`pipe-physrw-summary done=1 root=1 kaslr=1`）→ POSTLOCK-RESTORE-OK
+（18:41:11，Permissive/OMK-ROLLED-BACK/driver-already-loaded）→ verify
+全绿 → **fix73 零输出**（健康路径 1 读 0 写，符合设计）→ 蓝卡「工作中
+Built-in」+ 驱动 (35220/6) == 管理器 (35252/6) 无红条 + SELinux 宽容
+（截图实拍）。取证 `SUCCESS_redo21_9c6d0d87/{ui_top.png,chain.log,
+restore.log,host.log}`。
+
+**红卡「内核上未检测到 KernelSU 驱动程序」根因定案（首轮截图红→修复→蓝）**：
+- **机制**（ReSukiSU 源码，/tmp/opencode/ReSukiSU 重 clone + work/
+  ReSukiSU/kernel）：app 主进程 `scan_driver_fd()` 扫 **/proc/self/fd**
+  找 `[ksu_driver]`（manager cpp `ksu.c:20`），无 fd → ioctl(-1) →
+  `get_info` version=0 → 红卡。fd 唯一装载点 =
+  `ksu_handle_setuid`（hook/setuid_hook.c:177）：**zygote fork 进程
+  setresuid 时判定 `ksu_is_manager_uid(new_uid=10279)` 才
+  `ksu_install_fd()`**（dmesg 特征行
+  `install fd for ksu manager(uid=10279)`）。reboot(magic) 路径
+  （supercall.c:130，kprobe `KSUDBG reboot_pre` ++kp_hits）只被 ksud
+  comm 进程用（kp_hits=5 全来自 ksud CLI），kernel **无**
+  prctl(0xdeadbeef) 处理（grep 零命中）。
+- **本次踩坑**：管理器 17:52 boot 自启（早于链 18:41 模块加载）→
+  fd 装载窗口已过 → 红卡。**shell(uid2000) `kill <uid10279 pid>` =
+  EPERM 静默失败**（pidof 一直返回同一 pid = 没杀掉，曾误判为「已重启
+  仍红」）——**必须 `/product/bin/su -c kill <pid>`（root 通道）**
+  → 杀掉后 monkey 冷启动 → zygote USAP 池 fork 新进程 → dmesg
+  `install fd for ksu manager(uid=10279)` → 蓝卡。
+- **redo19 成功对照**：其 fresh boot 后管理器未自启，monkey 首启发生在
+  模块加载后 → 天然拿到 fd。**验收 SOP 补一条：截图红卡「未检测到驱动」
+  先查 `dmesg | grep 'install fd for ksu manager'` + app 进程启动时刻
+  vs 模块加载时刻，app 老进程 = root kill 后 monkey 冷启动**（精确
+  kill 非 force-stop，管理器不涉考试 gate）。
+- 假绿备忘：postlock.sh verify 的 `daemon pid=17096` = 残留 `su.pid`
+  文件内容（自研 daemon 已退役），三轮同值非进程实况；`WARN: app fd
+  not confirmed` 成功轮同样出现（verify 时机问题，非判据）。
