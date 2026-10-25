@@ -2708,3 +2708,24 @@ verify 全绿（`uid=0` + kernelsu Live + wrap 空）→ 14 分钟无 reboot →
 - 取证 `/tmp/opencode/exam/SUCCESS_redo18_37c5d8c9/{ui.png,ui_top.png,
   chain.log,restore.log,host.log}`。
 - **连续计数 1/3**；下一轮 reboot fresh boot 重考。
+
+### 新考试轮第 2 轮合格（2026-10-25 redo19, boot a8f169c3）→ 计数 2/3
+
+gate <5.0 秒放行（17:39:58 `quiet after 5s (load=4.42)`）→ 链 99 秒
+（trigger 17:39:58 → root 17:41:37 `pipe-physrw-summary done=1
+root=1 kaslr=1 base=ffffffe50c080000`）→ POSTLOCK-RESTORE-OK
+（17:41:41）→ verify 全绿（uid=0 + kernelsu Live + daemon pid=17096 +
+manager uid=10279 + wrap 空）→ 蓝卡「工作中 Built-in」无红条
+（驱动 35220/6 == 管理器 35252/6、0 超级用户 5 模块、SELinux 宽容，
+17:44 截图实拍，boot 稳定）。
+- **疑点解析（勿再误判）**：① `daemon pid=17096` 与 redo18 相同 =
+  fresh boot 间 pid 分配确定性（init 启动序列一致），非旧数据；
+  ② restore 头部 `ls -ld /data/local/temp` mtime 17:20 = temp 跨
+  reboot 保留（已知特性）；③ `driver-already-loaded` = 链 self 路径
+  finitmod 已加载（正常，链成功即加载）；④ `cmd: Can't find service:
+  activity` restore 尾部命令瞬时失败，redo18 同款非异常。
+- **轮询判据**（redo18 教训已生效）：`manual check|FAIL|ERROR` +
+  boot 变化，本轮 80s 即捕获 ROUND_END。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo19_a8f169c3/{ui_top.png,
+  chain.log,restore.log,host.log}`。
+- **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
