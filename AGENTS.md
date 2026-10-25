@@ -2294,6 +2294,33 @@ fix68 版 so（27be27bd）首考通过 = 行为与 fix67 等价的实证。
 - **gate 超时行为维持不改**（postlock.sh:341 仍 still-triggering）——根因
   已被 fix69 针对，load 只影响裸页存活时长的运气成分，pin 后无关紧要。
 
+**fix69 单轮 pin 漏 hit 页 → fix69b 多轮补漏（redo4, boot 786adfaf）**：
+`payload pin splice conn=7 q=3637248 pipes=56 remain=0` 看似全量，但
+q=111×32768 而 hit 是 **send i=111（0-based 第 112 个）**——最后 1 个 send
+滞留发送端（cwnd 尾部）未 ACK，**pin 捡了除 victim 外的所有页**；迟到送达
+的 hit 页随后被 route 消费读干 → 裸页 → 8 秒内被 alloc 清零 → cfi 段
+`SET_NAME ENOTTY`（fake 表 ioctl 槽已 0）→ `fix52 cfi table garbage` →
+root=0。**fix69b**：pin 改多轮（SIOCINQ→splice→200ms，连续 2 轮空队列停，
+上限 5 轮）——rounds=3 抓齐迟到 ACK；`payload pin splice conn=%d bytes=%d
+pipes=%d rounds=%d`。取证 `/tmp/opencode/exam/FAIL_redo4_786adfaf/`。
+
+**新考试轮第 1 轮合格（2026-10-25 09:20，boot 5ff0763d）→ 计数 1/3**：
+quiet-gate **20 分钟超时 still-triggering（load~4 风暴后期）起链**，26 秒
+一次过——fix69b `pin conn=5 bytes=1769472 rounds=3`（hit send=52 在 54
+send 内 ✓）→ cfi rv=8/8 → `win tick +5s dead=0` → **root=1**（uid 2000→0
+selinux 1→0 setenforce 0/0）→ CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK →
+4 分钟 boot_id 不变 → verify `uid=0 + kernelsu Live + daemon + appid=10279`
+→ **蓝卡「工作中 Built-in」**（0 超级用户 5 模块）。**gate 超时风暴期起链
+照样过 = 用户「gate 与失败无关」判断的直接实证**（pin 后 load 不再是变量）。
+取证 `/tmp/opencode/exam/SUCCESS_redo5_5ff0763d/{ui.png,chain.log,restore.log}`。
+- **遗留红条「需要更新内核」（非链问题，待跟进）**：管理器自动升级到
+  **35252/6（UAPI 6）**而驱动 kernelsu.ko = 35220/5（UAPI 5）→ 5≠6 触发
+  版本不匹配红条（历史轮 35237/5 时 UAPI 5==5 无此条）。主状态卡仍是
+  蓝卡 Built-in（真驱动真 store）。跟进二选一：① ReSukiSU 源码重编
+  kernelsu.ko 到 UAPI 6；② 处理 app（降级/等驱动跟上）。app 新组件路径
+  `org.bakasu.bakasu.ui.MainActivity`（`.ui.MainActivity` 已不存在，am start
+  用 monkey 或新路径）。
+
 **新考试轮第 2 轮失败（2026-10-25 07:38，boot 50a2bd5e）→ 计数归零 0/3**：
 quiet-gate 等 1085s（开机风暴 load 13.5→1.99 恰好放行，本轮内存满载 11.3G/11.4G、
 loadavg 虚高源自 D 状态进程而非 CPU——top 690% idle）→ payload gate 一次过
