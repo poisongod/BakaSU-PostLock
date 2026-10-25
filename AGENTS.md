@@ -3074,3 +3074,15 @@ boot_id 不变** → **蓝卡「工作中 Built-in」+ 0 超级用户 5 模块 +
 模块加载窗口 usap64 fork 的当前 app 进程 ✓ 天然正确。
 - 取证 `SUCCESS_redo30_8cbf97fa/{ui.png,chain.log,restore.log,host.log}`。
 - **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
+
+### 新考试轮第 2 轮合格（2026-10-25 redo31, boot dba7f7e2）→ 计数 2/3
+
+gate 190s 放行（22:19:12, load=4.73）→ 链 ~2 分钟一次过：
+`root child result done=1 uid_after=0` → `pipe-physrw-summary done=1
+root=1` ×3 → `CHAIN_EXIT_DONE` → `POSTLOCK-RESTORE-OK`（22:21:17）→
+verify 全绿 → **120s+ boot_id 不变** → **蓝卡「工作中 Built-in」+
+0 超级用户 5 模块 + 驱动 (35220/6) == 管理器 (35252/6) 无红条 +
+SELinux 宽容 + 无越狱徽章**（截图实拍）。dmesg `install fd for ksu
+manager(uid=10279)` pid=27448 = 链 root 窗口 fork 的当前 app 进程 ✓。
+- 取证 `SUCCESS_redo31_dba7f7e2/{ui.png,chain.log,restore.log,host.log}`。
+- **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
