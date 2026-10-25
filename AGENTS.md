@@ -2436,3 +2436,42 @@ reload 到 0 → `blr 0` → IABT → Fatal。**round6/7/8 三种踩雷栈同族
 flush）——fix67 修静态残留，未覆盖并发改写窗口。
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo8_32bd05d0/{chain.log,host.log,
   pstore.txt}`；计数维持 0/3；新 boot 097a5c56 fresh 重考。
+
+### 新考试轮第 4 轮失败（2026-10-25 redo9, boot 097a5c56）→ 维持 0/3——redo8 同栈确定性复现 + fix70 根因修复
+
+gate 18s 放行（load 4.8 起链）→ **trigger 后 60s adb 断** → 新 boot 7521b510
+（bootreason=`kernel_panic,fatal_exception`）。**pstore 与 redo8 完全同栈**：
+`pipe_prepare`（pid 27526 = pipe_prepare child 的风暴孙进程，comm 继承），
+`lr: filp_close+0x54`，`blr 0` → Fatal exception——**两轮确定性复现**。
+链日志尾：`win tick +3s dead=0` → `cfgfs read set-fail fd=66 errno=25` 同秒
+`pipe child prep memfds done`。
+
+**完整确定性因果链（两轮逐行对齐）**：
+1. gate 正常过闸（redo9 `hit_idx=10 k_hit=8 k_true=8`，与 redo6 成功轮同款
+   判据——gate 本身无过闸问题）；
+2. pin 覆盖差异：redo8/9 `pin conn=0 bytes=524288/327680`（成功轮 redo6 是
+   `conn=6/0/7 bytes=1MB/3.5MB/3.6MB`）→ 目标页可能未被 pin；
+3. **pipe_prepare child 的 prepare 风暴内部 fork 短命孙进程**（`clone_memfd`
+   = clone_child + open_memfd + **kill_child**，~1ms live；leak_child 完成
+   `find_collisions` 后 `_exit`）——**这些孙进程继承已 route-landed 的
+   fake-fops fd**（fork 时 fake 表已挂，f_op 指向 payload 页）；
+4. **孙进程 exit → do_exit → exit_files → filp_close 走继承 fake fd 的
+   flush 槽**——页死/被回收（win-dead 家族）时 flush 槽读残留非 0，检查
+   load 与调用 load 之间页被 init_on_alloc 清零 → **`blr 0` → IABT →
+   Fatal exception panic**；
+5. pipe_prepare child 自己的 late sweep（pipe.c:906，prepare 返回后才跑）
+   **管不到 prepare 期间 fork 的孙进程**——sweep 注释「while the payload
+   page is almost certainly still alive」是赌注，孙进程 exit 赌输即炸。
+
+**fix70（本 so `555ce6ef`）**：`child_drop_inherited_fds()`——
+`clone_child`/`clone_leak_child` 子进程在 `child_handoff_memfd` 之后
+（= **fork 时刻**，win enter dead=0 同秒、页可证活着）立即扫关 3..4095 全部
+继承 fd + `g_fops_probe_fd=-1`。fix67 已在活页把 flush/release 清 0 → 此处
+close 命中 cbz 跳过安全；此后孙进程 fd 表干净，**exit 无论何时页死都安全**。
+两个子进程 handoff 后无 fd 需求（pause / futex 扫描均 fd-free）。
+需要 cfgfs 通道的 fork（root child、vp verify）不 sweep，风险维持原状。
+
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo9_097a5c56/{chain.log,pstore.txt}`；
+  计数维持 **0/3**；fix70 so `555ce6ef` 待 fresh boot 实测。
+- 归因方法备忘：pstore 首个异常锚点 `grep -a "Unable to handle\|Kernel panic"`；
+  执行体 pid > pipe_prepare child tid 即风暴孙进程（pid 回绕轮除外）。
