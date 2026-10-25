@@ -2841,3 +2841,35 @@ fix73 零输出 → 蓝卡「工作中 Built-in」+ 驱动 (35220/6) == 管理�
 - 取证 `SUCCESS_redo22_3a009d11/{ui_top.png,chain.log,restore.log,
   host.log}`。
 - **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
+
+### 新考试轮决胜轮 panic（2026-10-25 redo23, boot aad74be2→19ce8d61）→ 归零 0/3——redo20 同栈复现 + fix73 轮询结构性无效
+
+gate 95s 放行（19:12:22, load=4.73）→ trigger 后 ~50s panic
+（`kernel_panic,fatal_exception`）。pstore 完整（262KB，`cat
+/sys/fs/pstore/console-ramoops-0`，ls 报 Permission denied 属正常）：
+```
+行2337 [178.676s] Internal error: Oops: 86000005 [#1]
+Comm: ks_waiter PID 15929 ；lr : do_vfs_ioctl+0x380/0x6a0
+x22 = 0x41007701 (ASHMEM_SET_NAME)
+pc = x20 = 0x00000000693dd100（32 位垃圾值）
+```
+**与 redo20 精确同栈**（同 Comm/同 lr/同 x22/同机制），污染值同为
+32 位字段形态（0x693dd100 vs 0x742cdf60）——fake 表 ioctl 槽污染
+家族第 2 次完整复现（redo20/redo23），且两轮共同点 = pipe child
+leak/collision 段窗口。
+
+**fix73 轮询拦截被实测证伪（结构性，非调参可救）**：
+- fix73/fix72 行 = 0（从没读到坏值）——链日志最后成功读 1051 =
+  好值 `ffffffd971de2434`（19:12:52），随后日志停、~18s 后 panic；
+- **ks_waiter(t15929) 的 cfgfs read 是毫秒级轮询**，污染后它的
+  下一次 `ioctl(SET_NAME)` = 撞针本身——**fix73 的 1s tick 必输
+  频率**；且撞针的 ioctl 就是验槽的通道（鸡生蛋：blr 之前无法用
+  同通道读槽）。
+- **未来修复方向（若同栈第 3 次出现即为主攻）**：在撞针前用
+  **不走 fake 表的物理读通道**（ks_fetch64 的 physmap 直读路径）
+  验 ioctl 槽，并以物理写通道修——即把校验插到 util.c cfgfs
+  read 序列的 ioctl 之前；1s 外部 tick（fix73）保留作纵深但不
+  指望。污染源（写 0x50 槽为 32 位数据者）仍未定案，窗口已收窄
+  到 leak/collision 段。
+- 取证 `FAIL_redo23_aad74be2/{pstore.txt,chain.log,host.log}`。
+- **计数归零 0/3**；新 boot 19ce8d61 已 fresh，直接重考。
