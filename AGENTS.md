@@ -2602,3 +2602,45 @@ pipe_prepare_child reaped / CHAIN_EXIT_DONE，无 panic）。同 boot 内链自�
 - 取证 `/tmp/opencode/exam/SUCCESS_redo14_6cb6402a/{ui.png,chain.log,
   restore.log,host.log}`。
 - **连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
+
+### 新考试轮第 2 轮 panic（2026-10-25 redo15, boot 77b71dd9→5843158d）→ 归零 0/3——fix72 信号阻断+周期 sanitize
+
+gate 20min 超时放行 16:29:03（gate 已改 <5.0，本轮是旧阈值最后一轮）→
+链 40s 速通（prepare storm done → route attempt=1 → win enter q0=1）→
+**win tick +2s（16:29:43）后 ~2s panic**，新 boot 5843158d
+（bootreason=kernel_panic,fatal_exception）。
+
+**pstore 签名 = filp_close 家族第 4 次**：`Comm: pipe_prepare`、
+`pc=0x12`、`x21=0x1000000000000012`（flush 槽污染值 0x12，与 fix67
+记录的 table[0x79]=0x12 残渣同款）、`SP/PC alignment exception`、
+**调用栈 `get_signal → do_group_exit → exit_files → put_files_struct`**
+= **child 被致命信号杀死后 exit 踩 fake fd**（非主动 close——
+fix71 保护点都没到：链日志 0 条 fix71/neutralize/exit tail，
+child 死在 `prepare_pipe_buffer_page_child()` 内部）。
+
+**信号源排查（全部排除/穷尽）**：
+- 无 `Fatal signal` 行 → 排除 SIGSEGV（用户态崩）；
+- 无 lmk/OOM/Athena/o-kill 记录 → 排除系统内存杀的 dmesg 痕迹；
+- 代码 kill 点全审计：`reset_pipe_attempt`(fops.c:2009) 仅 attempt≥2、
+  `exit tail`(main.c:709) 有 pr_info（0 条）、wave kill 有 pid≠0 保护、
+  `kill(old,SIGTERM)`(preload.c) 时序差 41s、PDEATHSIG 需父死（链主
+  win tick 活着）——**无发送者**；
+- `pipe.c:1535` 每秒 waitpid「child DIED」检查没来得及跑（child 死 →
+  exit_files <1ms 即 panic，链主被内核冻结在上一行）。
+- **结论：可捕获信号类（TERM/HUP/ALRM，无发送者记录=静默）或外部
+  不可捕获 SIGKILL，二选一，本轮数据无法区分**（SIGKILL 不留痕）。
+
+**fix72（so `15fea656`）双保险**：
+1. **child 信号阻断**（pipe.c fork 后）：`sigprocmask` block +
+   `signal(SIG_IGN)` 覆盖 TERM/HUP/INT/QUIT/ALRM/PIPE/USR1/USR2/TRAP
+   ——此前 pipe_prepare **没有任何信号处理**（util.c:1674 那组 SIG_IGN
+   是 fd-hold daemon 的，不相干）——若信号是可捕获类即直接修掉；
+2. **win tick 每秒周期 sanitize** flush/release=0 + 读回诊断——污染源
+   （redo10 未定案的 0x78 区写入者）不治但把「不可挡 SIGKILL 撞上污染
+   窗口」从无界压到 <1s；读回非 0 打 `fix72: flush slot poisoned again
+   value=...`——**下轮若见此行 = 污染源现身，value 即取证**。
+- 判据：下轮不炸 + 无 fix72 行 → 可捕获类定案；仍炸且有 poisoned
+  again 行 → SIGKILL 类 + 污染值到手；仍炸无行 → SIGKILL 撞 <1s 缝隙。
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo15_77b71dd9/{chain.log,
+  pstore.txt,host.log}`；计数归零 **0/3**；reboot 重考（gate 新阈值
+  <5.0 本轮起生效）。

