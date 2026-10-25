@@ -3086,3 +3086,24 @@ SELinux 宽容 + 无越狱徽章**（截图实拍）。dmesg `install fd for ksu
 manager(uid=10279)` pid=27448 = 链 root 窗口 fork 的当前 app 进程 ✓。
 - 取证 `SUCCESS_redo31_dba7f7e2/{ui.png,chain.log,restore.log,host.log}`。
 - **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
+
+### 新考试轮决胜轮失败（2026-10-25 redo32, boot 711b31f9）→ 归零 0/3——mm_struct leak 连败 + 链无声死亡
+
+gate 放行 → trigger ~22:29 → **`KernelSnitch mm_struct leak failed`
+连续 5+ 轮**（22:37:11→22:39:06，每轮 8 线程 scan 全 `found=0`）夹
+`prepare_kernel_page retry 14→16/72` → **链 22:39:06 后无声死亡**
+（最后行 `approx_time=7 thr=70`，**无 exit tail / 无 CHAIN_EXIT_DONE /
+无 pr_error / 无 pipe-physrw-summary**）→ host restore 等待超时
+verify ERROR（`/product/bin/su` 不存在=链没 root，预期）。**无 panic**
+（boot 711b31f9 不变）、链死于 **route 之前**（fake fops 未挂=无 dangling
+表家族）、无孤儿子进程。
+**确定性对照（vs 成功轮 redo31 chain.log）**：
+- `post-pile baseline=6 target=7`（失败）vs `baseline=20/21 target=25`
+  （成功）——**collision 堆叠基数差 3 倍**，pile 没堆起来 → leak 必败；
+- 失败轮 22:30:03 有 `payload gate pass=0 ... did not land`（hit=0）+
+  prepare 大量 retry——与 leak 失败同源（kernelsnitch timing 环境异常）。
+- 链死亡性质（无声、无 exit tail）与已知 fail path（必打 exit tail）不同
+  ——嫌疑 = 用户态 crash（kernelsnitch timing 线程 t18081）或外部
+  SIGKILL，复现时用 fix75 同款心跳/核心 dump 手段定位。
+- 处置：取证 `FAIL_redo32_711b31f9/{chain.log,host.log}`；判明即 reboot；
+  **计数归零 0/3**。
