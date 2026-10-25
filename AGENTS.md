@@ -836,13 +836,13 @@ su shell 正常（KsuCli 输出 `Zygisk implement: None` 等业务日志，无 n
   shell `$(cat)` 曾因转义读空）是唯一诊断源（本内核模块 printk/dmesg
   不可达、filp_open 在 finitmod 上下文失败——老 v6b/v24 教训依旧）。
 - **ocsk 编译命令**（host，每次照抄）：
-  `make -C /home/yang1/opencode-work/kout-v15 M=$REPO/tools/ocsk ARCH=arm64
+  `make -C $REPO/work/kout-v15 M=$REPO/tools/ocsk ARCH=arm64
   CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar
   OBJCOPY=llvm-objcopy CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER= modules`
   （PATH 加 NDK clang；kout=5.4.147 勿用，kout-v15=5.4.254 匹配设备；
   `CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER=` 必须置空——Makefile:933
   写死的 `-enable-trivial-auto-var-init-zero...` 是 clang21 移除的 flag；
-  源码树在 /home/yang1/opencode-work/kernsrc/sm6375-v15）。
+  源码树在 $REPO/work/kernsrc/sm6375-v15）。
 
 **安全警告弹窗（v12 已治理，2026-10-19）**：exsystemservice 弹「检测到恶意
 程序…已阻止本次破坏行为」由 `kevent_send_to_user:execve` 上报 libksud.so
@@ -2313,11 +2313,16 @@ selinux 1→0 setenforce 0/0）→ CHAIN_EXIT_DONE → POSTLOCK-RESTORE-OK →
 → **蓝卡「工作中 Built-in」**（0 超级用户 5 模块）。**gate 超时风暴期起链
 照样过 = 用户「gate 与失败无关」判断的直接实证**（pin 后 load 不再是变量）。
 取证 `/tmp/opencode/exam/SUCCESS_redo5_5ff0763d/{ui.png,chain.log,restore.log}`。
-- **遗留红条「需要更新内核」（非链问题，待跟进）**：管理器自动升级到
-  **35252/6（UAPI 6）**而驱动 kernelsu.ko = 35220/5（UAPI 5）→ 5≠6 触发
-  版本不匹配红条（历史轮 35237/5 时 UAPI 5==5 无此条）。主状态卡仍是
-  蓝卡 Built-in（真驱动真 store）。跟进二选一：① ReSukiSU 源码重编
-  kernelsu.ko 到 UAPI 6；② 处理 app（降级/等驱动跟上）。app 新组件路径
+- **遗留红条「需要更新内核」（非链问题）→ 已修待验（2026-10-25，方案①）**：
+  管理器自动升级到 **35252/6（UAPI 6）**而驱动 kernelsu.ko = 35220/5
+  （UAPI 5）→ 5≠6 触发版本不匹配红条（历史轮 35237/5 时 UAPI 5==5 无此条）。
+  主状态卡仍是蓝卡 Built-in（真驱动真 store）。**修复 = `uapi/supercall.h`
+  `KERNEL_SU_UAPI_VERSION` 5→6 最小 bump 重编**（上游 UAPI 6 是加法变更：
+  LOOKUP_SYMBOLS 仅 ksud 用且 stage 旧 ksud 不调、PREINIT flag late-load
+  不可达 → 不做 32 commits 全量 merge），新 ko sha `f8bcbb45…` 已入
+  `build/embed/kernelsu.ko`（版本串/vermagic 不变，仍 35220）——**验收放
+  第 2 轮考试：蓝卡 Built-in 且无红条（管理器显示 6==6）**。重编命令与
+  全部坑见文末「kernelsu.ko 重编」节。app 新组件路径
   `org.bakasu.bakasu.ui.MainActivity`（`.ui.MainActivity` 已不存在，am start
   用 monkey 或新路径）。
 
@@ -2332,3 +2337,46 @@ loadavg 虚高源自 D 状态进程而非 CPU——top 690% idle）→ payload g
 reboot`——已知假承诺）。**判明即归零 + 立即 reboot**（reboot 命令超时 = teardown
 fd-hold SIGKILL 预期），取证 `/tmp/opencode/exam/FAIL_redo2_50a2bd5e/`。
 新 boot `ab956984`（reason=reboot,shell）。
+
+## 构建资产迁移到工作目录 + kernelsu.ko 重编命令（2026-10-25，UAPI 6）
+
+**迁移（用户裁决「所有东西进工作目录」）**：`/home/yang1/opencode-work` 整体
+`mv` 为 `$REPO/work/`（同一文件系统 rename 瞬时；ReSukiSU 24 个 dirty 文件与
+stash、kernsrc 3.1G、kout-v15、clang、vendor 等原样带走）。**坑 = 3 个绝对
+路径 symlink 断链**（mv 后旧前缀消失），已全部改指新路径：
+- `work/vendor` → `kernsrc/md-v15/vendor`（**最关键**：`kernsrc/sm6375-v15/
+  include/linux/sched_assist` 等一串 symlink 经它落地，断链 = mutex.h:85
+  `linux/sched_assist/sync/mutex.h` not found 编译必败）；
+- `work/kout-v15/source` → `kernsrc/sm6375-v15`、`work/kout/source` →
+  `kernsrc/sm6375-a96`。
+排查法：`find $REPO/work -maxdepth 4 -xtype l -lname "/home/yang1/opencode-work/*"`。
+
+**kernelsu.ko 重编（红条 UAPI 6 bump，原命令从未记录过，照此复刻）**：
+```bash
+cd $REPO && export PATH=$PWD/work/clang/bin:$PATH   # 原构建同款 clang 11.0.1
+make -C $REPO/work/kout-v15 M=$REPO/work/ReSukiSU/kernel \
+  CONFIG_KSU=m CONFIG_KSU_TRACEPOINT_HOOK=y CONFIG_KSU_DEBUG=y \
+  ARCH=arm64 CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar \
+  OBJCOPY=llvm-objcopy modules
+# 产物 work/ReSukiSU/kernel/kernelsu.ko → cp build/embed/kernelsu.ko（postlock KO_SRC）
+```
+四个必踩坑（每个都花过一轮排查）：
+1. **`CONFIG_KSU=m` 必传**：kout-v15/.config 无任何 CONFIG_KSU 行（ddk 构建
+   经 `-e` 注入 make 变量而非写 .config），缺则 `obj-$(CONFIG_KSU)` 展开空 →
+   `MODPOST 0 modules` 静默出 0 个模块（rc=0 假成功，.ko 时间戳不变）。
+2. **`CONFIG_KSU_TRACEPOINT_HOOK=y` 必传**：同理 .config/autoconf 均无；
+   缺则 Kbuild 不加 tracepoint hook 的 .o、`ksud_integration.c:170` 报
+   `#error "Unsupported hook type"`（条件链 78/98/119 三分支全不中）。
+   `CONFIG_KSU_DEBUG=y` 对齐原构建（ddk_compatible.mk 全靠 `ifeq ($(CONFIG_X),y)`）。
+3. **不要传 `CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER=`**（AGENTS ocsk 节的
+   「必须置空」是 **NDK clang21** 编 ocsk 的坑）：clang-11 正相反，置空会掐掉
+   Makefile:931 `ifdef` 里的 `-enable-trivial-auto-var-init-zero...` 配对 flag
+   → clang-11 报 `-ftrivial-auto-var-init=zero hasn't been enabled`。
+4. **.o 是 LLVM IR bitcode**（LTO 构建）：`llvm-objdump -d *.o` 报 not
+   recognized——要 dump 用最终 `kernelsu.ko`（ELF）；vermagic/版本串用
+   `strings -a kernelsu.ko` 验。
+
+**UAPI bump 纪律**：`ReSukiSU/uapi/supercall.h` 的 5→6 修改**保持 dirty 不
+commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
+计数 → 版本串 35220→35221 漂移，管理器红条判定复杂化。只 commit 主仓
+`build/embed/kernelsu.ko`（sha `f8bcbb45…`）与文档。
