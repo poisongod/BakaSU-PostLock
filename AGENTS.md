@@ -2827,3 +2827,17 @@ restore.log,host.log}`。
 - 假绿备忘：postlock.sh verify 的 `daemon pid=17096` = 残留 `su.pid`
   文件内容（自研 daemon 已退役），三轮同值非进程实况；`WARN: app fd
   not confirmed` 成功轮同样出现（verify 时机问题，非判据）。
+
+### 新考试轮第 2 轮合格（2026-10-25 redo22, boot 3a009d11）→ 计数 2/3
+
+gate 305s 放行（19:07:16, load=4.98 开机风暴后自然降）→ 链 ~50 秒：
+root=1（19:08:06）→ POSTLOCK-RESTORE-OK（19:08:11）→ verify 全绿 →
+fix73 零输出 → 蓝卡「工作中 Built-in」+ 驱动 (35220/6) == 管理器
+(35252/6) 无红条 + SELinux 宽容（截图实拍）。
+- 本轮 app 时序天然正确：管理器 pid 12270 恰在链 root 窗口 fork
+  （dmesg `install fd for ksu manager(uid=10279)` pid=12270），无需
+  root kill 干预——redo21 SOP（查 app 进程时刻 vs 模块加载）执行后
+  确认可直接截图。
+- 取证 `SUCCESS_redo22_3a009d11/{ui_top.png,chain.log,restore.log,
+  host.log}`。
+- **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮）。
