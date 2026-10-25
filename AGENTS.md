@@ -2395,3 +2395,23 @@ make -C $REPO/work/kout-v15 M=$REPO/work/ReSukiSU/kernel \
 commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
 计数 → 版本串 35220→35221 漂移，管理器红条判定复杂化。只 commit 主仓
 `build/embed/kernelsu.ko`（sha `f8bcbb45…`）与文档。
+
+### 新考试轮第 2 轮失败（2026-10-25 redo7, boot 0636ab86）→ 归零 0/3——root child SIGKILL 家族
+
+quiet-gate 20min 超时放行（11:15:18）→ 链 4 分钟走完第一遍写（selinux early
+1->0 / seccomp ok=1 / 511 契约 summary done=1 root=1 / cred patched / caps
+patched，46 秒内与 redo6 金标准逐行同构）→ **root child fork 后未到
+`root child proceeding`（busy-poll 突围前）被外部 SIGKILL**（collect 超时
+分支只诊断不杀，`wst=9` 实锤外部杀；`go=1` 同秒已设，child 活着必突围）→
+kill switch 按设计介入（root.c:1444-1455 注释 = marathon3 r5 / marathon4 r4
+同款签名）→ `neutralize ok=1 verified=1`、无 fd-hold、CHAIN_EXIT_DONE——
+**安全排雷，pstore 0 panic 锚点**。redo6 同 defer 同代码 child 1 秒走完全套
+赢 race = 抽签变量。后段 cold reboot（bootreason=cold、pstore 无 panic）
+与链残留无关（外部硬重启）。
+- 归因方法备忘：`pipe-physrw-summary` 三个打印点（root.c:259 child / 511
+  flip 契约 / 1520 self）——pid= 非 child pid 即 511 父路径；`root cred
+  patched uid=%u/%u` 是 cred/real_cred 读回（redo7 0/0、redo6 大数字=读回
+  值差异，非 uid 语义）；child 卡点判据 = 有无 `root child proceeding`
+  行（70 行 forked 后的 101 行 pr_info）。
+- 处置：取证 /tmp/opencode/exam/FAIL_redo7_0636ab86/{chain.log,host.log,
+  pstore.txt}；**计数归零 0/3**；boot 32bd05d0 已 fresh 直接重考。
