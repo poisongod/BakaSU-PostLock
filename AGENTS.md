@@ -2415,3 +2415,24 @@ kill switch 按设计介入（root.c:1444-1455 注释 = marathon3 r5 / marathon4
   行（70 行 forked 后的 101 行 pr_info）。
 - 处置：取证 /tmp/opencode/exam/FAIL_redo7_0636ab86/{chain.log,host.log,
   pstore.txt}；**计数归零 0/3**；boot 32bd05d0 已 fresh 直接重考。
+
+### 新考试轮第 3 轮失败（2026-10-25 redo8, boot 32bd05d0）→ 维持 0/3——fail path 并发 close 竞态 panic
+
+gate 18s 快速放行（load 1.76）→ 链走 kernelsnitch/route（win tick +4s
+dead=0）→ 11:53:00 `cfgfs read set-fail errno=25` 后日志中断 → **kernel
+panic**（bootreason=kernel_panic,null）。pstore 完整栈：
+```
+(0)[6588:pipe_prepare] Unable to handle kernel NULL pointer dereference
+EC=0x21 IABT (current EL) at 0000000000000000
+pc : 0x0   lr : filp_close+0x54/0xbc   Comm: pipe_prepare
+Kernel panic - not syncing: Fatal exception
+```
+**确定性根因 = fail path 并发竞态**：`fs/open.c:1170` 的 `if (f_op->flush)
+f_op->flush(...)` 编译后检查 load 与调用 load 分离——`pipe_prepare` 线程
+（t4497，持 cfgfs/probe fd=129）close fd 时，主线程 fail path 正在改写
+fake 表（set-fail 后 guard/neutralize 序列）→ 检查时 flush 非 0、调用时
+reload 到 0 → `blr 0` → IABT → Fatal。**round6/7/8 三种踩雷栈同族**
+（round6 `__fput/module_put`、round7 paging request、redo8 `filp_close`
+flush）——fix67 修静态残留，未覆盖并发改写窗口。
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo8_32bd05d0/{chain.log,host.log,
+  pstore.txt}`；计数维持 0/3；新 boot 097a5c56 fresh 重考。
