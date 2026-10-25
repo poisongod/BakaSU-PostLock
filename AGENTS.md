@@ -2644,3 +2644,25 @@ child 死在 `prepare_pipe_buffer_page_child()` 内部）。
 - 处置：取证 `/tmp/opencode/exam/FAIL_redo15_77b71dd9/{chain.log,
   pstore.txt,host.log}`；计数归零 **0/3**；reboot 重考（gate 新阈值
   <5.0 本轮起生效）。
+
+### 新考试轮第 2 轮 panic（redo16, boot 76b54089→521ba5e9）→ 维持 0/3——route pselect 抽签家族（marathon5b 同款），fix72 未被检验
+
+**gate <5.0 新阈值首次生效：16:54:31 进脚本直接 trigger（0 等待）**
+✓（redo15 是 20min 超时最后一轮）。链 35s 走到 `route pselect enter
+attempt=1`（16:55:06，`simple layout shift=0 wps=5` = fix66 配置正常）
+→ ~40s 后 panic（内核 230.89s），新 boot 521ba5e9。
+
+**pstore = marathon5b 同款栈**：`Comm: ks_consumer`、
+`Unable to handle kernel paging request at ffffffd100a95d00`、
+`pc: _raw_spin_trylock+0x1c`、`lr: rt_mutex_adjust_prio_chain+0x108`、
+x23=ffffffd108a95d00（= 链日志 `pselect safe lock` 地址）——route pselect
+fdset/rt_mutex 布局错位家族。marathon5b 已归档结论不变：**PASS/PANIC 轮
+配置全同（shift=0/slot=0），纯抽签，reboot 重抽**——本轮 fix66 配置与
+PASS 轮逐项一致，无新变量可挖。
+
+**fix72（15fea656）未被检验**：链死在 route 段（win 之前），链日志 0 条
+win tick/fix72 行——信号阻断与周期 sanitize 都没跑到，**既未生效也未
+失效**，下轮走到 win 段才有判定（判据见 redo15 节）。
+
+- 处置：取证 `/tmp/opencode/exam/FAIL_redo16_76b54089/{chain.log,
+  pstore.txt,host.log}`；计数维持 **0/3**；reboot 重考。
