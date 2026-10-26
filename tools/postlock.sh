@@ -166,30 +166,34 @@ log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S 2>/dev/null || echo 
 # mksh builtin 'print' (no exec possible after the flip) so a failed round
 # never strands the device.  Branch BEFORE 'set -e'.
 if [ "\${1:-}" = "--strict-child" ]; then
-  # fix79: the runcon-forked child (redo42: 101 Segmentation faults, one per
-  # forked external command) inherited the restore parent's environment --
-  # adb-shell reruns of the same script produced ZERO segfaults, so drop any
-  # residual LD_PRELOAD (the chain's preload.so constructor would otherwise
-  # rerun inside every forked sleep/probe) and print it as evidence first.
+  # fix80 (redo43: 3rd consecutive native child death -- 64 segfaults after
+  # poll i=0, no i=10 print, silent exit): the runcon-forked child's forked
+  # externals die with Segmentation fault while the IDENTICAL script runs
+  # clean from adb shell (measured: loop/sleep/su all rc=0 there).
+  # LD_PRELOAD measured empty in fix79, so dump the FULL environment
+  # (builtin export -p, zero forks) and the SELinux context (builtin read
+  # on /proc/self/attr/current) as death-row evidence before anything else.
   print -r -- "strict-child env LD_PRELOAD=[\$LD_PRELOAD]" >&2
+  CTX=unknown
+  read CTX < /proc/self/attr/current 2>/dev/null || :
+  print -r -- "strict-child context=[\$CTX]" >&2
+  export -p >&2
   unset LD_PRELOAD
   log "strict-child: waiting for kernel:s0 to flip enforcing"
   ENF=0
   i=0
-  while [ \$i -lt 100 ]; do
-    # fix78: builtin read instead of \$(cat ...) -- zero forks in the flip
-    # window (redo39's original child burned 202 segfaults here; each loop
-    # iteration forked cat+sleep, and a crashing cat left ENF=0 forever).
-    # fix79: read on selinuxfs returns rc=1 even on SUCCESS (the enforce
-    # file has no trailing newline -> read reports EOF), so the old
-    # '|| ENF=0' fallback overwrote the value it had just read ("1" -> 0,
-    # measured: read=[1] rc=1).  ENF is pre-seeded above; '|| :' discards
-    # the status without touching the variable.
+  # fix80: fork-free busy-wait replaces sleep (measured on-device: 600
+  # read-rounds = 81ms -> 10000 rounds ~= 1.3s, well past the 0.3s flip;
+  # the enforce read IS the poll).  Every loop fork is now gone: a
+  # segfault inside this loop can only be the shell itself, and the
+  # print trail (every 2000 rounds) pins the death point.
+  while [ \$i -lt 10000 ]; do
+    # fix78/79: builtin read, status never overwrites the value (selinuxfs
+    # enforce has no trailing newline -> read reports rc=1 on SUCCESS).
     ENF=0
     read ENF < /sys/fs/selinux/enforce 2>/dev/null || :
     [ "\$ENF" = "1" ] && break
-    [ \$((i % 10)) -eq 0 ] && print -r -- "strict-child poll i=\$i en=\$ENF" >&2
-    sleep 0.1 || true
+    [ \$((i % 2000)) -eq 0 ] && print -r -- "strict-child poll i=\$i en=\$ENF" >&2
     i=\$((i + 1))
   done
   if [ "\$ENF" != "1" ]; then
@@ -198,7 +202,10 @@ if [ "\${1:-}" = "--strict-child" ]; then
     exit 0
   fi
   log "strict-child: probing su under enforcing"
-  PROBE=\$(timeout 5 /product/bin/su -c id 2>&1) || true
+  # fix80: probe under a scrubbed environment (measured: env -i PATH=...
+  # su -c id -> uid=0 rc=0 from shell:s0 while enforcing).  If the child's
+  # inherited env is what corrupts forked externals, this path survives it.
+  PROBE=\$(env -i PATH=/product/bin:/system/bin:/system/xbin:/vendor/bin timeout 5 /product/bin/su -c id 2>&1) || true
   log "strict-child: probe done"
   case "\$PROBE" in
     *uid=0*)
@@ -212,12 +219,12 @@ if [ "\${1:-}" = "--strict-child" ]; then
       log "diag avc: \$(logcat -d 2>/dev/null | grep 'avc:' | tail -4)"
       kill -USR1 \$PPID 2>/dev/null || true
       j=0
-      while [ \$j -lt 50 ]; do
+      # fix80: fork-free busy-wait (5000 read-rounds ~= 0.7s) -- no sleep.
+      while [ \$j -lt 5000 ]; do
         RV=1
         # fix79: same read-status trap as above -- never overwrite the value.
         read RV < /sys/fs/selinux/enforce 2>/dev/null || :
         [ "\$RV" = "0" ] && break
-        sleep 0.1 || true
         j=\$((j + 1))
       done
       RVX=?
