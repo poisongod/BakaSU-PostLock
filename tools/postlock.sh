@@ -166,6 +166,13 @@ log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S 2>/dev/null || echo 
 # mksh builtin 'print' (no exec possible after the flip) so a failed round
 # never strands the device.  Branch BEFORE 'set -e'.
 if [ "\${1:-}" = "--strict-child" ]; then
+  # fix79: the runcon-forked child (redo42: 101 Segmentation faults, one per
+  # forked external command) inherited the restore parent's environment --
+  # adb-shell reruns of the same script produced ZERO segfaults, so drop any
+  # residual LD_PRELOAD (the chain's preload.so constructor would otherwise
+  # rerun inside every forked sleep/probe) and print it as evidence first.
+  print -r -- "strict-child env LD_PRELOAD=[\$LD_PRELOAD]" >&2
+  unset LD_PRELOAD
   log "strict-child: waiting for kernel:s0 to flip enforcing"
   ENF=0
   i=0
@@ -173,8 +180,13 @@ if [ "\${1:-}" = "--strict-child" ]; then
     # fix78: builtin read instead of \$(cat ...) -- zero forks in the flip
     # window (redo39's original child burned 202 segfaults here; each loop
     # iteration forked cat+sleep, and a crashing cat left ENF=0 forever).
+    # fix79: read on selinuxfs returns rc=1 even on SUCCESS (the enforce
+    # file has no trailing newline -> read reports EOF), so the old
+    # '|| ENF=0' fallback overwrote the value it had just read ("1" -> 0,
+    # measured: read=[1] rc=1).  ENF is pre-seeded above; '|| :' discards
+    # the status without touching the variable.
     ENF=0
-    read ENF < /sys/fs/selinux/enforce 2>/dev/null || ENF=0
+    read ENF < /sys/fs/selinux/enforce 2>/dev/null || :
     [ "\$ENF" = "1" ] && break
     [ \$((i % 10)) -eq 0 ] && print -r -- "strict-child poll i=\$i en=\$ENF" >&2
     sleep 0.1 || true
@@ -185,7 +197,9 @@ if [ "\${1:-}" = "--strict-child" ]; then
     log POSTLOCK-RESTORE-OK
     exit 0
   fi
+  log "strict-child: probing su under enforcing"
   PROBE=\$(timeout 5 /product/bin/su -c id 2>&1) || true
+  log "strict-child: probe done"
   case "\$PROBE" in
     *uid=0*)
       log "SELINUX-STRICT-OK enforce=\$ENF probe=\$PROBE"
@@ -200,13 +214,14 @@ if [ "\${1:-}" = "--strict-child" ]; then
       j=0
       while [ \$j -lt 50 ]; do
         RV=1
-        read RV < /sys/fs/selinux/enforce 2>/dev/null || RV=1
+        # fix79: same read-status trap as above -- never overwrite the value.
+        read RV < /sys/fs/selinux/enforce 2>/dev/null || :
         [ "\$RV" = "0" ] && break
         sleep 0.1 || true
         j=\$((j + 1))
       done
       RVX=?
-      read RVX < /sys/fs/selinux/enforce 2>/dev/null || RVX=?
+      read RVX < /sys/fs/selinux/enforce 2>/dev/null || :
       log "strict: revert observed enforce=\$RVX"
       log POSTLOCK-RESTORE-OK ;;
   esac
