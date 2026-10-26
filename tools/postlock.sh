@@ -147,7 +147,11 @@ BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????
 # fix76: log to fd2 -- fd1 (the exec redirect) is fully buffered and a
 # non-gentle exit drops the tail (redo34's log ended mid "probing" with no
 # WARN/OK line ever reaching disk); stderr is unbuffered, lands instantly.
-log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S)" "\$*" >&2; }
+# fix78: date guarded -- in redo39 the original child died in the flip
+# window with 202x "Segmentation fault" and zero log lines (its log()'s
+# date was the only unprotected exec left after the flip); a failing date
+# must degrade to '???:???' instead of taking the whole log call down.
+log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S 2>/dev/null || echo '???:???')" "\$*" >&2; }
 # --- fix77 (redo35 root cause, measured): the instant 'setenforce 1'
 # flips, kernel:s0 loses exec of every /system/bin/* -- log()'s date and
 # printf both died with "inaccessible or not found" (dontaudit-silent, zero
@@ -166,9 +170,14 @@ if [ "\${1:-}" = "--strict-child" ]; then
   ENF=0
   i=0
   while [ \$i -lt 100 ]; do
-    ENF=\$(cat /sys/fs/selinux/enforce 2>/dev/null) || ENF=0
+    # fix78: builtin read instead of \$(cat ...) -- zero forks in the flip
+    # window (redo39's original child burned 202 segfaults here; each loop
+    # iteration forked cat+sleep, and a crashing cat left ENF=0 forever).
+    ENF=0
+    read ENF < /sys/fs/selinux/enforce 2>/dev/null || ENF=0
     [ "\$ENF" = "1" ] && break
-    sleep 0.1
+    [ \$((i % 10)) -eq 0 ] && print -r -- "strict-child poll i=\$i en=\$ENF" >&2
+    sleep 0.1 || true
     i=\$((i + 1))
   done
   if [ "\$ENF" != "1" ]; then
@@ -190,12 +199,15 @@ if [ "\${1:-}" = "--strict-child" ]; then
       kill -USR1 \$PPID 2>/dev/null || true
       j=0
       while [ \$j -lt 50 ]; do
-        RV=\$(cat /sys/fs/selinux/enforce 2>/dev/null) || RV=1
+        RV=1
+        read RV < /sys/fs/selinux/enforce 2>/dev/null || RV=1
         [ "\$RV" = "0" ] && break
-        sleep 0.1
+        sleep 0.1 || true
         j=\$((j + 1))
       done
-      log "strict: revert observed enforce=\$(cat /sys/fs/selinux/enforce 2>/dev/null)"
+      RVX=?
+      read RVX < /sys/fs/selinux/enforce 2>/dev/null || RVX=?
+      log "strict: revert observed enforce=\$RVX"
       log POSTLOCK-RESTORE-OK ;;
   esac
   exit 0
@@ -209,7 +221,7 @@ set -e
 # clear) before anything below restarts processes: the zygote bounce
 # kills every app-uid process, and in exam-2 mode the chain IS an
 # app-uid process -- killing it mid-neutralize leaves a dangling fake
-# fops table (third-party misc open -> panic).  $PPID snapshot is the
+# fops table (third-party misc open -> panic).  \$PPID snapshot is the
 # chain pid (coldstart fork); 120s cap for manual reruns where the
 # parent never goes away.
 CHAIN_PID=\$PPID
