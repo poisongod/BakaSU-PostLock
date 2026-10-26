@@ -3366,6 +3366,22 @@ bootreason=`cold`（pstore 全文无 panic 锚点）。SIGKILL 来源排查：�
 取证 `FAIL_redo48_3ee82d94/{pstore_head.txt,chain.log,host.log,verdict.txt}`，
 commit `dc90fa92`。
 
+**root child SIGKILL 家族归因定案（2026-10-27，用户确认 + pstore 时序铁证）**：
+**child SIGKILL = 设备重启的 shutdown 序列进程清理，链是受害者**——不是被针对
+杀。redo48 时序链（pstore 内核时间反推墙上时刻，工具计算）：shutdown 请求
+≤06:31:31.5 发出（无 printk 窗口，655-661s 干净）→ 链 fork child @06:31:32.0
+→ child 被杀 @06:31:32.2 → `shutdown_detect: phase systemserver` 日志
+@06:31:32.7（phase 推进需数百 ms ⇒ 请求必在 fork 之前）→ init oplus_reboot
+@06:31:39 → 676.35s reboot 完成；链 CHAIN_EXIT_DONE @06:31:45 是在系统关机
+流程里安全退出的。**用户确认 redo29（SysRq）/redo44（长按 cold）/redo48（正常
+shutdown）三轮重启全部是用户手动操作**。redo44 时序吻合长按窗口（child 死
+13s 后 boot）；redo29 child 死早于重启 4.8 分钟（弱关联，独立抽签可能仍在）。
+redo7/24 轮无外部重启记录（redo24 的 reboot 是 host 判明后的主动操作），
+两轮 child 死因未定（外部无痕 SIGKILL）。**策略含义**：① 链触发后 root 阶段
+（trigger + 60-90s）撞上任何 shutdown = 必败，但 kill switch 已证安全
+（neutralize ok + 无 panic 残留爆炸 ×3）；② 考试轮期间设备需 3-5 分钟无人
+操作窗口，用户应等轮次结束（HOST-EXIT/轮询报告）再动设备。
+
 ### 新考试轮第 5 轮 panic（2026-10-27 redo46, boot 8f14b54c→e3d24a66）→ 维持 0/3——运行中改脚本事故 + fake 表槽污染家族，fix81 未检验
 
 **事故 1（host 侧，自造）**：第一发 postlock.sh 死于 `行 415: ep: 未找到
