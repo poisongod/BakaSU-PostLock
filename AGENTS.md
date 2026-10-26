@@ -3347,6 +3347,26 @@ restore.log（自动化非人工）。生成物 round-trip（postlock.sh heredoc
 - **计数维持 0/3**；fix81 下轮首考（redo46 = 判据：双 OK 原生 + 自动
   probe append 行 + enforce=1 + 蓝卡）。
 
+### 新考试轮第 5 轮 panic（2026-10-27 redo46, boot 8f14b54c→e3d24a66）→ 维持 0/3——运行中改脚本事故 + fake 表槽污染家族，fix81 未检验
+
+**事故 1（host 侧，自造）**：第一发 postlock.sh 死于 `行 415: ep: 未找到
+命令`——**我在脚本运行中用 python 替换了它的 heredoc 段**（删 ~3.2KB），
+bash 流式读取的字节 offset 从此错位 → 读到截断片段。**铁律：绝不编辑
+运行中的 bash 脚本**（改完必须重启进程）。当轮链未触发 boot 干净，立即
+重发起。
+**事故 2（链侧）**：重发 gate 5s 放行 → 06:02:53 trigger → **107s 后
+BOOT-CHANGED + error: closed** → 新 boot `kernel_panic,fatal_exception`。
+- pstore：`Internal error: SP/PC alignment exception @300.048s`、
+  `Comm: ks_waiter`（route 线程）、`pc=0xffffffffffffffff`（blr 进垃圾
+  fake 表槽）——**redo20/23 fake 表槽污染家族**；fix73 的 1s tick 对
+  ks_waiter 毫秒级 cfgfs 轮询必输（redo23 已记录的结构性无力，「撞针前
+  物理读通道验槽」方向仍未实现）。
+- 链尾：win tick +3s dead=0 → kernelsnitch setup → 06:03:39 后静默。
+  **restore.log 不存在（trigger 前被 rm，restore 没 fork）→ fix81 本轮
+  完全未被检验**（首考机会被 panic 吃掉）。
+- 处置：取证 `FAIL_redo46_8f14b54c/{pstore.txt,chain_tail.txt,host.log,
+  verdict.txt}`；计数维持 **0/3**；reboot 重考。
+
 ### 新考试轮第 3 轮失败（2026-10-26 redo43, boot 58b5c5a0）→ 归零 0/3——strict-child 三连死 + 判定标准严格执行
 
 gate 1105s（load 15→4.94，开机风暴长）→ 链 20:31:34 触发 → **root=1**
