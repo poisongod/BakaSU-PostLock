@@ -3347,6 +3347,25 @@ restore.log（自动化非人工）。生成物 round-trip（postlock.sh heredoc
 - **计数维持 0/3**；fix81 下轮首考（redo46 = 判据：双 OK 原生 + 自动
   probe append 行 + enforce=1 + 蓝卡）。
 
+### 新考试轮第 4 轮失败（2026-10-27 redo48, boot 3ee82d94→12bbc000 init reboot）→ 维持 0/3——root child SIGKILL 第 5 次，fix81 三连未检验
+
+gate 525s（load=4.99 惊险过）→ trigger 06:30:25 → payload/route/win/cfi 全过 →
+root 写序列正常（`selinux direct write ok=1 1->0`）→ **`root child forked
+pid=2604` @06:31:32 后 ~0.2s 被 SIGKILL**（fix75 心跳 `beat_age=12824ms
+beat_uid=2000` cred 写前、wst=9、proceeding=0，redo44 完全同型）→ 13s collect
+超时 → kill switch 按设计介入（`self-patch flip disabled (panic path)`）→
+**链安全退出**（neutralize ok=1 verified=1 + CHAIN_EXIT_DONE @06:31:45）→
+1 秒后 **init 主动 reboot**（pstore 676.35s `reboot: Restarting system with
+command ''` 正常 shutdown 序列，非 panic、非自旋）——排除链源码/trigger.sh/
+postlock.sh（grep 均无 reboot 调用）→ 来源 = OPPO rescue/用户，与链无因果。
+restore.log 不存在（root=0 没 fork restore）→ **fix81 连续第三轮未检验**
+（redo46 panic / redo47 payload 死 / redo48 root child SIGKILL 三连吃掉首考）。
+bootreason=`cold`（pstore 全文无 panic 锚点）。SIGKILL 来源排查：链内无 kill
+调用、pstore 无 oom/lmk、fix72 已阻断可捕获信号仍 wst=9 → 外部不可挡 SIGKILL
+无直接证据；同 so 有成有败（redo30/31 成功）→ 抽签家族，归 fail amplifier。
+取证 `FAIL_redo48_3ee82d94/{pstore_head.txt,chain.log,host.log,verdict.txt}`，
+commit `dc90fa92`。
+
 ### 新考试轮第 5 轮 panic（2026-10-27 redo46, boot 8f14b54c→e3d24a66）→ 维持 0/3——运行中改脚本事故 + fake 表槽污染家族，fix81 未检验
 
 **事故 1（host 侧，自造）**：第一发 postlock.sh 死于 `行 415: ep: 未找到
