@@ -372,7 +372,7 @@ i=0
 while [ \$i -lt 5000 ]; do
   ENF=0
   read ENF < /sys/fs/selinux/enforce 2>/dev/null || :
-  [ "\$ENF" = "1" ] && break
+  if [ "\$ENF" = "1" ]; then break; fi
   i=\$((i + 1))
 done
 if [ "\$ENF" = "1" ]; then
