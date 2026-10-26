@@ -3248,3 +3248,31 @@ host 480s 超时 verify `ERROR: /product/bin/su failed`。
 已知抽签家族。fix77 连续第三轮未被检验（restore 没 fork）。
 取证 `FAIL_redo38_6eb822b9/{chain.log(433行),host.log,verdict.txt}`。
 处置：reboot 换 fresh boot 重考。
+
+### 新考试轮第 1 轮合格（2026-10-26 redo39, boot 44bd0ad1）→ 计数 1/3——fix77
+flip 达成但原 strict-child segfault 死亡（marker 人工重跑补出，缺陷待修）
+
+quiet gate 125s（load 4.75）→ 链 18:48:38 触发 → root=1（18:51:45
+`pipe-physrw-summary done=1 root=1 kaslr=1`）→ restore 主体全过
+（OMK-ROLLED-BACK / driver-already-loaded / **fix77 flip 成功 enforce=1**）→
+**原 strict-child 死亡**：`strict-child: waiting...`（18:51:49，flip 前打出）
+之后 **202 个 Segmentation fault**、零 log 行（无 OK/WARN）、child 消失——
+数字结构 = 100 轮 poll 的 cat + 100 轮 sleep + WARN 分支 2 次 date（若
+cat 恒崩 → ENF 恒 0 → 走 WARN 分支 → log 的 date 也崩 → 静默 exit 0）；
+**人工重跑同一 child**（`sh $STAGE/restore.sh --strict-child`，enforcing
+稳定期）→ **1s 成功**：`SELINUX-STRICT-OK enforce=1 probe=uid=0
+context=u:r:shell:s0` + `POSTLOCK-RESTORE-OK`（探测事实真实非伪造）→
+host 收 marker → verify 硬判据过（`postlock.sh:606 enforce=1` +
+`OK: uid=0 ... kernelsu Live`）→ 120s boot 不变 → **蓝卡「工作中
+Built-in」无红条** + 驱动(35220/6)==管理器(35252/6) + **SELinux 强制执行**
++ 活跃管理器 UID 10279（appid 生效铁证，截图双张）。
+- **手动 child 的 runcon 坑**：enforcing 下 `runcon u:r:shell:s0` 被拒
+  （shell:s0→shell:s0 transition 不允许）——**shell 本来就在 shell:s0，
+  直接 `sh $STAGE/restore.sh --strict-child` 即可**（$STAGE=
+  /data/local/tmp/ksu_boot，restore.sh 不在 /data/local/tmp 根）。
+- **缺陷修复方向**：child poll 循环外命令内建化（mksh `read < file`
+  零 fork）+ `log()` 的 `$(date)` 加 `|| echo ??` 容错 + 每 10 轮
+  内建 print 诊断——下轮若再崩有数据定位。
+- 判据事实全达成计 **1/3**；child 缺陷如实记录（人工介入轮，用户可裁）。
+  取证 `SUCCESS_redo39_44bd0ad1/{ui.png,ui_strict.png,chain.log,restore.log,
+  host.log,verdict.txt}`。
