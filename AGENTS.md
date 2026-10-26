@@ -3234,3 +3234,17 @@ pstore 11h 后已轮转读空；chain.log 跨 reboot 保留已归档
 `FAIL_redo37_4bebbf4e/chain.log`（2477 行）。
 **fix77 连续第二轮未被检验**（restore 没 fork）。host 被用户暂停指令
 杀掉（verify 段未跑）。处置：reboot 换 fresh boot 重考。
+
+### 新考试轮第 2 轮失败（2026-10-26 redo38, boot 6eb822b9）→ 维持 0/3——payload 捕获弱 cfi garbage（redo36 同款）
+
+quiet gate 225s（load 4.77）→ 链 18:36:13 触发 → `payload nonce got=0
+capture=0` + `wp hits -1` + `verify rv=-1` → `gate pass=1 content=0
+(fv=-1) drain=1` **强放行**（payload 内容全没抓到）→ route attempt=1
+pselect 成功（ret=237/238）→ `fix52 cfi table garbage at open (ioctl
+rv=0 全 0)` → `pselect cfi miss attempt=1/12`（capping 12→1 终局）→
+`root=0` 安全退出（CHAIN_EXIT_DONE，无 panic，fail path 干净）→
+host 480s 超时 verify `ERROR: /product/bin/su failed`。
+**= redo36 完全同款**（payload 页死/捕获弱 → fake 表空 → cfi garbage），
+已知抽签家族。fix77 连续第三轮未被检验（restore 没 fork）。
+取证 `FAIL_redo38_6eb822b9/{chain.log(433行),host.log,verdict.txt}`。
+处置：reboot 换 fresh boot 重考。
