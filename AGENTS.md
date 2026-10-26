@@ -3313,6 +3313,40 @@ restore 里才会装上（v12 拦截逻辑本身未被检验）。
 host `error: closed` 后白等 480s 已杀。取证
 `FAIL_redo44_525fa7f7/{popup.png,chain.log(待补),host.log}`。
 
+### 新考试轮第 4 轮失败（2026-10-26/27 redo45, boot 91a72fa6）→ 维持 0/3——strict-child 四连死 + 手动实验定案 + fix81 终局
+
+gate 放行 → 链 **root=1**（`pipe-physrw-summary done=1 root=1` ×4、
+CHAIN_EXIT_DONE）→ host verify 全绿（enforce=1 硬判据 / su uid=0 /
+kernelsu Live）→ **strict-child 第四次原生死亡**：`poll i=0 en=0` 后
+**13 × Segmentation fault** 静默退出（无 i=2000、无 WARN、无 marker），
+fix80 的全 env dump + context 行正常打出（`context=[u:r:shell:s0]`、
+LD_PRELOAD 空）——**双 OK 仅由我手动实验补出（05:47）→ 非原生 → 判失败**。
+
+**决定性实验（child 死因收窄到唯一变量）**：手动
+`sh /data/local/tmp/ksu_boot/restore.sh --strict-child`（adb shell =
+shell:s0 + enforcing 稳定态）→ **双 OK 完整打出零 segfault**
+（`SELINUX-STRICT-OK enforce=1 probe=uid=0...context=u:r:shell:s0` +
+`POSTLOCK-RESTORE-OK`）。child 逻辑完全正常；死亡**必需 runcon
+（kernel:s0→shell:s0）+ flip 时序**，adb shell 无法复现。4 轮
+（redo39/42/43/45 = 202/101/64/13 segfault）全部 runcon+flip 路径。
+排查中确认：restore.sh 第2行 `exec >> postlock_restore.log`（手动实验
+输出全进主日志，一度误判「零输出」）；循环纯内建无 fork 的 13 segfault
+自相矛盾（fork 点仍未定案，但已无关紧要——见 fix81）。
+
+**fix81 = 终局方案（主仓 `1077350e` / app 仓 `93e7677`）**：runcon
+child 整体删除。flip 留给 kernel:s0 父进程，flip 后**纯内建**写双 OK——
+poll 用内建 `read`（5000 轮），marker 用内建 `print`，**零 fork 零
+exec**（依据：USR1 trap 的内建 `print > enforce` 自 fix77 起就证明
+flip 后内建 selinuxfs 访问存活；死的只是 fork/exec）。en 回读不到 1 时
+同内建写回退 Permissive + WARN。**probe（su）归 host verify**（shell:s0
+enforcing 下 su 实测可用）且 verify 自动把 probe 实测行 append 进
+restore.log（自动化非人工）。生成物 round-trip（postlock.sh heredoc
+展开 == gen81 产物）+ sh -n + app 镜像 diff 空三重校验通过。
+- 取证 `FAIL_redo45_91a72fa6/{chain.log(497KB,root=1×4),restore.log
+  (13 segfault + 手动双OK),host.log,verdict.txt}`。
+- **计数维持 0/3**；fix81 下轮首考（redo46 = 判据：双 OK 原生 + 自动
+  probe append 行 + enforce=1 + 蓝卡）。
+
 ### 新考试轮第 3 轮失败（2026-10-26 redo43, boot 58b5c5a0）→ 归零 0/3——strict-child 三连死 + 判定标准严格执行
 
 gate 1105s（load 15→4.94，开机风暴长）→ 链 20:31:34 触发 → **root=1**
