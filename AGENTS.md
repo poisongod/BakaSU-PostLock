@@ -3287,6 +3287,45 @@ reboot 已执行**（「safe until reboot」假承诺家族——reboot teardown
 残留是 redo2 fd-hold panic 的已知路径）。fix78 首考未被检验（restore 没
 fork）。取证 `FAIL_redo40_d0f7bc22/{chain.log(2457行),host.log,verdict.txt}`。
 
+### 新考试轮第 3 轮失败（2026-10-26 redo43, boot 58b5c5a0）→ 归零 0/3——strict-child 三连死 + 判定标准严格执行
+
+gate 1105s（load 15→4.94，开机风暴长）→ 链 20:31:34 触发 → **root=1**
+（20:33:01）→ restore 主体全过（OMK-ROLLED-BACK / driver-already-loaded /
+Permissive flip enforce=1）→ **strict-child 第三次原生死亡**：入口
+`env LD_PRELOAD=[]`（**LD_PRELOAD 假说否定**）+ `poll i=0 en=0` 后 **64 个
+Segmentation fault**（行 16-79 连续）、**无 i=10 打印**、无 WARN/PROBE/OK。
+host 480s 超时 → verify 兜底全绿（enforce=1 硬判据 + su uid=0 + kernelsu
+Live + manual check）→ boot 稳定、蓝卡实拍（ui_home.png）。
+
+**判定 = 失败归零 0/3**（严格执行 redo42 归档里写的验收标准「双 OK 原生
+出现（无人工介入）」）：strict-child 已 3 连死（redo39 202 / redo42 101 /
+redo43 64 segfault）是**结构性缺陷非抽签**——干净环境同款循环实测
+`loop-end i=0 ENF=1` 完全正常（read 修复生效、sleep rc=0、env -i su 正常），
+**问题仅存在于 runcon fork 路径**（kernel:s0→shell:s0，Permissive 期发起，
+enforcing 下无法从 adb shell 复现：`runcon u:r:shell:s0` 被拒）。redo42
+判合格已属宽判，本轮不再破例——验收自动化不可靠则「连续三次合格」无意义。
+
+**fix80（本 so 之后落地，commit 8eb9e59d/43974e7）**：
+1. **入口全量取证**：`export -p >&2`（内建 4.5KB 全环境）+ `read
+   /proc/self/attr/current` 打 context——LD_PRELOAD 空后的污染嫌疑
+   （其他 env 变量/transition 状态）下轮现形；
+2. **循环零 fork 化**：`sleep 0.1` → busy-wait 10000 轮 read（实测
+   600 轮=81ms → 10000 轮≈1.3s 覆盖 0.3s flip），打点 %2000；
+   **循环内 segfault 若再现 = sh 自身崩，死点由打印线直接圈定**；
+3. **PROBE `env -i PATH=...` 包裹**（实测 shell:s0 enforcing 下
+   `env -i ... su -c id` uid=0 rc=0）——继承 env 污染假说的绕过兼判别：
+   env -i 后 PROBE 活 = env 污染实锤；再崩 = domain/transition 层问题；
+4. revert poll 同样 busy-wait 5000 轮。
+
+**未解之谜（下轮取证点）**：redo43 的 `i=10` 打印缺失 vs 64 segfault
+数学矛盾（64 轮应有 6 行 %10 打印却只有 i=0 一行）——零 fork 化后此
+矛盾要么消失（= sleep fork 的副作用）要么被 %2000 打印线钉死。
+
+**其它事实**：host verify 全绿（root/enforce/su/Live 真达成）、链判据全
+过——失败缺口纯在验收 marker 环节（child 自动化）；设备开机风暴 1105s
+gate 等待属正常。取证 `/tmp/opencode/exam/FAIL_redo43_58b5c5a0/`
+{ui.png,ui_home.png,chain.log,restore.log,host.log}。
+
 ### 新考试轮第 2 轮合格（2026-10-26 redo42, boot b5eeddba）→ 计数 2/3——fix78 首考：child 又死（read fallback bug 定案）
 
 quiet gate 秒放行（load=4.74）→ 链 2 分钟 root=1（20:00:30
