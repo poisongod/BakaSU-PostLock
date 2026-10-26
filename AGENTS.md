@@ -3287,6 +3287,32 @@ reboot 已执行**（「safe until reboot」假承诺家族——reboot teardown
 残留是 redo2 fd-hold panic 的已知路径）。fix78 首考未被检验（restore 没
 fork）。取证 `FAIL_redo40_d0f7bc22/{chain.log(2457行),host.log,verdict.txt}`。
 
+### 新考试轮第 1 轮失败（2026-10-26 redo44, boot 525fa7f7→91a72fa6）→ 维持 0/3——root child SIGKILL 家族 + 安全弹窗归因（ocsk 未加载）
+
+fix80 版首考：gate 165s（load 4.90）→ 链 20:48:12 → **root=0 失败**：
+`root child forked pid=30601`（20:50:21）→ **`root child proceeding` 计数 0**
+（child 未突围）→ 13s collect 超时 `wst=9`（外部 SIGKILL）+ **fix75 心跳
+数据首现** `beat_age=12781ms beat_uid=2000`——child 活仅 ~0.2s（心跳停在
+fork+0.2s，uid 恒 2000 = cred 写前），**go=1 同秒已设但 child 没看到 =
+死于 busy-poll go-wait 期间**，redo7/24/29 同家族（OCHECK 假说需修正：
+proceeding=0 = 未到 setuid，不是 OPLUS_ROOT_CHECK 触发点）。kill switch
+按设计介入（`self-patch flip disabled`）→ `neutralize ok=1 verified=1`
+干净排雷 → root=0 安全退出（20:50:34）→ **13s 后设备 `bootreason=cold`
+硬重启**（非 panic；history `cold,1793019067` 紧接我 20:44 的
+`reboot,shell`——cold = 长按电源/硬断电，疑用户对弹窗操作）。
+pstore 262KB 无 oom/kill 记录（非 lmk——lmkd 仅开机 4.7s binder 错误），
+SIGKILL 来源无内核侧线索。
+
+**安全警告弹窗归因（用户报告「拦截模块出问题了」）**：弹窗 = ocs
+「已阻止此破坏行为」（截图 popup.png，单按钮「知道了」无「立即重启」）。
+**真相 = ocsk.ko 根本没加载**——链 root=0 → restore 没 fork → ocsk
+finitmod 没跑 → `oplus_exec_block` 的 `kevent_send_to_user` 上报无人拦
+→ 弹窗。**是链失败的伴生症状，不是拦截模块自身故障**；模块在链成功后的
+restore 里才会装上（v12 拦截逻辑本身未被检验）。
+**fix80 未被检验**（restore 没 fork，strict-child 没跑到）。
+host `error: closed` 后白等 480s 已杀。取证
+`FAIL_redo44_525fa7f7/{popup.png,chain.log(待补),host.log}`。
+
 ### 新考试轮第 3 轮失败（2026-10-26 redo43, boot 58b5c5a0）→ 归零 0/3——strict-child 三连死 + 判定标准严格执行
 
 gate 1105s（load 15→4.94，开机风暴长）→ 链 20:31:34 触发 → **root=1**
