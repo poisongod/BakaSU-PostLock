@@ -3218,3 +3218,19 @@ overlay、链没 root，预期）→ `ERROR: su failed` exit。
 取证 `FAIL_redo36_55299088/{chain.log,host.log}`。**判明即 reboot 重考**。
 通道备忘：Linux adb 全程正常；轮询 `poll_redo36.sh` 判据（ROUND_END 720s）
 工作正常。
+
+### 新考试轮第 1 轮 panic（2026-10-26 redo37, boot 4bebbf4e→ed39dea6）→ 维持 0/3——payload 页死 fail path 自炸（round6/7 已知家族）
+
+quiet gate → 07:16:07 触发 → 链 2477 行 → 07:17:57 `phys prepare
+skipped: payload table dead tbl=0 rv=-1` + `physrw enter ioctl=0 open=0
+read=0` + `cfgfs read set-fail errno=25` ×3 → **日志断** → ~2min 内
+boot 4bebbf4e→ed39dea6。**定性确定性**：`ro.boot.bootreason=
+kernel_panic,fatal_ex#eption` + history 戳 1792970321 = 我 reboot,shell
+（1792969981）后 340s——**真 panic 非用户重启**（用户随后借用手机 11h）。
+归因 = payload 页死抽签 → fail path neutralize/set-fail 写不进 →
+**残留自炸**（round6/7 同族，AGENTS fix71 节已标注的结构性风险：
+「页死时 close 即炸弹」——本 so fix75 的 sanitize 在页死时写不进）。
+pstore 11h 后已轮转读空；chain.log 跨 reboot 保留已归档
+`FAIL_redo37_4bebbf4e/chain.log`（2477 行）。
+**fix77 连续第二轮未被检验**（restore 没 fork）。host 被用户暂停指令
+杀掉（verify 段未跑）。处置：reboot 换 fresh boot 重考。
