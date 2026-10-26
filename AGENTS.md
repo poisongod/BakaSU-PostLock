@@ -3286,3 +3286,18 @@ containment` → CHAIN_EXIT_DONE（root=0、无 panic）。**fd-hold 残留判�
 reboot 已执行**（「safe until reboot」假承诺家族——reboot teardown 踩
 残留是 redo2 fd-hold panic 的已知路径）。fix78 首考未被检验（restore 没
 fork）。取证 `FAIL_redo40_d0f7bc22/{chain.log(2457行),host.log,verdict.txt}`。
+
+### 新考试轮第 2 轮 panic（2026-10-26 redo41, boot 81c25c68→b5eeddba）→ 维持 1/3——root 写段污染第三方 Binder 受害（g8/round4 同族）
+
+三次触发尝试（前两次死于 adb 抖动/14min LAN 断网深休眠——postlock gate
+段无声退出可重跑，boot 未触发保持干净）→ 第三次 gate 5s 放行（load 1.31）
+→ 链 19:49:01 触发 → root 写段全绿（`cfi post_verify layout done` +
+`cfgfs write wr=8/35 errno=0` 多次成功）→ **19:49:47 链日志断** → 设备
+重启。**pstore 确定性定性**：bootreason=`kernel_panic,fatal_exception`
+（history 1793015430）；`Unable to handle kernel paging request at
+0078d9aa5182a4fb` + `Oops: 96000004` + **Comm=`Binder:10198_2`**（第三方
+app binder 线程，非链进程）——链 root 写段把垃圾指针写进内核数据结构、
+第三方 binder 踩中 → Fatal。与 g8（`try_module_get ← misc_open` 第三方
+受害者）、round4（pool-1-thread-3）同族。fix78 未被检验（restore 没 fork）。
+取证 `FAIL_redo41_81c25c68/{pstore.txt(262KB),chain.log,host.log,verdict.txt}`。
+处置：新 boot b5eeddba fresh（panic 出来）直接重考。
