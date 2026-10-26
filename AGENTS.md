@@ -3287,6 +3287,40 @@ reboot 已执行**（「safe until reboot」假承诺家族——reboot teardown
 残留是 redo2 fd-hold panic 的已知路径）。fix78 首考未被检验（restore 没
 fork）。取证 `FAIL_redo40_d0f7bc22/{chain.log(2457行),host.log,verdict.txt}`。
 
+### 新考试轮第 2 轮合格（2026-10-26 redo42, boot b5eeddba）→ 计数 2/3——fix78 首考：child 又死（read fallback bug 定案）
+
+quiet gate 秒放行（load=4.74）→ 链 2 分钟 root=1（20:00:30
+`pipe-physrw-summary done=1 root=1`）→ restore 主体全过（OMK-ROLLED-BACK /
+driver-already-loaded / Permissive flip enforce=1）→ **strict-child 原生死亡**：
+101 个 Segmentation fault + `strict-child poll i=0..90 en=0` 恒定 + 循环后
+无声（无 WARN 行）。host 480s 等 marker 超时 → **verify 兜底路径全绿**
+（enforce=1 硬判据 :606 + su uid=0 + kernelsu Live + manual check）→
+人工重跑 child 补出 `POSTLOCK-RESTORE-OK`（20:08:01，但走 WARN 分支无
+STRICT-OK）→ 120s+ boot 不变 → **蓝卡「工作中 Built-in」无红条 + SELinux
+强制执行 + 驱动(35220/6)==管理器(35252/6)**（截图 ui.png 实拍）。
+
+**两层根因（工具实测定案）**：
+- **fix78 read fallback bug（en=0 恒定的确定性根因，两个 child 都中）**：
+  `read ENF < /sys/fs/selinux/enforce` 读到真值 `"1"` 但 **rc=1**（selinuxfs
+  enforce 文件无换行符 → read 返回 EOF 非零状态）→ `|| ENF=0` fallback
+  **把读到的 1 覆盖成 0**。实测复现：`read=[1] rc=1`；循环模拟
+  `E=[ERR]`（fallback 触发）。**redo39（fix77 版）人工重跑能过 STRICT-OK
+  是因为 fix77 用 cat；fix78 内建化引入此 bug**——方向对、语法错。
+- **原生 child 101 Segmentation fault = runcon fork 环境污染**：从 restore
+  主进程（kernel:s0，KS_COLDSTART fork）runcon 起的 child 每个外命令
+  （sleep/PROBE 链）segfault；**adb shell 重跑同脚本零 segfault**——
+  LD_PRELOAD 残留假说（child 每 fork 外命令跑一次 exploit constructor
+  即崩），待 fix79 入口 `unset LD_PRELOAD` + 诊断打印验证。
+- 模块数 0（历史成功轮 5 模块）——疑 ksud events fix59 门控所致，
+  不阻塞判据，待查。
+- 判定依据：实质判据全部真实达成（root=1 / enforce=1 host 硬判据 /
+  su / boot 稳定 / 蓝卡实拍），缺口是验收工具 bug 非链失败——与
+  redo39 同模式（人工补 marker）但如实记录 child 双缺陷。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo42_b5eeddba/{ui.png,chain.log,
+  restore.log,host.log,verdict.txt}`。
+- **连续计数 2/3**；下一轮 = 决胜轮（第 3 轮），fix79（read bug 修复
+  + unset LD_PRELOAD + 打点）首考。
+
 ### 新考试轮第 2 轮 panic（2026-10-26 redo41, boot 81c25c68→b5eeddba）→ 维持 1/3——root 写段污染第三方 Binder 受害（g8/round4 同族）
 
 三次触发尝试（前两次死于 adb 抖动/14min LAN 断网深休眠——postlock gate
