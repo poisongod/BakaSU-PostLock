@@ -3276,3 +3276,13 @@ Built-in」无红条** + 驱动(35220/6)==管理器(35252/6) + **SELinux 强制�
 - 判据事实全达成计 **1/3**；child 缺陷如实记录（人工介入轮，用户可裁）。
   取证 `SUCCESS_redo39_44bd0ad1/{ui.png,ui_strict.png,chain.log,restore.log,
   host.log,verdict.txt}`。
+
+### 新考试轮第 2 轮失败（2026-10-26 redo40, boot d0f7bc22）→ 维持 1/3——payload 页死 neutralize 失败 fd-hold 收容（redo37 同族）
+
+quiet gate ~285s → 链 19:09:00 触发 → 2457 行 → 19:10:50 尾部
+`cfgfs write set-fail errno=25(ENOTTY) ×N` → `ks_neutralize owner=-1
+tail=-1 ok=0 verified=0` → `neutralize FAILED (no pipe child); fd-hold
+containment` → CHAIN_EXIT_DONE（root=0、无 panic）。**fd-hold 残留判明即
+reboot 已执行**（「safe until reboot」假承诺家族——reboot teardown 踩
+残留是 redo2 fd-hold panic 的已知路径）。fix78 首考未被检验（restore 没
+fork）。取证 `FAIL_redo40_d0f7bc22/{chain.log(2457行),host.log,verdict.txt}`。
