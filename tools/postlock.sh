@@ -152,88 +152,7 @@ BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????
 # date was the only unprotected exec left after the flip); a failing date
 # must degrade to '???:???' instead of taking the whole log call down.
 log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S 2>/dev/null || echo '???:???')" "\$*" >&2; }
-# --- fix77 (redo35 root cause, measured): the instant 'setenforce 1'
-# flips, kernel:s0 loses exec of every /system/bin/* -- log()'s date and
-# printf both died with "inaccessible or not found" (dontaudit-silent, zero
-# avc), the PROBE assignment swallowed its own exec failure via 2>&1, the
-# case silently took *) and set -e killed the script before any WARN/OK
-# line; the host then timed out its 480s marker.  The flip itself stays
-# with kernel:s0 (only domain with setenforce permission -- measured:
-# shell:s0 = Permission denied), but every post-flip step runs in this
-# shell:s0 child, launched while still Permissive.  shell:s0 keeps exec
-# permission under enforcing (measured: log() works there).  On probe
-# failure the child signals USR1; the parent's trap rewrites selinuxfs with
-# mksh builtin 'print' (no exec possible after the flip) so a failed round
-# never strands the device.  Branch BEFORE 'set -e'.
-if [ "\${1:-}" = "--strict-child" ]; then
-  # fix80 (redo43: 3rd consecutive native child death -- 64 segfaults after
-  # poll i=0, no i=10 print, silent exit): the runcon-forked child's forked
-  # externals die with Segmentation fault while the IDENTICAL script runs
-  # clean from adb shell (measured: loop/sleep/su all rc=0 there).
-  # LD_PRELOAD measured empty in fix79, so dump the FULL environment
-  # (builtin export -p, zero forks) and the SELinux context (builtin read
-  # on /proc/self/attr/current) as death-row evidence before anything else.
-  print -r -- "strict-child env LD_PRELOAD=[\$LD_PRELOAD]" >&2
-  CTX=unknown
-  read CTX < /proc/self/attr/current 2>/dev/null || :
-  print -r -- "strict-child context=[\$CTX]" >&2
-  export -p >&2
-  unset LD_PRELOAD
-  log "strict-child: waiting for kernel:s0 to flip enforcing"
-  ENF=0
-  i=0
-  # fix80: fork-free busy-wait replaces sleep (measured on-device: 600
-  # read-rounds = 81ms -> 10000 rounds ~= 1.3s, well past the 0.3s flip;
-  # the enforce read IS the poll).  Every loop fork is now gone: a
-  # segfault inside this loop can only be the shell itself, and the
-  # print trail (every 2000 rounds) pins the death point.
-  while [ \$i -lt 10000 ]; do
-    # fix78/79: builtin read, status never overwrites the value (selinuxfs
-    # enforce has no trailing newline -> read reports rc=1 on SUCCESS).
-    ENF=0
-    read ENF < /sys/fs/selinux/enforce 2>/dev/null || :
-    [ "\$ENF" = "1" ] && break
-    [ \$((i % 2000)) -eq 0 ] && print -r -- "strict-child poll i=\$i en=\$ENF" >&2
-    i=\$((i + 1))
-  done
-  if [ "\$ENF" != "1" ]; then
-    log "WARN-selinux-strict: flip never observed (enforce=\$ENF after 10s)"
-    log POSTLOCK-RESTORE-OK
-    exit 0
-  fi
-  log "strict-child: probing su under enforcing"
-  # fix80: probe under a scrubbed environment (measured: env -i PATH=...
-  # su -c id -> uid=0 rc=0 from shell:s0 while enforcing).  If the child's
-  # inherited env is what corrupts forked externals, this path survives it.
-  PROBE=\$(env -i PATH=/product/bin:/system/bin:/system/xbin:/vendor/bin timeout 5 /product/bin/su -c id 2>&1) || true
-  log "strict-child: probe done"
-  case "\$PROBE" in
-    *uid=0*)
-      log "SELINUX-STRICT-OK enforce=\$ENF probe=\$PROBE"
-      log POSTLOCK-RESTORE-OK ;;
-    *)
-      log "WARN-selinux-strict: shell channel blocked under enforcing: \$PROBE"
-      log "diag labels: \$(ls -Z /product/bin/su $TMP/ksud 2>&1)"
-      log "diag temp-ksud control: \$(echo id | timeout 5 $TMP/ksud debug su 2>&1 | head -2)"
-      log "diag wrapper: \$(timeout 5 /product/bin/su -c id 2>&1 | head -3)"
-      log "diag avc: \$(logcat -d 2>/dev/null | grep 'avc:' | tail -4)"
-      kill -USR1 \$PPID 2>/dev/null || true
-      j=0
-      # fix80: fork-free busy-wait (5000 read-rounds ~= 0.7s) -- no sleep.
-      while [ \$j -lt 5000 ]; do
-        RV=1
-        # fix79: same read-status trap as above -- never overwrite the value.
-        read RV < /sys/fs/selinux/enforce 2>/dev/null || :
-        [ "\$RV" = "0" ] && break
-        j=\$((j + 1))
-      done
-      RVX=?
-      read RVX < /sys/fs/selinux/enforce 2>/dev/null || :
-      log "strict: revert observed enforce=\$RVX"
-      log POSTLOCK-RESTORE-OK ;;
-  esac
-  exit 0
-fi
+# (fix77's runcon --strict-child branch removed by fix81 -- see the tail block.)
 log "== restore start \$(date '+%F %T') pid=\$\$ uid=\$(id -u)"
 id
 ls -ld /data /data/local /data/local/temp 2>&1 || true
@@ -426,30 +345,46 @@ fi
 am force-stop $APP || true
 sleep 1
 am start -n $APP/$ACT > /dev/null 2>&1 || true
-# --- SELinux strict end-state (fix77: kernel:s0 flips, shell:s0 works) ----
-# Everything above ran as kernel-domain root while Permissive.  The flip
-# must stay with kernel:s0 (measured: shell:s0 has no setenforce
-# permission), but after the flip kernel:s0 cannot exec anything -- redo35
-# proved it: log()'s date+printf both died "inaccessible or not found" and
-# set -e killed the script before any marker.  So probe and logging run in
-# the shell:s0 child launched just before the flip (the --strict-child
-# branch at the top of this file; transition passes because the launch
-# happens while still Permissive).  USR1 trap = probe-failure revert via
-# builtin 'print' (no exec is possible after the flip); a failed probe must
-# never strand the device with a dead shell channel -- avc is
-# dontaudit-silent and shell cannot flip back on its own.
-log "selinux strict: launching shell:s0 worker, then flipping"
+# --- SELinux strict end-state (fix81: builtin-only post-flip markers) ----
+# Everything above ran as kernel-domain root while Permissive; only this
+# kernel:s0 shell may flip (measured: shell:s0 setenforce = Permission
+# denied).  fix77 tried to hand post-flip work to a runcon shell:s0 child --
+# 4 consecutive native deaths (redo39/42/43/45: 202/101/64/13 Segmentation
+# faults after "poll i=0", silent exit, no marker ever), while the SAME
+# script run by hand from adb shell completed both markers cleanly (measured
+# 2026-10-27 05:47).  Death needs runcon+flip; nothing here does.  After the
+# flip this shell's OWN builtins keep working -- proved since fix77 by the
+# USR1 trap's builtin write to selinuxfs.  So: flip, poll enforce with
+# builtin read, write both markers with builtin print -- zero fork, zero
+# exec post-flip.  The su probe runs from kernel:s0?  impossible post-flip;
+# host verify owns it (enforce=1 hard check + su uid=0, measured working
+# under enforcing from shell:s0) and appends its probe line to this log.
+log "selinux strict: flipping (builtin-only markers follow)"
+TF=\$(date +%H:%M:%S 2>/dev/null || echo '???:???')
 trap 'print -r -- 0 > /sys/fs/selinux/enforce' USR1
-runcon u:r:shell:s0 sh "\$0" --strict-child &
-CH=\$!
-sleep 0.3
 if setenforce 1 2>/dev/null; then
   :
 else
-  log "WARN-selinux-strict: setenforce 1 failed"
+  print -r -- "[\$BOOT8 \$TF] WARN-selinux-strict: setenforce 1 failed" >&2 || :
 fi
-wait \$CH || true
+ENF=0
+i=0
+while [ \$i -lt 5000 ]; do
+  ENF=0
+  read ENF < /sys/fs/selinux/enforce 2>/dev/null || :
+  [ "\$ENF" = "1" ] && break
+  i=\$((i + 1))
+done
+if [ "\$ENF" = "1" ]; then
+  print -r -- "[\$BOOT8 \$TF] SELINUX-STRICT-OK enforce=1 probe=host-verify" >&2 || :
+else
+  # flip never observed (cannot happen: the trap's own builtin write to this
+  # same file succeeds post-flip) -- revert rather than strand the device.
+  print -r -- 0 > /sys/fs/selinux/enforce || :
+  print -r -- "[\$BOOT8 \$TF] WARN-selinux-strict: enforce never observed=\$ENF, reverted" >&2 || :
+fi
 trap - USR1
+print -r -- "[\$BOOT8 \$TF] POSTLOCK-RESTORE-OK" >&2 || :
 exit 0
 EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
@@ -639,6 +574,11 @@ ab shell "/product/bin/su -c id" | grep -q "uid=0" || die "/product/bin/su faile
 # channel failure -- that path must fail the round here, never pass.
 ENC=$(ab shell "cat /sys/fs/selinux/enforce" | tr -d '\r')
 [ "$ENC" = "1" ] || die "SELinux not strict (enforce=$ENC) — see WARN-selinux-strict in restore.log"
+# fix81: kernel:s0 cannot exec post-flip, so the su probe lives here now.
+# Append the real measurement to restore.log so the STRICT-OK marker's
+# probe=host-verify field is backed by an on-log line, automatically.
+PROBE_OUT=$(ab shell "/product/bin/su -c id" | tr -d '\r')
+ab shell "echo '[host-verify] probe: $PROBE_OUT' >> /data/local/tmp/postlock_restore.log" || true
 ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
   die "legacy libgrant wrap still set — clear it: setprop wrap.$APP \"\""
