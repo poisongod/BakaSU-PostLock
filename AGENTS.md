@@ -3367,6 +3367,21 @@ BOOT-CHANGED + error: closed** → 新 boot `kernel_panic,fatal_exception`。
 - 处置：取证 `FAIL_redo46_8f14b54c/{pstore.txt,chain_tail.txt,host.log,
   verdict.txt}`；计数维持 **0/3**；reboot 重考。
 
+### 新考试轮第 6 轮安全失败（2026-10-27 redo47, boot 0861d7ad）→ 维持 0/3——payload 页死 + neutralize 失败 fd-hold，fix81 连续第二轮未检验
+
+gate 148s → 06:11:09 触发 → 链 8 分钟 → **root=0** 安全退出（boot 不变）。
+失败链（chain.log 620KB）：`payload did not land`（row127，首轮）→ 重试
+后 physrw summary `read_ok=1 write_ok=1 rw64=1/1` 但
+`uid=2000->4294967295`（root child 读回垃圾）→ `cfi fail path payload
+table dead tbl=0`（row4493，win 段页死家族）→ `set-fail ENOTTY` 循环 →
+`ks_neutralize ok=0 verified=0` → **NEUTRALIZE FAILED → fd-hold 收容**
+（「reboot before any re-run」）→ `root child go wait expired t=120`
+（+106s 残留打印）。host verify ERROR su 缺失 = 链没 root 的预期。
+**restore 没 fork → fix81 连续第二轮未检验**（redo46 panic、redo47
+payload 死，首考机会两连被吃）。
+- 处置：取证 `FAIL_redo47_0861d7ad/{chain.log(620KB),host.log,verdict.txt}`；
+  **fd-hold 残留判明即 reboot**（延迟炸弹家族）；计数维持 **0/3**。
+
 ### 新考试轮第 3 轮失败（2026-10-26 redo43, boot 58b5c5a0）→ 归零 0/3——strict-child 三连死 + 判定标准严格执行
 
 gate 1105s（load 15→4.94，开机风暴长）→ 链 20:31:34 触发 → **root=1**
