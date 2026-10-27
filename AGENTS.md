@@ -3668,3 +3668,23 @@ CHAIN_EXIT_DONE，root=0，无 restore 无双 OK）→ **fd-hold 残留判明即
 （「reboot before any re-run」假承诺家族，redo17/25/26/47/49/50/54 同族）。
 - 取证 `FAIL_redo56_1ac807a6/{chain.log,fail_lines.txt,host.log,verdict.txt}`；
   计数维持 **1/3**；reboot 换 fresh boot 重考（第 2 轮）。
+
+### 新考试轮第 2 轮 panic（2026-10-27 redo57, boot 484e0227→56ac1ccf）→ 维持 1/3——fake 表 ioctl 槽污染第 4 次 + 验槽死锁定案
+
+gate 170s → 22:14:28 触发 → 22:15:02 collision 段最后日志（`start finding
+collisions`）→ panic 重启（bootreason=`kernel_panic,fatal_exception`）。
+**pstore 栈**：`Internal error: SP/PC alignment exception: 8a000000`、
+`Comm: ks_waiter PID 16834`、`pc : 0x57`、`lr : do_vfs_ioctl+0x380/0x6a0`、
+`x20 = c800000000000057`（fake 表 ioctl 槽垃圾值）、`x22 = 0x41007301`
+（ASHMEM ioctl cmd）、Call trace `0x57 → __arm64_sys_ioctl+0x74 → el0_svc`。
+= **redo20/23/46/57 fake 表槽污染家族第 4 次**（ks_waiter cfgfs 轮询撞污染槽）。
+
+**验槽修复方向死锁定案（推翻 redo23 末尾的「物理读通道」设想）**：
+- 读 fake 表槽本身必须发起 `ioctl(SET_NAME)` → `do_vfs_ioctl` blr 读的就是
+  被污染的槽——**验槽动作 = 撞针动作**，无先行探测可能；
+- kprobe 通道回锁 DAC 拒（tracefs 写不进）；`ks_fetch64 cfgfs fallback`
+  即撞针通道；vmemmap/静态区读安全但目标（payload 页上的表）在 physmap。
+- **污染源仍未定案**（collision/prepare 段写页嫌疑，redo20 同归因）——
+  现阶段唯一策略 = fail amplifier 重考（4/22 轮命中，~19%/轮）。
+- 取证 `FAIL_redo57_484e0227/{pstore.txt,chain.log,host.log,verdict.txt}`；
+  计数维持 **1/3**；设备已 fresh boot 56ac1ccf（panic 出来）直接重考。
