@@ -3703,3 +3703,17 @@ gate 165s（22:26:44, load=4.94）→ 链一次过：`root child proceeding uid=
   立即 cp host 日志）。
 - 取证 `SUCCESS_redo58_6d71d903/{ui.png,chain.log,restore.log,host.log,
   verdict.txt}`。**连续计数 2/3**；下一轮 = **决胜轮 redo59**。
+
+### 新考试轮决胜轮失败（2026-10-27 redo59, boot f1936d6d）→ 归零 0/3——payload 页死 + fd-hold
+
+gate 180s（22:41:23）→ 链 22:42:54 `pipe physrw done=0 root=0 read_ok=0
+write_ok=0` → `cfgfs write set-fail ENOTTY(25)` 循环（target ...1001/...1079
+= fake 表槽地址）→ 22:42:55 `neutralize FAILED (no pipe child); fd-hold
+containment` → `POSTLOCK-EXIT=1`，无 restore 无双 OK = **redo56 同款 payload
+页死家族**。fd-hold 残留判明即 reboot（已发）。
+- 判据注意：`BOOT-FINAL enforce=1` 在链失败轮是 fresh boot 默认值（非
+  restore flip），不构成判据。
+- 备注：`postlock_redo59.log` 又被 /tmp 清理且外部备份循环未赶上——改进：
+  下轮 oneshot 在 postlock 退出后**立即** cp 备份（脚本内部，不依赖外部轮询）。
+- 取证 `FAIL_redo59_f1936d6d/{chain.log,fail_lines.txt,host.log,verdict.txt}`；
+  **计数归零 0/3**；reboot 后 fresh boot 重考（redo60 第 1 轮）。
