@@ -3347,6 +3347,29 @@ restore.log（自动化非人工）。生成物 round-trip（postlock.sh heredoc
 - **计数维持 0/3**；fix81 下轮首考（redo46 = 判据：双 OK 原生 + 自动
   probe append 行 + enforce=1 + 蓝卡）。
 
+### 新考试轮第 2 轮 panic（2026-10-27 redo50, boot c81dca09→6ebbfcfb）→ 维持 0/3——fix70 回滚真空：孙进程 exit 踩页死脏槽，fix70b 修复方向
+
+gate 秒过 → trigger 19:10:37 → gate 弱放行（`content=0 fv=-1 drain=1`）→
+pin 生效（`splice conn=5 bytes=3047424 pipes=47 rounds=3` + extra 3.2MB）→
+win tick +0..+5s dead=0 → **19:14:00 页死**（`set-fail ENOTTY` +
+`fix72: periodic flush sanitize failed sw=8 sw2=-1` = cfgfs 通道死，**fix72
+首考被检验：页死前提失效**）→ chain.log 断 → 94s 后 **19:15:34 真 panic**
+（`bootreason=kernel_panic,null`）：
+```
+Comm: pipe_prepare (PID 18824) CPU0 ; ESR=0x86000005 EC=0x21 IABT
+pc : 0x0   lr : filp_close+0x54/0xbc   x21: d300000000000000 (脏 flush 槽)
+-> msm_watchdog "Causing a QCOM Apps Watchdog bite!" -> Fatal
+```
+**根因 = fix70 回滚造成的防护真空**：fix70（`child_drop_inherited_fds` 全扫
+3..4095）因 owned=0 三连被回滚（af1bb39f）→ pipe_prepare 风暴孙进程继承 fake
+fd 无人清 → 页死后 fake 表 = 复用者数据 → 孙进程 `exit_files` 自动 close →
+`filp_close` 踩脏槽。**fix71=0 次**（其保护点是 pipe_prepare 自己的
+close(conv_fd)/late sweep，炸点在孙进程 exit_files，覆盖面外）；fix67 清零被
+页复用覆盖。**修复方向 fix70b（待实施）**：child fork 后**只关已知 fake fops
+fd**（g_fops_probe_fd 等 1-2 个），不扫全部 → 逻辑排除 handoff 破坏（sv/memfd
+不在关列表）→ 无 owned 副作用基础 + 消除孙进程 exit 踩雷。
+取证 `FAIL_redo50_c81dca09/{chain.log,host.log,pstore.txt,verdict.txt}`。
+
 ### 新考试轮第 1 轮失败（2026-10-27 redo49, boot 12bbc000 未变）→ 维持 0/3——payload 页死 + 深休眠 12h 断网，fix81 四连未检验
 
 gate 秒过（load=4.05）→ trigger 06:39:57 → **06:41:54 链即失败**：
