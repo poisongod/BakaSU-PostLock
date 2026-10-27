@@ -3609,3 +3609,34 @@ pipe_prepare），本轮 panic 主体是链主进程 ks_owner 线程；chain.log
 行。**ks_owner 自旋点 = physrw/wave 段**（round5 同段）。
 - 处置：取证 `FAIL_redo53_b9342a1b/{pstore.txt,verdict.txt,host.log,oneshot.out}`；
   **计数归零 0/3**；boot 19cd4b1c fresh 直接重考。
+
+### 新考试轮第 1 轮失败（2026-10-27 redo54, boot 3f8dde85→47fc27c1）→ 维持 0/3——root child SIGKILL 第 6 次 + 弹窗自动重启独立归因
+
+链 21:26:00 触发 → gate 4 轮过 → route/waves=11 owned=1 → 21:27:36 第一遍写
+`done=1 root=1` → fork child 12853 → **21:27:49 `root child timeout wst=9
+go=1 beat_age=12661ms beat_uid=2000`** → kill switch → root=0 安全退出
+（neutralize ok=1 + CHAIN_EXIT_DONE）。随后 **kevent 弹窗 15s 自动重启**。
+
+**pstore 完整（262KB 全程未覆盖）排除两项既有归因**：
+- **OPLUS_ROOT_CHECK 排除**：child 被杀窗口（280-300s）内核日志完全干净
+  （电池/HANS uid10276 常规行），零 `Kill the process of escalation`/force_sig；
+- **shutdown 杀 child 排除**（redo48 归因不适用本轮）：重启在链退出后 3 分钟
+  （478.79s `init: sysrq: Kill All Tasks` → 479.4s `reboot: Restarting system`
+  = 弹窗 15s 倒计时的正常序列），bootreason=cold 非 panic。
+
+**弹窗独立归因（与链无因果，次生事件）**：57.25/58.21s `kevent_send_to_user:
+execve` 上报 **tailscaled execve**（postlock-wan + nohup，app BOOT_COMPLETED
+autostart 触发）→ fresh boot **ocsk 未加载拦不了**（鸡生蛋：ocsk 在链成功后的
+restore 才 finitmod）→ exsystemservice「已阻止…15秒后自动重启」→ init reboot。
+redo51/52 未弹的差异待查（疑与屏幕状态/用户交互相关——本轮用户在看手机）。
+**对策**：轮次期间弹窗再现 → 立即 `input tap 293 1396`「知道了」取消倒计时
+（历史应急坐标；「立即重启」(775,1396) 绝不点）。
+
+**硬矛盾（下轮深挖点，工具验证）**：父 `root cred patched uid=0/0` 后 fork，
+child fix75 心跳 `beat_uid=2000`（getuid 恒 2000）——继承的 cred 应为已 patch
+的 0。成功轮（redo30/31/51/52）child `proceeding uid=0`。矛盾指向 cred patch
+对象/时序或 fix75 beat_uid 读取路径，需读 root.c fork 与 cred patch 顺序 +
+fix75 beat 实现核对。
+
+- 取证 `FAIL_redo54_3f8dde85/{pstore.txt,chain.log,host.log,verdict.txt}`；
+  计数维持 **0/3**；设备已由弹窗自动重启到 fresh boot 47fc27c1。
