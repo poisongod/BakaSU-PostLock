@@ -3589,3 +3589,23 @@ app binder 线程，非链进程）——链 root 写段把垃圾指针写进内
 受害者）、round4（pool-1-thread-3）同族。fix78 未被检验（restore 没 fork）。
 取证 `FAIL_redo41_81c25c68/{pstore.txt(262KB),chain.log,host.log,verdict.txt}`。
 处置：新 boot b5eeddba fresh（panic 出来）直接重考。
+
+### 新考试轮决胜轮 panic（2026-10-27 redo53, boot b9342a1b→19cd4b1c）→ 归零 0/3——round5 同款 ks_owner 软锁死
+
+gate 过 → 链 21:10:05 触发（DETACHED）→ 21:11:13 链日志断（win/route 段
+cfgfs 读 ioctl 槽好值 `ffffffeb67de2434`、写 flush/release 成功，无 set-fail）
+→ adb `error: closed`（CPU0 自旋致 shell 起不来）→ 新 boot `19cd4b1c`。
+**pstore 完整栈（262KB）**：
+- `339.98s [ks_owner:17165] watchdog: BUG: soft lockup - CPU#0 stuck for 22s`
+  连续 6 次（339/403/467/527/591s）——**ks_owner 线程内核态无限自旋 CPU0**；
+- `613.32s khungtaskd: kernel BUG at drivers/soc/oplus/system/
+  hung_task_enhance/hung_task_enhance.c:164` → Oops → `Fatal exception` panic。
+- bootreason=`kernel_panic,bug`（新形态，= OPPO hung_task_enhance BUG_ON）。
+**归因 = round5（2026-10-24 boot 79ab7e46）完全同签名**：ks_owner CPU0 软锁死
+家族（round5 记录「17:29:54 链最后 win tick → 16s 后 ks_owner CPU0 RCU stall
+→ 用户长按重启」）。本轮轮换 `21:13:49 panic` = reboot,shell 21:09:49 + 240s。
+**与 fix75 无因果**：fix75 watchdog 在 pipe_prepare 子进程（独立线程名
+pipe_prepare），本轮 panic 主体是链主进程 ks_owner 线程；chain.log 无 fix75
+行。**ks_owner 自旋点 = physrw/wave 段**（round5 同段）。
+- 处置：取证 `FAIL_redo53_b9342a1b/{pstore.txt,verdict.txt,host.log,oneshot.out}`；
+  **计数归零 0/3**；boot 19cd4b1c fresh 直接重考。
