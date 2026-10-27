@@ -3389,6 +3389,25 @@ BOOT-CHANGED（`${CB:0:8}` 截断修复）；poll 的 adb 必须 `timeout` 包�
 断网时挂在无超时 shell 上；深休眠断网判别 = ping「No route to host」+ uptime/
 boot_id 自洽（vs 僵死永不回网）。
 
+### 新考试轮第 2 轮合格（2026-10-27 redo52, boot 6da4649c）→ 计数 2/3——fix81 二连 + fix75 首考（未触发）
+
+一条龙脚本（reboot → fresh → postlock → verdict，`redo52_oneshot.sh`）：
+reboot 25s 回新 boot → gate 250s（`quiet after 250s (load=4.89)`，开机风暴后
+自然降）→ 链 + restore **双 OK 原生**（20:59:32，零人工）→
+`[host-verify] probe: uid=0 ... context=u:r:shell:s0` append ✓ →
+BOOT-FINAL=6da4649c 不变 + `enforce=1` → host verify OK（kernelsu Live /
+wrap 空）→ 蓝卡**「工作中 Built-in」**、驱动 `(35220/6)` == 管理器
+`(35252/6)`、**SELinux 强制执行**、无红条无越狱徽章（ui_home.png 实拍）。
+- chain：`root=1` ×4 + CHAIN_EXIT_DONE=1 + summary done=1。
+- **fix75 首考 = 未触发**（chain.log `fix75` 计数 0——本轮无页死，watchdog
+  每 500ms sanitize 全程成功静默 = 设计内行为；其页死路径仍待页死轮检验）。
+- **fix81 第二次实战**（连续两轮双 OK 原生，四连死问题彻底了结）。
+- 截图坑：monkey 拉起后 app 恢复上次 tab（超级用户页 loading）——先
+  `input tap 140 2197` 回主页再截。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo52_6da4649c/{ui_home.png,ui.png,
+  chain.log,restore.log,host.log}`。
+- **连续计数 2/3**；下一轮 = **决胜轮 redo53**（reboot fresh 起）。
+
 ### 新考试轮第 1 轮合格（2026-10-27 redo51, boot 6ebbfcfb）→ 计数 1/3——fix81 首考通过（双 OK 原生）
 
 gate 5s 秒过（20:39:15 `quiet after 5s (load=0.63)`）→ **全链 54 秒**（今日最快：
