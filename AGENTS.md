@@ -3733,3 +3733,16 @@ gate 175s（22:57:08, load=4.90）→ 链一次过：`root child proceeding uid=
   `OK` 无 ERROR 实证通过。
 - 取证 `SUCCESS_redo60_89842aec/{ui.png,chain.log,restore.log,host.log,
   verdict.txt}`。**连续计数 1/3**；下一轮 = redo61（第 2 轮）。
+
+### 新考试轮第 2 轮合格（2026-10-27 redo61, boot 3d865e57）→ 计数 2/3
+
+gate 180s（23:09:01, load=4.87）→ 链一次过：`root child proceeding uid=0` →
+`done=1` → `root=1 kaslr=1` ×4 → **双 OK 原生各 1 次**（23:11:47
+`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`）→
+`[host-verify] probe` append（uid=0）→ host verify `OK: uid=0 + kernelsu Live`
+→ 120s+ boot 不变 + enforce=1 → **蓝卡「工作中 Built-in」无红条**（驱动
+35220/6 == 管理器 35252/6、SELinux 强制执行、无越狱徽章，ui.png 实拍）。
+- 备注：截图前 adb 瞬断第三次同模式（redo58/60/61 截图时均遇），disconnect+
+  reconnect 即恢复。
+- 取证 `SUCCESS_redo61_3d865e57/{ui.png,chain.log,restore.log,host.log,
+  verdict.txt}`。**连续计数 2/3**；下一轮 = **决胜轮 redo62**。
