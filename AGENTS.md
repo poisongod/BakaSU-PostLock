@@ -3640,3 +3640,21 @@ fix75 beat 实现核对。
 
 - 取证 `FAIL_redo54_3f8dde85/{pstore.txt,chain.log,host.log,verdict.txt}`；
   计数维持 **0/3**；设备已由弹窗自动重启到 fresh boot 47fc27c1。
+
+### 新考试轮第 1 轮合格（2026-10-27 redo55, boot 62cc4077）→ 计数 1/3——uid0 monitor 抽签赢 + 双 OK 原生
+
+redo54 失败后 fresh boot 直接重考：gate 170s（load=4.97）→ 链 ~80s 一次过。
+- **root child 这次突围成功**：`root child proceeding uid=0 euid=0` →
+  `result done=1 uid_after=0 setgid=0/0 setuid=0/0 selinux=1->0`——
+  **uid0 monitor 抽签窗口赢了**（redo54 同 flip 被秒杀的对照，代码注释
+  「few milliseconds survival window」的另一侧实证）。
+- `root=1 kaslr=1` ×4 + CHAIN_EXIT_DONE；fix75 计数 0（无页死，设计内）。
+- **双 OK 原生各 1 次**（21:46:54 `SELINUX-STRICT-OK enforce=1 probe=
+  host-verify` + `POSTLOCK-RESTORE-OK`，零人工）→ `[host-verify] probe:
+  uid=0 ... context=u:r:shell:s0` append → 120s+ boot 62cc4077 不变 +
+  enforce=1。
+- **蓝卡「工作中 Built-in」无红条**（ui.png 实拍）：驱动 `(35220/6)` ==
+  管理器 `(35252/6)` UAPI 6==6、SELinux 强制执行、无越狱徽章。
+- 观察项：0 个模块（fix59 events 门控族，非判据）。
+- 取证 `SUCCESS_redo55_62cc4077/{ui.png,chain.log,restore.log,host.log,
+  verdict.txt}`。**连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
