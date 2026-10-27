@@ -3717,3 +3717,19 @@ containment` → `POSTLOCK-EXIT=1`，无 restore 无双 OK = **redo56 同款 pay
   下轮 oneshot 在 postlock 退出后**立即** cp 备份（脚本内部，不依赖外部轮询）。
 - 取证 `FAIL_redo59_f1936d6d/{chain.log,fail_lines.txt,host.log,verdict.txt}`；
   **计数归零 0/3**；reboot 后 fresh boot 重考（redo60 第 1 轮）。
+
+### 新考试轮第 1 轮合格（2026-10-27 redo60, boot 89842aec）→ 计数 1/3——归零后重新开考首轮
+
+gate 175s（22:57:08, load=4.90）→ 链一次过：`root child proceeding uid=0` →
+`done=1` → `root=1 kaslr=1` ×4 → **双 OK 原生各 1 次**（22:58:47
+`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`）→
+`[host-verify] probe` append（uid=0）→ host verify `OK: uid=0 + kernelsu Live`
+→ 120s+ boot 不变 + enforce=1 → **蓝卡「工作中 Built-in」无红条**（驱动
+35220/6 == 管理器 35252/6、SELinux 强制执行、无越狱徽章，ui.png 实拍）。
+- **redo58 的 `ERROR: /product/bin/su failed` 疑点澄清**：host 日志名 sed 生成
+  链断点——`redo57_oneshot.sh` 的 27/30 行写死 `postlock_redo57.log`，redo58/59
+  生成时 s/redo56→redo58 等替换不命中 → 三轮日志全写同一文件、轮次脚本读串。
+  本轮修复（显式改名 + postlock 退出后立即 cp 备份 `*.backup.log`），verify
+  `OK` 无 ERROR 实证通过。
+- 取证 `SUCCESS_redo60_89842aec/{ui.png,chain.log,restore.log,host.log,
+  verdict.txt}`。**连续计数 1/3**；下一轮 = redo61（第 2 轮）。
