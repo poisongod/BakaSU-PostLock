@@ -3389,6 +3389,30 @@ BOOT-CHANGED（`${CB:0:8}` 截断修复）；poll 的 adb 必须 `timeout` 包�
 断网时挂在无超时 shell 上；深休眠断网判别 = ping「No route to host」+ uptime/
 boot_id 自洽（vs 僵死永不回网）。
 
+### 新考试轮第 1 轮合格（2026-10-27 redo51, boot 6ebbfcfb）→ 计数 1/3——fix81 首考通过（双 OK 原生）
+
+gate 5s 秒过（20:39:15 `quiet after 5s (load=0.63)`）→ **全链 54 秒**（今日最快：
+20:40:09 链退出）→ restore **fix81 首次实战达成**：父进程 flip 后纯内建写
+`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`
+（20:40:14 各 1 次**原生出现，无人工介入**——fix39/42/43/45 四连死的 runcon
+child 已删，本轮零 segfault 零人工补 marker）→ host verify 自动 append
+`[host-verify] probe: uid=0 ... context=u:r:shell:s0` → boot 6ebbfcfb 稳定
+8.5min+ → `getenforce=1` + 蓝卡**「工作中 Built-in」**、驱动 `(35220/6)` ==
+管理器 `(35252/6)` UAPI 6==6、**SELinux 强制执行**、无红条、无越狱徽章。
+- chain：`root=1` ×4 + summary ×3 + CHAIN_EXIT_DONE + exit tail 安全
+  （closed probe fd → kill child → reaped → constructor returning）。
+- restore 头 `context=u:r:kernel:s0` + Permissive（诊断头）→ 尾段 flip
+  enforce=1——域/时序按 fix81 设计。
+- **观察项**：蓝卡「0 个模块」（历史成功轮 5 模块）——疑 fix59 ksud events
+  门控（默认 0）未跑，非判据项，待查模块列表来源。
+- **fix75 未在本轮**：stage push 的是编译 fix75 之前的 so——**fix75 首考 =
+  redo52**。fix75（so `1f9ee615`，commit e90051fd）= pipe_prepare 子进程
+  页死自检测（500ms sanitize，连败 2 次即在 init_on_alloc 清零窗口 sweep
+  fake fds 再永挂），sweep 与 fix71 字节同款（fix70 教训差异化论证）。
+- 取证 `/tmp/opencode/exam/SUCCESS_redo51_6ebbfcfb/{ui.png,chain.log,
+  restore.log,host.log}`。
+- **连续计数 1/3**；下一轮 = reboot fresh boot 起 redo52（第 2 轮）。
+
 ### 新考试轮第 4 轮失败（2026-10-27 redo48, boot 3ee82d94→12bbc000 init reboot）→ 维持 0/3——root child SIGKILL 第 5 次，fix81 三连未检验
 
 gate 525s（load=4.99 惊险过）→ trigger 06:30:25 → payload/route/win/cfi 全过 →
