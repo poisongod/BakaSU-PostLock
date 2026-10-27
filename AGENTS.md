@@ -3347,6 +3347,25 @@ restore.log（自动化非人工）。生成物 round-trip（postlock.sh heredoc
 - **计数维持 0/3**；fix81 下轮首考（redo46 = 判据：双 OK 原生 + 自动
   probe append 行 + enforce=1 + 蓝卡）。
 
+### 新考试轮第 1 轮失败（2026-10-27 redo49, boot 12bbc000 未变）→ 维持 0/3——payload 页死 + 深休眠 12h 断网，fix81 四连未检验
+
+gate 秒过（load=4.05）→ trigger 06:39:57 → **06:41:54 链即失败**：
+`cfgfs write set-fail errno=25(ENOTTY)` → `payload table dead tbl=0 ×6` →
+`ks_neutralize ok=0` → **fd-hold containment（close slots UNCLEARED，"reboot
+before any re-run"）** → CHAIN_EXIT_DONE（root=0）——payload 页死家族第 5 次
+（redo17/25/26/47 同型）。链退出比断网早 4 分钟 ⇒ **06:46 起的断网与链无关**：
+设备深休眠 12 小时（用户 19:0x 碰设备回网；uptime 45300s 与 boot_id 12bbc000
+自洽实锤未重启；期间 tailnet 100.71.26.6/100.80.86.28 双 IP 不通 + Windows
+adb.exe interop 判死 = 全通道断）。host 侧 480s marker 超时 → verify 撞 no
+devices → `ERROR: /product/bin/su failed` exit（判失败成立）。restore.log 不存在
+→ **fix81 连续第四轮未检验**（redo46/47/48/49 四连吃掉首考）。fd-hold daemon
+pid=2644 已死（12h 内被清理）+ boot 未炸 = 残留未引爆，仍按 fd-hold 规则判明
+即 reboot。取证 `FAIL_redo49_12bbc000/{chain.log,host.log,verdict.txt}`。
+**排障教训**：poll 脚本 `BOOT` 短名 vs 完整 boot_id UUID 比较会 0s 误报
+BOOT-CHANGED（`${CB:0:8}` 截断修复）；poll 的 adb 必须 `timeout` 包裹否则
+断网时挂在无超时 shell 上；深休眠断网判别 = ping「No route to host」+ uptime/
+boot_id 自洽（vs 僵死永不回网）。
+
 ### 新考试轮第 4 轮失败（2026-10-27 redo48, boot 3ee82d94→12bbc000 init reboot）→ 维持 0/3——root child SIGKILL 第 5 次，fix81 三连未检验
 
 gate 525s（load=4.99 惊险过）→ trigger 06:30:25 → payload/route/win/cfi 全过 →
