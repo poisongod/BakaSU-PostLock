@@ -3658,3 +3658,13 @@ redo54 失败后 fresh boot 直接重考：gate 170s（load=4.97）→ 链 ~80s 
 - 观察项：0 个模块（fix59 events 门控族，非判据）。
 - 取证 `SUCCESS_redo55_62cc4077/{ui.png,chain.log,restore.log,host.log,
   verdict.txt}`。**连续计数 1/3**；下一轮 = reboot fresh boot 重考（第 2 轮）。
+
+### 新考试轮第 2 轮失败（2026-10-27 redo56, boot 1ac807a6）→ 维持 1/3——payload 页死 + fd-hold 收容
+
+gate 170s（21:57:15 触发）→ `payload did not land` ×2 → `cfgfs write set-fail
+errno=25` 循环 → `pipe-physrw-summary done=0 root=0 read_ok=0 write_ok=0`
+→ `neutralize FAILED (no pipe child); fd-hold containment`（21:59:15
+CHAIN_EXIT_DONE，root=0，无 restore 无双 OK）→ **fd-hold 残留判明即 reboot**
+（「reboot before any re-run」假承诺家族，redo17/25/26/47/49/50/54 同族）。
+- 取证 `FAIL_redo56_1ac807a6/{chain.log,fail_lines.txt,host.log,verdict.txt}`；
+  计数维持 **1/3**；reboot 换 fresh boot 重考（第 2 轮）。
