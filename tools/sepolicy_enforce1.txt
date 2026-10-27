@@ -1,0 +1,18 @@
+type ksu domain
+permissive ksu
+allow ksu service_manager_type service_manager find
+allow ksu default_android_service service_manager find
+allow servicemanager ksu binder transfer
+allow ksu servicemanager binder call
+allow servicemanager ksu binder call
+allow servicemanager ksu binder set_context_mgr
+allow ksu servicemanager binder transfer
+allow untrusted_app ksu binder call
+allow untrusted_app ksu binder transfer
+allow ksu untrusted_app binder call
+allow ksu untrusted_app binder transfer
+allow system_server ksu fd use
+allow system_server ksu fifo_file read
+allow system_server ksu fifo_file write
+allow system_server shell fifo_file read
+allow system_server shell fifo_file write

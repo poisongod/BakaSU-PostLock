@@ -77,6 +77,7 @@ ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
 ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
 ab push "$OCSK_SRC" "$STAGE/ocsk.ko" >/dev/null
+ab push "$REPO/tools/sepolicy_enforce1.txt" "$STAGE/sep_enforce1.txt" >/dev/null
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
 #      setprop is SELinux-denied (default_prop), so the value goes into
@@ -311,6 +312,25 @@ if [ -x /data/adb/ksud ]; then
   cp -f /data/adb/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
+fi
+# --- enforce=1 data-path rules (2026-10-28) ----------------------------
+# Manager data features under strict SELinux (measured 2026-10-28, boot
+# 587002ff): service check package / RootService / pm list packages all
+# fail until these land.  The pm failure is uid0-specific and comes from
+# binder_translate_fd: selinux_binder_transfer_file refuses to hand the
+# su-session pipe fds to system_server (dmesg "transaction failed
+# 29201/-1, size 172-40"), so cmd's shellCommand dies with Failed
+# transaction (2147483646) -> SuperUserRepository PACKAGE_LOAD_FAILED.
+# allow system_server ksu/shell fifo_file read/write is the fix (file/
+# socket fds passed all along; only the pipe was rejected).  check rc
+# is the only trustworthy parse verdict -- apply exits 0 on bad input
+# too (non-strict skips unparseable lines silently).
+if [ -f $STAGE/sep_enforce1.txt ] && [ -x $TMP/ksud ]; then
+  $TMP/ksud sepolicy check $STAGE/sep_enforce1.txt >/dev/null 2>&1 \\
+    || log WARN-sep-check-failed
+  $TMP/ksud sepolicy apply $STAGE/sep_enforce1.txt >/dev/null 2>&1 \\
+    || log WARN-sep-apply-failed
+  log "sepolicy enforce1 rules applied"
 fi
 # --- late-load module stage (2026-10-24) -------------------------------
 # The driver insmods long after boot, so ksud's boot events never fire
