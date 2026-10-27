@@ -3688,3 +3688,18 @@ collisions`）→ panic 重启（bootreason=`kernel_panic,fatal_exception`）。
   现阶段唯一策略 = fail amplifier 重考（4/22 轮命中，~19%/轮）。
 - 取证 `FAIL_redo57_484e0227/{pstore.txt,chain.log,host.log,verdict.txt}`；
   计数维持 **1/3**；设备已 fresh boot 56ac1ccf（panic 出来）直接重考。
+
+### 新考试轮第 2 轮合格（2026-10-27 redo58, boot 6d71d903）→ 计数 2/3
+
+gate 165s（22:26:44, load=4.94）→ 链一次过：`root child proceeding uid=0` →
+`done=1` → `root=1 kaslr=1` ×4 → **双 OK 原生各 1 次**（22:28:07
+`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`）→
+`[host-verify] probe` append ×2（uid=0）→ enforce=1 → boot 稳定 8min+
+（三次复核）→ **蓝卡「工作中 Built-in」无红条**（驱动 35220/6 == 管理器
+35252/6、SELinux 强制执行、无越狱徽章，ui.png 实拍）。
+- 疑点：postlock stdout 有 `ERROR: /product/bin/su failed` 但 `EXIT=0`——
+  probe append 行在 571 die 之后存在 = 探测实际通过，疑 verdict grep 假阳性
+  （`postlock_redo58.log` 事后被 /tmp 清理无法复核，备份机制待补：轮次结束
+  立即 cp host 日志）。
+- 取证 `SUCCESS_redo58_6d71d903/{ui.png,chain.log,restore.log,host.log,
+  verdict.txt}`。**连续计数 2/3**；下一轮 = **决胜轮 redo59**。
