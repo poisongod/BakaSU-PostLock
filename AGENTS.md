@@ -3766,3 +3766,46 @@ gate 120s（23:19:20, load=4.86）→ 链一次过：`root child proceeding uid=
 payload pin + fix73/75/81 组合连续三 boot 稳定复现。
 - 取证 `SUCCESS_redo62_587002ff/{ui.png,chain.log,restore.log,host.log,
   verdict.txt}`。**连续计数 3/3 = 本轮考试完成**。
+
+### sepolicy enforce1 规则集沉淀（2026-10-28，主仓 02347e53 / app 1cbc5c2）
+
+任务③（BakaSU 管理器数据功能 enforce=1 下失效）三个失效点根因闭环后，
+沉淀 **18 条 sep 规则** `tools/sepolicy_enforce1.txt`（shell↔ksud↔su 数据
+通路：ksu 域读写 /data/local/temp、ksud exec、su socket 等），两仓 restore
+heredoc 注入 `ksud sepolicy apply <file>`（Permissive 期）→ 翻 enforce=1
+前生效；parse 判据 `ksud sepolicy check <file>` rc=0（18 条全解析）。
+实战首验（boot a2cb87dd 恢复轮）+ 复测（b1c72ff5）双绿。
+
+### 任务①：apply_kernelsu_rules() 在 ko 加载时完整跑通（2026-10-28）
+
+- **根因（确定性闭环）**：编译源 `work/ReSukiSU/kernel/core/init.c` 是 fork 版——
+  `ksu_late_loaded = false` **无条件赋值**（`#ifdef MODULE (current->pid != 1)`
+  判定被删，三理由注释：ksud 驱动规则注入 / else 分支功能 ksu_ksud_init /
+  LATE_LOAD flag 会打越狱徽章）。**LKM 场景 apply 三调用点全死**：init.c if
+  分支（死代码）、ksud_integration.c:272（execve hook 检测 `init second_stage`，
+  boot 0-10s，finitmod 280s 永远错过）、无第三处。历史 `secctx -22` 由此闭环
+  （ksu 类型从未创建 → ksud sep 文件无 type 声明）。
+- **两树不一致坑**：`build/bakasu-work/kernel` 是未 fork 上游版（保留
+  `(current->pid != 1)` 判定）——**分析归因必须读 work/ReSukiSU**（实际编译源），
+  两树 diff 曾误导方向。观测判据：dmesg else 分支特征（`ksud: input_event_kp`
+  + `patch syscall 63/80` = ksu_ksud_init 唯一调用点 + `module_load_filter`）
+  命中、if 分支 `late load mode` 全缺。
+- **修复（最小改动，init.c 保持 dirty 不 commit——rev-list 版本纪律同 UAPI
+  supercall.h，任何 commit 都会 bump 版本串 35220）**：公共路径（
+  `ksu_sucompat_init()` 之后、`if (ksu_late_loaded)` 之前）插
+  `apply_kernelsu_rules(); cache_sid();`；**不翻 ksu_late_loaded**（保 else
+  全功能 + 无越狱徽章）；`setup_ksu_cred`/`escape_to_root_for_init` 不搬
+  （ksud supercall 路径运行时已有触发点）；handle_policy 用局部 policydb
+  不碰 backup_policydb，与 apply 兼容。
+- **判据（dmesg，finitmod 上下文 pid 标识）六行全绿**（boot b1c72ff5 实测）：
+  `SELinux permissive or disabled, apply rules!` → `len of ksu_dup_policydb
+  (backup_db) output: 1304550` → `backup sepolicy success!` → `len of
+  ksu_dup_policydb output: 1304550` → **`Cached su SID: 2195`**（最强判据 =
+  类型创建+规则写回+secid 解析全链成功）→ ksud 后续 `Type ksu already
+  exists`（两路径协作：apply 先建类型，ksud 发现已存在）。零失败串。
+- **rmmod 死路定案**：pstore 栈 `ksu_observer_exit+0x7c ← kernelsu_exit+0x48`
+  （exit 路径自身 panic）——验证只走 dmesg 判据，不试 rmmod。
+- 新 ko sha1 `4c2ff5920ed59e941c605eb084c0b65f64355d81`（版本串未漂移，
+  重编命令同「kernelsu.ko 重编」节）。同轮任务③复测通过：enforce=1 蓝卡
+  Built-in + 超级用户页全列表 + pm 382 + `su -c id` context=`u:r:ksu:s0`
+  + sep check rc=0。
