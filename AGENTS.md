@@ -3746,3 +3746,23 @@ gate 180s（23:09:01, load=4.87）→ 链一次过：`root child proceeding uid=
   reconnect 即恢复。
 - 取证 `SUCCESS_redo61_3d865e57/{ui.png,chain.log,restore.log,host.log,
   verdict.txt}`。**连续计数 2/3**；下一轮 = **决胜轮 redo62**。
+
+### 🏁 新考试轮决胜轮合格（2026-10-27 redo62, boot 587002ff）→ 连续三次 3/3 达成，新考试轮完成
+
+gate 120s（23:19:20, load=4.86）→ 链一次过：`root child proceeding uid=0` →
+`done=1` → `root=1 kaslr=1` ×4 → **双 OK 原生各 1 次**（23:20:53
+`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`）→
+`[host-verify] probe` append（uid=0）→ host verify `OK: uid=0 + kernelsu Live`
+→ 120s+ boot 不变 + enforce=1 → **蓝卡「工作中 Built-in」无红条**（驱动
+35220/6 == 管理器 35252/6、SELinux 强制执行、无越狱徽章，ui.png 实拍）。
+
+**新考试轮（严格判据 = 双 OK 原生 + probe append + enforce=1 + 蓝卡无红条）
+连续三次合格达成 3/3**：
+- 第 1 轮 redo60 boot `89842aec`（22:58）
+- 第 2 轮 redo61 boot `3d865e57`（23:11）
+- 第 3 轮 redo62 boot `587002ff`（23:20，决胜轮）
+
+三轮全部 fresh boot 一次过、零失败、零人工介入——redo59 归零后
+payload pin + fix73/75/81 组合连续三 boot 稳定复现。
+- 取证 `SUCCESS_redo62_587002ff/{ui.png,chain.log,restore.log,host.log,
+  verdict.txt}`。**连续计数 3/3 = 本轮考试完成**。
