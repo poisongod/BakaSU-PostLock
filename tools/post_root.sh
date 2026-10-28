@@ -17,7 +17,7 @@ exec >> "$LOG" 2>&1
 echo "== post_root start $(date) =="
 
 # v23: ocs SILENCER FIRST (before anything else touches userspace).
-#     ocsk.ko is built against this exact kernel (kheaders utsrelease
+#     oplus_check_suppress.ko is built against this exact kernel (kheaders utsrelease
 #     5.4.254-qgki-g977b99b1fbb9 + OPPO-tree KDIR; anchor-verified at
 #     load: str x30,[x18]@entry / ret@+0x14c) and registers a kprobe on
 #     oplus_root_check_succ that sets x0=0 and jumps straight to the
@@ -28,7 +28,7 @@ echo "== post_root start $(date) =="
 #     Rounds 44/45/46 proved .text is unreachable from user primitives
 #     (configfs read AND pipe-physmap write both panic) -> kernel-side
 #     kprobe is the only remaining path.
-if [ -f /data/local/tmp/ocsk.ko ] && [ -x /data/local/tmp/home/finitmod_v2 ]; then
+if [ -f /data/local/tmp/oplus_check_suppress.ko ] && [ -x /data/local/tmp/home/finitmod_v2 ]; then
     # v28 (v7 module): boot 0e62a8cf proved ocs_init NEVER runs on this
     # kernel (preset state=PREINIT/entry_addr=4242 survived a rc=0 load;
     # root cause: this KDIR's struct module is 64B smaller than the
@@ -38,22 +38,22 @@ if [ -f /data/local/tmp/ocsk.ko ] && [ -x /data/local/tmp/home/finitmod_v2 ]; th
     # which parse_args() runs inside load_module() BEFORE the never-
     # reached do_init_module() -- the same channel the preset experiment
     # already proved works.
-    /data/local/tmp/home/finitmod_v2 /data/local/tmp/ocsk.ko 0 arm=1 >/dev/null 2>&1
-    echo "ocsk finitmod arm=1 rc=$? (verdict in dmesg: 'ocsk: ... silenced')"
-    echo "--ocsk-verify--"
-    grep -a ocsk /proc/modules
+    /data/local/tmp/home/finitmod_v2 /data/local/tmp/oplus_check_suppress.ko 0 arm=1 >/dev/null 2>&1
+    echo "oplus_check_suppress finitmod arm=1 rc=$? (verdict in dmesg: 'oplus_check_suppress: ... silenced')"
+    echo "--oplus_check_suppress-verify--"
+    grep -a oplus_check_suppress /proc/modules
     # v26: +state (v6c param_string channel -- the full load-time trace:
     #     ret.entry/entry/kill.word.before/ret.kill/kill.word.after).
     for p in hits last_pc entry_addr state arm; do
-        echo "param.$p=$(cat /sys/module/ocsk/parameters/$p 2>&1)"
+        echo "param.$p=$(cat /sys/module/oplus_check_suppress/parameters/$p 2>&1)"
     done
-    echo "ko.sha1=$(sha1sum /data/local/tmp/ocsk.ko | cut -c1-8)"
-    dmesg 2>/dev/null | grep -a ocsk | tail -4 || echo "dmesg ocsk: (silent)"
+    echo "ko.sha1=$(sha1sum /data/local/tmp/oplus_check_suppress.ko | cut -c1-8)"
+    dmesg 2>/dev/null | grep -a oplus_check_suppress | tail -4 || echo "dmesg oplus_check_suppress: (silent)"
     # (v27 preset-param reload experiment concluded on boot 0e62a8cf:
     #  PREINIT survived => init never ran; v7 must NOT be rmmod'd -- a
     #  registered kprobe pointing into unloaded module text would oops.)
 else
-    echo "ocsk MISSING: ko=$([ -f /data/local/tmp/ocsk.ko ] && echo yes || echo no) finitmod_v2=$([ -x /data/local/tmp/home/finitmod_v2 ] && echo yes || echo no)"
+    echo "oplus_check_suppress MISSING: ko=$([ -f /data/local/tmp/oplus_check_suppress.ko ] && echo yes || echo no) finitmod_v2=$([ -x /data/local/tmp/home/finitmod_v2 ] && echo yes || echo no)"
 fi
 
 # v24: ocs forensics.  This kernel drops module-side KERN_INFO from dmesg
@@ -62,8 +62,8 @@ fi
 #     related symbol right after load: round 50's kprobe registered Live
 #     but the kevent payload/Kill path still fired -- either a symbol
 #     clone bypasses the probe (visible here) or the Kill path is
-#     independent of ocs (told apart later by /sys/module/ocsk/hits).
-echo "--ocsk-forensics--"
+#     independent of ocs (told apart later by /sys/module/oplus_check_suppress/hits).
+echo "--oplus_check_suppress-forensics--"
 [ -d /sys/kernel/debug/kprobes ] || mount -t debugfs none /sys/kernel/debug 2>/dev/null
 head -6 /sys/kernel/debug/kprobes/list 2>/dev/null || echo "kprobes/list: n/a"
 grep -E "root_check|kevent" /proc/kallsyms > /data/local/tmp/rc_syms 2>&1
@@ -478,7 +478,7 @@ $SC dumpsys window | grep mCurrentFocus
 $SC screencap -p /data/local/tmp/ksu_screen.png 2>&1 | head -2
 echo "screencap bytes=$(wc -c < /data/local/tmp/ksu_screen.png 2>/dev/null)"
 uiautomator dump /data/local/tmp/ksu_ui.xml >/dev/null 2>&1
-# v22: ocsk.ko route prerequisites -- rounds 45/46 proved .text is
+# v22: oplus_check_suppress.ko route prerequisites -- rounds 45/46 proved .text is
 #    unreachable through BOTH primitives (phys-probe write dies on linear
 #    RO; configfs dies on the KIMAGE RX mapping), while .data writes stay
 #    green all round.  The kernel itself may poke .text via kprobes (r41
@@ -502,7 +502,7 @@ else
   echo "fail_function: unavailable"
 fi
 echo "== post_root done $(date) =="
-# v25b: DELAYED ocsk effect check -- by now the manager app was started
+# v25b: DELAYED oplus_check_suppress effect check -- by now the manager app was started
 #     (am start above) and the detector has had time to fire.  Expect:
 #       hits>0            = v5 kill-bl probe actually triggers (rounds
 #                          50/53 entry-probe stayed 0 because the kill
@@ -513,8 +513,8 @@ echo "== post_root done $(date) =="
 #                          Kill in every prior round)
 #       kill count stable = dmesg "Kill the process" lines stop growing
 sleep 12
-echo "--ocsk-verify-late--"
-echo "hits=$(cat /sys/module/ocsk/parameters/hits 2>&1) last_pc=$(cat /sys/module/ocsk/parameters/last_pc 2>&1)"
+echo "--oplus_check_suppress-verify-late--"
+echo "hits=$(cat /sys/module/oplus_check_suppress/parameters/hits 2>&1) last_pc=$(cat /sys/module/oplus_check_suppress/parameters/last_pc 2>&1)"
 echo "kill-lines=$(dmesg 2>/dev/null | grep -acE 'Kill the process')"
 ps -A -o PID,ARGS 2>/dev/null | grep -a ksud | grep -av grep | head -3 || true
 echo "(ksud lines above; empty = dead)"

@@ -710,9 +710,10 @@ BOOT_COMPLETED 在链 gate 之前先读上次启动原因，命中 panic 类 →
   持续活跃（dmesg oplus 行 863 条），但**通知栏无弹窗**（静默态）；两符号都在
   kallsyms（`oplus_root_check_succ` T / `kevent_send_to_user` t + `.cfi_jt`）。
   它是 OPPO 多类事件的通用上报通道，全局拦有副作用风险——弹窗真出现再加探针。
-- **ocsk 已固化进 coldstart.sh / postlock.sh**（2026-10-19）：两脚本 push
-  `tools/ocsk/ocsk.ko` 到各自 TMP/STAGE，在 kernelsu.ko finitmod 之后、app 启动
-  之前 `finitmod ocsk.ko 0 arm=1`（finitmod.c 原生支持 param=val，arm 在
+- **ocsk 已固化进 coldstart.sh / postlock.sh**（2026-10-19；coldstart 已删，2026-10-28
+  更名）：postlock.sh push `../oplus-check-suppress/oplus_check_suppress.ko` 到
+  STAGE，在 kernelsu.ko finitmod 之后、app 启动
+  之前 `finitmod oplus_check_suppress.ko 0 arm=1`（finitmod.c 原生支持 param=val，arm 在
   parse_args 期注册探针）。WARN-only 不 die（无 ocsk 驱动照常，只是 app 会被
   ocs 杀）。**真驱动模式下 ocsk 是必需配套**：libksud.so 每次 setuid(0) 必触发
   ocs force_sig。post_root.sh 里的既有 ocsk 段（finitmod_v2 + verify/late 判据）
@@ -844,14 +845,15 @@ su shell 正常（KsuCli 输出 `Zygisk implement: None` 等业务日志，无 n
   FAIL 复位 armed_flag，可反复 echo 1 重试；state（hexdump 读，
   shell `$(cat)` 曾因转义读空）是唯一诊断源（本内核模块 printk/dmesg
   不可达、filp_open 在 finitmod 上下文失败——老 v6b/v24 教训依旧）。
-- **ocsk 编译命令**（host，每次照抄）：
-  `make -C $REPO/work/kout-v15 M=$REPO/tools/ocsk ARCH=arm64
+- **ocsk 编译命令**（host，每次照抄；2026-10-28 起 M= 指独立仓）：
+  `make -C $REPO/work/kout-v15 M=$REPO/../oplus-check-suppress ARCH=arm64
   CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar
   OBJCOPY=llvm-objcopy CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER= modules`
   （PATH 加 NDK clang；kout=5.4.147 勿用，kout-v15=5.4.254 匹配设备；
   `CONFIG_CC_HAS_AUTO_VAR_INIT_ZERO_ENABLER=` 必须置空——Makefile:933
   写死的 `-enable-trivial-auto-var-init-zero...` 是 clang21 移除的 flag；
-  源码树在 $REPO/work/kernsrc/sm6375-v15）。
+  源码树在 $REPO/work/kernsrc/sm6375-v15。hotload 仓同款命令 M= 改指
+  $REPO/../kernelsu-hotload-init。）
 
 **安全警告弹窗（v12 已治理，2026-10-19）**：exsystemservice 弹「检测到恶意
 程序…已阻止本次破坏行为」由 `kevent_send_to_user:execve` 上报 libksud.so
@@ -4020,6 +4022,29 @@ git 状态逐一验证一致：remote/HEAD/dirty 计数与迁移前相同）：
   判据依赖）。
 - **ocsk.ko 独立 → `poisongod/oplus-check-suppress`**（private）：源文件
   `ocsk.c`（17KB，v12 弹窗治理 + v11.2 kill_pre return 1 语义全史在头
-  注释）+ Kbuild + README（编译命令/部署/state 诊断/版本史）。主仓
-  `tools/ocsk/` **保留**（含构建产物，恢复链 KO_SRC 依赖）。本地
-  `../oplus-check-suppress/`。
+  注释）+ Kbuild + README（编译命令/部署/state 诊断/版本史）。~~主仓
+  `tools/ocsk/` 保留~~ **2026-10-28 更名时已删（见下节）**，恢复链
+  OCSK_SRC 改指独立仓产物。本地 `../oplus-check-suppress/`。
+
+### 三模块标准名更正（2026-10-28 用户定案：.ko 名 / 模块名 / 显示名统一）
+
+- **`ocsk.ko` → `oplus_check_suppress.ko`**（模块名 `oplus_check_suppress`，
+  `/sys/module/oplus_check_suppress/`；源 ocsk.c→oplus_check_suppress.c，
+  printk/emit 诊断串同步；`../oplus-check-suppress` commit 878d7a6，
+  README L91 历史引用「ocsk v11.2」保留）。
+- **`kernelsu_init.ko` → `kernelsu_hotload_init.ko`**（模块名
+  `kernelsu_hotload_init`，hl_stage 路径 `/sys/module/kernelsu_hotload_init/
+  parameters/hl_stage`；源 kernelsu_init.c→kernelsu_hotload_init.c，注释里
+  `kernelsu_init()` 是 BakaSU 驱动 init 函数**不改**；`../kernelsu-hotload-init`
+  commit e681e9c）。dmesg tag `kernelsu-init-hotload:` 不变。
+- 两 ko 已用 ocsk 同款命令重编（vermagic 5.4.254-qgki 不变；产物 .ko 不入 git）。
+- **主仓 `tools/ocsk/` 构建目录 git rm**；postlock.sh `OCSK_SRC=
+  $REPO/../oplus-check-suppress/oplus_check_suppress.ko` + die 检查；
+  post_root.sh / exp_v6c.sh 设备路径与日志串同步（bash -n 过）。
+- app（PostLock-Boot 仓）：label `PostLock:Boot`→**`PostLock-Boot`**（与仓库一致）；
+  主页卡片显示名 **KernelSU / Oplus Check Suppress / KernelSU Hotload Init**；
+  探测按新模块名；assets restore.sh stage 名 + 二进制替换 + PAYLOAD_VERSION bump。
+- 验收 grep 特征同步：`ocsk-already-loaded`→`oplus_check_suppress-already-loaded`、
+  `WARN-ocsk-finitmod-failed`→`WARN-oplus_check_suppress-finitmod-failed`、
+  `lsmod` grep `^oplus_check_suppress`。历史记录（本文上文/forensics）里的 ocsk
+  旧名是当时实名不回改。设备 stage 残留旧名 ko 无害（restore 只引用新名）。

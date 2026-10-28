@@ -54,13 +54,13 @@ step "check host artifacts"
 PRELOAD_SRC=$REPO/build/pfum10c48/bin/preload.so
 KO_SRC=$REPO/build/embed/kernelsu.ko
 FIN_SRC=$REPO/build/embed/finitmod
-# ocsk.ko (v8) silences the OPPO oplus_root_check_succ kill path; without
+# oplus_check_suppress.ko (v8) silences the OPPO oplus_root_check_succ kill path; without
 # it the real driver mode is unusable (app's libksud.so setuid trips the
 # detector -> force_sig).  Must match this kernel exactly.
-OCSK_SRC=$REPO/tools/ocsk/ocsk.ko
+OCSK_SRC=$REPO/../oplus-check-suppress/oplus_check_suppress.ko
+[ -f "$OCSK_SRC" ] || die "missing $OCSK_SRC (build in ../oplus-check-suppress)"
 [ -f "$KO_SRC" ] || die "missing $KO_SRC (ReSukiSU kernelsu.ko build artifact, lives in build/embed/)"
 [ -f "$FIN_SRC" ] || die "missing $FIN_SRC (NDK aarch64-linux-android31-clang -static -O2 -o build/embed/finitmod tools/finitmod.c)"
-[ -f "$OCSK_SRC" ] || die "missing $OCSK_SRC (OPPO kill silencer, tools/ocsk/)"
 if [ ! -f "$PRELOAD_SRC" ]; then
   (cd "$REPO" && make PROJECT=pfum10c48 -j"$(nproc)")
 fi
@@ -76,7 +76,7 @@ ab shell "mkdir -p $STAGE" || die "cannot create $STAGE (is /data/local/tmp gone
 ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
 ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
-ab push "$OCSK_SRC" "$STAGE/ocsk.ko" >/dev/null
+ab push "$OCSK_SRC" "$STAGE/oplus_check_suppress.ko" >/dev/null
 ab push "$REPO/tools/sepolicy_enforce1.txt" "$STAGE/sep_enforce1.txt" >/dev/null
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
@@ -184,17 +184,17 @@ echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 [ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && log OMK-ROLLED-BACK || log WARN-no-omk-bak
 # rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
 # a binary some previous round left mapped/executing.
-for f in kernelsu.ko finitmod ocsk.ko preload.so; do
+for f in kernelsu.ko finitmod oplus_check_suppress.ko preload.so; do
   rm -f $TMP/\$f
   cp $STAGE/\$f $TMP/\$f
 done
-chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/ocsk.ko $TMP/preload.so
+chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/preload.so
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
-# ocsk: silence the OPPO oplus_root_check_succ kill path BEFORE the app
+# oplus_check_suppress: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
-if grep -q ^ocsk /proc/modules; then log ocsk-already-loaded; else $TMP/finitmod $TMP/ocsk.ko 0 arm=1 || log WARN-ocsk-finitmod-failed; fi
+if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; else $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1 || log WARN-oplus_check_suppress-finitmod-failed; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
 # precede the app start)
@@ -347,7 +347,7 @@ fi
 #  fix58 (2026-10-24): bounce is now OFF by default (KS_BOUNCE_ZYGOTE=1
 #   to enable) -- its first automated run at 11:53 killed zygote on the
 #   just-fragile post-chain system and the framework never came back:
-#   device rescue-rebooted ~2min later (bootreason=reboot, driver/ocsk/
+#   device rescue-rebooted ~2min later (bootreason=reboot, driver/oplus_check_suppress/
 #   overlay all lost).  The manual flow (events -> kill zygote, 08:13)
 #   ran on an already-stable system and was safe; until that window is
 #   understood, re-enable consciously.
