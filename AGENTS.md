@@ -2405,6 +2405,39 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
 计数 → 版本串 35220→35221 漂移，管理器红条判定复杂化。只 commit 主仓
 `build/embed/kernelsu.ko`（sha `f8bcbb45…`）与文档。
 
+## 本地仓库清理与 work/ReSukiSU 重建（2026-10-28）
+
+**触发**：ReSukiSU 上游仓库已转移为 `Baka-SU/BakaSU`（301 实测，见「真实
+标准模式」节的来源修正），用户裁决删除本地所有旧仓库。编译源必须重建。
+
+- **重建流程**（三重验证全绿，make 路径 `M=$PWD/work/ReSukiSU/kernel` 不变）：
+  删旧仓为 `.old` → `git clone --no-hardlinks build/work/BakaSU work/ReSukiSU`
+  （新地址同源干净 clone 当本地源，免 67MB 网络下载）→ `remote set-url
+  https://github.com/Baka-SU/BakaSU.git` → `checkout -B main 8450dd28`（恢复
+  dirty 基线，线性祖先已验证）→ 应用 `build/dirty-backup/` patch + `install -D`
+  恢复 2 个 untracked。**验证**：① `git diff HEAD` 与备份 patch **逐字节一致**；
+  ② 25 文件 sha1 与删除前快照全一致；③ status 25 行。fetch 新地址 OK
+  （origin/main=d5e9e025；main 保持 8450dd28 **不 pull**——dirty 版本纪律）。
+- **偏差（预期内）**：staging 区归零（原 `M `/`MM` 全变 ` M`），工作树内容
+  逐字节一致，编译只读工作树无影响；**stash@{0}（local instrumentation+compat，
+  22 文件）不随重建迁移**——它与工作树是同一批文件的历史快照，工作树为权威，
+  stash 以 patch 留档。
+- **备份 `build/dirty-backup/`（604K，已 commit）= 回滚手册**：
+  `resukisu-dirty-*.patch`（diff HEAD，应用依赖 8450dd28 基线）+
+  `resukisu-stash-*.patch` + `resukisu-files/`（25 文件整树快照，按相对路径
+  保结构，**不依赖基线，恢复时优先 cp 覆盖**）+ `resukisu-untracked/`（2 件）
+  + `supercall.h` 单件副本。恢复后必跑三重验证。
+- **删除清单**（用户选定）：`work/ReSukiSU.old`、`/tmp/opencode/ReSukiSU`、
+  `build/work/libsu`、`build/work/BakaSU`（重建源，用完即删）、`work/rsks`
+  （ReSukiSU APK 反编译产物 base.apk/classes*.dex，主仓 **未跟踪** tracked=0，
+  可从设备 pull 重生成）。**保留**：主仓、`build/bakasu-work`（app 仓）、
+  `build/work/tailscale`、`build/work/android_kernel_oppo_sm6375`、
+  `work/ghostlock54`。
+- 重建后编译输入冒烟 ✓：Kbuild/setuid_hook.c/sucompat.c/supercall.h 就位，
+  `lsm_hooks.c` post_execve 宏链 6 处 + `kernel_compat.mk` 1 处 grep 命中。
+  `build/embed/kernelsu.ko`（方案乙重编前的 fc6343a2）dirty 保持不 commit，
+  等方案乙 sucompat edit + 重编后连同 AGENTS 任务④记录一起提交。
+
 ### 新考试轮第 2 轮失败（2026-10-25 redo7, boot 0636ab86）→ 归零 0/3——root child SIGKILL 家族
 
 quiet-gate 20min 超时放行（11:15:18）→ 链 4 分钟走完第一遍写（selinux early

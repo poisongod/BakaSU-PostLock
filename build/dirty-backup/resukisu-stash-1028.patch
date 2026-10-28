@@ -1,0 +1,980 @@
+diff --git a/kernel/Kbuild b/kernel/Kbuild
+index 4aad0683..ade2fd2b 100644
+--- a/kernel/Kbuild
++++ b/kernel/Kbuild
+@@ -18,6 +18,7 @@ kernelsu-objs += manager/manager.o
+ endif
+ 
+ kernelsu-objs += compat/kernel_compat.o
++kernelsu-objs += compat/unexported_shim.o
+ kernelsu-objs += infra/su_mount_ns.o
+ kernelsu-objs += infra/seccomp_cache.o
+ kernelsu-objs += infra/file_wrapper.o
+@@ -46,6 +47,7 @@ ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-v
+ ccflags-y += -Wno-int-to-pointer-cast -Wno-declaration-after-statement
+ 
+ ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
++ccflags-y += -I$(objtree)/security/selinux
+ ccflags-y += -I$(srctree)/$(src) -I$(srctree)/$(src)/include
+ ccflags-y += -I$(src) -I$(src)/include
+ 
+@@ -173,10 +175,10 @@ ifdef CONFIG_KSU_TRACEPOINT_HOOK
+     ifneq ($(KERNEL_TYPE), GKI 2.0)
+       $(info -- $(REPO_NAME) TP Hooks are only supported on GKI 2.0 kernels.)
+       $(info -- Current Kernel Type: $(KERNEL_TYPE))
+-      $(info -- If you really want to continue, go to Kbuild and comment out this warning.)
+-      $(info -- Usually, this error occurs because you forgot to enable some kernel configurations.)
+-      $(info -- Read: https://resukisu.org/guide/manual-integrate.html)
+-      $(error TP hooks are incompatible with Non-GKI/GKI 1.0 kernels.)
++      $(info -- KP-5.4 fork: gate intentionally disabled. sys_enter tracepoint is instantiated)
++      $(info -- unconditionally by arch/arm64/kernel/ptrace.c CREATE_TRACE_POINTS on this tree,)
++      $(info -- and register is done via kallsyms-resolved tp + exported probe_register_prio.)
++      #$(error TP hooks are incompatible with Non-GKI/GKI 1.0 kernels.)
+     endif
+   endif
+ 
+@@ -246,3 +248,4 @@ $(info -- KernelSU Manager package name: $(KSU_MANAGER_PACKAGE))
+ endif
+ 
+ # Keep a new line here!! Because someone may append config
++
+diff --git a/kernel/core/init.c b/kernel/core/init.c
+index 15e34108..6fb1283f 100644
+--- a/kernel/core/init.c
++++ b/kernel/core/init.c
+@@ -157,6 +157,42 @@ bool allow_shell = false;
+ bool ksu_no_custom_rc = false;
+ module_param_named(norc, ksu_no_custom_rc, bool, 0);
+ 
++/* KP-5.4 fork diagnostics: init/hook registration state as sysfs params.
++ * init-time pr_info does not surface in dmesg on this device, so registration
++ * results and runtime hit counters are recorded here instead (0444 readable). */
++int ksu_dbg_stage;
++module_param(ksu_dbg_stage, int, 0444);
++int ksu_dbg_kp_rc = -1000;
++module_param(ksu_dbg_kp_rc, int, 0444);
++int ksu_dbg_kp_hits;
++module_param(ksu_dbg_kp_hits, int, 0444);
++int ksu_dbg_tp_rc = -1000;
++module_param(ksu_dbg_tp_rc, int, 0444);
++int ksu_dbg_tp_sym = -1000;
++module_param(ksu_dbg_tp_sym, int, 0444);
++int ksu_dbg_krp1 = -1000;
++module_param(ksu_dbg_krp1, int, 0444);
++int ksu_dbg_krp2 = -1000;
++module_param(ksu_dbg_krp2, int, 0444);
++int ksu_dbg_sysent = -1000;
++module_param(ksu_dbg_sysent, int, 0444);
++int ksu_dbg_disp = -1000;
++module_param(ksu_dbg_disp, int, 0444);
++int ksu_dbg_patch = -1000;
++module_param(ksu_dbg_patch, int, 0444);
++int ksu_dbg_tp_hits;
++module_param(ksu_dbg_tp_hits, int, 0444);
++int ksu_dbg_tp_redir;
++module_param(ksu_dbg_tp_redir, int, 0444);
++int ksu_dbg_disp_hits;
++module_param(ksu_dbg_disp_hits, int, 0444);
++int ksu_dbg_setuid_hits;
++module_param(ksu_dbg_setuid_hits, int, 0444);
++int ksu_dbg_nozygote;
++module_param(ksu_dbg_nozygote, int, 0444);
++int ksu_dbg_noallow;
++module_param(ksu_dbg_noallow, int, 0444);
++
+ #ifdef MODULE
+ bool ksu_bundled = false;
+ module_param_named(bundled, ksu_bundled, bool, 0);
+@@ -168,6 +204,11 @@ MODULE_PARM_DESC(block_modules, "Comma-separated preset module names to acknowle
+ 
+ int __init kernelsu_init(void)
+ {
++    ksu_dbg_stage = 1;
++    /* level probe: if even KERN_EMERG is swallowed, the mystery is
++     * context/address based, not level based. */
++    pr_emerg("KSUDBG init enter\n");
++
+     // clang-format off
+     
+     // ddk in x86-64 doesn't have generated/compile.h
+@@ -185,11 +226,13 @@ int __init kernelsu_init(void)
+ #endif
+     // clang-format on
+ 
+-#ifdef MODULE
+-    ksu_late_loaded = (current->pid != 1);
+-#else
++    // KP-5.4 fork: insmod always runs post-boot from the exploit bootstrap
++    // (current->pid != 1), but we deliberately take the boot-time init path:
++    // ksud-driven rule application (ksud_integration supercall handlers),
++    // ksu_ksud_init (direct read/fstat table hooks + input kprobe),
++    // module_load_filter.  Late-load semantics would also flip the manager's
++    // LATE_LOAD flag and the app would label the driver "jailbreak" again.
+     ksu_late_loaded = false;
+-#endif
+ 
+     // If we are in tracepoint hook, and won't enable PATCH_SYSCALL_DISPATCHER, check x86-64 hooks
+ #if defined(__x86_64__) && !defined(CONFIG_KSU_X86_PATCH_SYSCALL_DISPATCHER)
+@@ -222,10 +265,6 @@ int __init kernelsu_init(void)
+         pr_alert("shell is allowed at init!");
+     }
+ 
+-#ifdef CONFIG_ARM64
+-    ksu_start_apatch_conflict_check();
+-#endif
+-
+     ksu_cred = prepare_creds();
+     if (!ksu_cred) {
+         pr_err("prepare cred failed!\n");
+@@ -233,6 +272,16 @@ int __init kernelsu_init(void)
+     }
+ 
+     ksu_init_symbol_resolver();
++    if (ksu_resolve_unexported()) {
++        pr_err("failed to resolve unexported kernel symbols\n");
++        return -ENOENT;
++    }
++    ksu_dbg_stage = 3;
++#ifdef CONFIG_ARM64
++    /* must run after ksu_resolve_unexported(): its kthread may call the
++     * do_syslog shim, whose slot would still be NULL otherwise. */
++    ksu_start_apatch_conflict_check();
++#endif
+     ksu_selinux_init();
+     ksu_feature_init();
+     ksu_sulog_init();
+@@ -240,6 +289,7 @@ int __init kernelsu_init(void)
+     ksu_selinux_hide_init();
+ 
+     ksu_supercalls_init();
++    ksu_dbg_stage = 4;
+     ksu_app_profile_init();
+ 
+     ksu_setuid_hook_init();
+@@ -278,6 +328,7 @@ int __init kernelsu_init(void)
+ #endif
+     } else {
+         ksu_hook_init();
++        ksu_dbg_stage = 6;
+ 
+         ksu_module_load_filter_hook_init();
+ 
+@@ -295,6 +346,8 @@ int __init kernelsu_init(void)
+     kobject_del(&THIS_MODULE->mkobj.kobj);
+ #endif
+ #endif
++    ksu_dbg_stage = 100;
++    pr_emerg("KSUDBG init done\n");
+     return 0;
+ }
+ 
+diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
+index a57ed013..6ba0ebb7 100644
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/cred.h>
+ #include <linux/cpu.h>
+ #include <linux/memory.h>
+@@ -165,7 +166,7 @@ static ssize_t my_write_context(struct file *file, char *buf, size_t size)
+         goto out;
+     }
+ #elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    length = avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY,
++    length = avc_has_perm(ksu_g_selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY,
+                           SECURITY__CHECK_CONTEXT, NULL);
+     if (length)
+         goto out;
+@@ -222,7 +223,7 @@ static ssize_t my_write_access(struct file *file, char *buf, size_t size)
+     length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
+ #elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+     length =
+-        avc_has_perm(&selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
++        avc_has_perm(ksu_g_selinux_state, current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
+ #else
+     length = avc_has_perm(current_sid(), SECINITSID_SECURITY, SECCLASS_SECURITY, SECURITY__COMPUTE_AV, NULL);
+ #endif
+@@ -299,7 +300,7 @@ extern setprocattr_fn ksu_orig_setprocattr;
+ #endif
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) || defined(KSU_COMPAT_SETPROCATTR_USE_NEW_PROTOTYPE)
+-int __nocfi ksu_handle_selinux_setprocattr(const char *name, void *value, size_t size)
++int ksu_handle_selinux_setprocattr(const char *name, void *value, size_t size)
+ #else
+ int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, void *value, size_t size)
+ #endif
+@@ -319,7 +320,7 @@ int __nocfi ksu_handle_selinux_setprocattr(struct task_struct *p, char *name, vo
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+     error = avc_has_perm(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+ #elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    error = avc_has_perm(&selinux_state, mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
++    error = avc_has_perm(ksu_g_selinux_state, mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+ #else
+     error = avc_has_perm(mysid, mysid, SECCLASS_PROCESS, PROCESS__SETCURRENT, NULL);
+ #endif
+@@ -592,7 +593,7 @@ static int ksu_selinux_hide_enable()
+ #define ksu_for_each_lsm_entry list_for_each_entry
+ #endif
+ 
+-    ksu_for_each_lsm_entry(hp, &security_hook_heads.setprocattr, list)
++    ksu_for_each_lsm_entry(hp, &ksu_g_security_hook_heads->setprocattr, list)
+     {
+         // https://github.com/torvalds/linux/commit/d69dece5f5b6bc7a5e39d2b6136ddc69469331fe
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0) || defined(KSU_COMPAT_REQUIRE_PROVIDE_LSM_NAME)
+@@ -789,9 +790,9 @@ __maybe_static void initialize_fake_status()
+ {
+     // https://github.com/torvalds/linux/commit/4b36cb773a8153417a080f8025d522322f915aea
+ #if LINUX_VERSION_CODE > KERNEL_VERSION(5, 7, 0) || defined(KSU_COMPAT_SELINUX_STATUS_VAR_IN_SELINUX_STATE)
+-    ksu_selinux_status_lock = &selinux_state.status_lock;
++    ksu_selinux_status_lock = &ksu_g_selinux_state->status_lock;
+ #elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    ksu_selinux_status_lock = &selinux_state.ss->status_lock;
++    ksu_selinux_status_lock = &ksu_g_selinux_state->ss->status_lock;
+ #elif defined(CONFIG_KALLSYMS_ALL)
+     // call ksu_resolve_symbol_for_functable_hook to search selinux_status_lock
+     // because some compiler add suffix for that
+@@ -808,9 +809,9 @@ __maybe_static void initialize_fake_status()
+         goto out;
+ 
+ #if LINUX_VERSION_CODE > KERNEL_VERSION(5, 7, 0) || defined(KSU_COMPAT_SELINUX_STATUS_VAR_IN_SELINUX_STATE)
+-    struct page *selinux_status_page = selinux_state.status_page;
++    struct page *selinux_status_page = ksu_g_selinux_state->status_page;
+ #elif defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    struct page *selinux_status_page = selinux_state.ss->status_page;
++    struct page *selinux_status_page = ksu_g_selinux_state->ss->status_page;
+ #elif defined(CONFIG_KALLSYMS_ALL)
+     // call ksu_resolve_symbol_for_functable_hook to search selinux_status_page
+     // because some compiler add suffix for that
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 8dbbd847..116700bb 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -170,7 +170,7 @@ long ksu_handle_faccessat_sucompat_internal(int orig_nr, struct pt_regs *regs)
+ 
+     char path[sizeof(su_path) + 1];
+     memset(path, 0, sizeof(path));
+-    strncpy_from_user_nofault(path, *filename_user, sizeof(path));
++    ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+         old_cred = override_creds(ksu_cred);
+@@ -205,7 +205,7 @@ long ksu_handle_stat_sucompat_internal(int orig_nr, struct pt_regs *regs)
+ 
+     char path[sizeof(su_path) + 1];
+     memset(path, 0, sizeof(path));
+-    strncpy_from_user_nofault(path, *filename_user, sizeof(path));
++    ksu_strncpy_from_user_nofault(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+         old_cred = override_creds(ksu_cred);
+diff --git a/kernel/hook/arm64/patch_memory.c b/kernel/hook/arm64/patch_memory.c
+index 1ab6befe..488b5909 100644
+--- a/kernel/hook/arm64/patch_memory.c
++++ b/kernel/hook/arm64/patch_memory.c
+@@ -5,7 +5,9 @@
+ 
+ #ifdef __aarch64__
+ 
++#include "compat/unexported_data.h"
+ #include "../patch_memory.h"
++#include "infra/symbol_resolver.h"
+ #include "klog.h" // IWYU pragma: keep
+ #include "linux/cpumask.h"
+ #include "linux/gfp.h" // IWYU pragma: keep
+@@ -152,7 +154,22 @@ fail:
+     })
+ #define ksu_flush_icache(start, end) caches_clean_inval_pou(start, end)
+ #else
+-#define ksu_flush_dcache(start, sz) __flush_dcache_area((void *)start, sz)
++// KP-5.4 fork: __flush_dcache_area (arch/arm64/mm/cache.S:181) has no
++// EXPORT_SYMBOL on this tree either; resolve it from kallsyms on first use.
++// __flush_icache_range IS exported (arch/arm64/mm/flush.c:79) and stays a
++// direct call.
++typedef void (*ksu_flush_dcache_area_fn_t)(void *addr, size_t len);
++static ksu_flush_dcache_area_fn_t ksu_flush_dcache_area_fn;
++static void ksu_flush_dcache_dynamic(void *addr, size_t len)
++{
++    if (!ksu_flush_dcache_area_fn)
++        ksu_flush_dcache_area_fn = (void *)find_kernel_symbol_exact("__flush_dcache_area");
++    if (ksu_flush_dcache_area_fn)
++        ksu_flush_dcache_area_fn(addr, len);
++    else
++        pr_err("ksu: __flush_dcache_area unresolved, dcache flush skipped\n");
++}
++#define ksu_flush_dcache(start, sz) ksu_flush_dcache_dynamic((void *)(start), (sz))
+ #define ksu_flush_icache(start, end) __flush_icache_range(start, end)
+ #endif
+ 
+@@ -270,6 +287,14 @@ static int ksu_patch_text_nosync_vmap(struct patch_text_info *info)
+ // not a big problem because we are in stop_machine.
+ // ^1: https://github.com/NothingOSS/android_kernel_device_modules_6.1_nothing_mt6878/blob/957dac185efe46cbf6336b0fff9516d84c8cd78f/drivers/misc/mediatek/mkp/mkp_main.c#L29
+ // ^2: https://github.com/torvalds/linux/commit/c0eb315ad9719e41ce44708455cc69df7ac9f3f8
++// KP-5.4 fork: __set_fixmap is an extern function (arch/arm64/mm/mmu.c:1264)
++// and is NOT exported on this tree, so the set_fixmap_offset() macro would
++// leave an unresolvable UNDEF.  Resolve it from kallsyms at first use and
++// reproduce the macro's semantics: __set_fixmap() then
++// fix_to_virt(idx) + (phys & (PAGE_SIZE-1)).
++typedef void (*ksu_set_fixmap_fn_t)(enum fixed_addresses idx, phys_addr_t phys, pgprot_t prot);
++static ksu_set_fixmap_fn_t ksu_set_fixmap_fn;
++
+ static int ksu_patch_text_nosync(void *dst, void *src, size_t len, int flags)
+ {
+     pr_info("patch dst=0x%lx src=0x%lx len=%ld\n", (unsigned long)dst, (unsigned long)src, len);
+@@ -286,7 +311,15 @@ static int ksu_patch_text_nosync(void *dst, void *src, size_t len, int flags)
+     }
+     pr_info("phy addr for patch 0x%lx: 0x%lx\n", p, phy);
+ 
+-    void *map = set_fixmap_offset(FIX_TEXT_POKE0, phy);
++    if (!ksu_set_fixmap_fn)
++        ksu_set_fixmap_fn = (void *)find_kernel_symbol_exact("__set_fixmap");
++    if (!ksu_set_fixmap_fn) {
++        pr_err("__set_fixmap unresolved, cannot poke 0x%lx\n", p);
++        ret = -ENOENT;
++        goto err;
++    }
++    ksu_set_fixmap_fn(FIX_TEXT_POKE0, phy, FIXMAP_PAGE_NORMAL);
++    void *map = (void *)(fix_to_virt(FIX_TEXT_POKE0) + (phy & (PAGE_SIZE - 1)));
+     pr_info("fixmap addr for patch 0x%lx: 0x%lx\n", p, (unsigned long)map);
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+@@ -302,7 +335,7 @@ static int ksu_patch_text_nosync(void *dst, void *src, size_t len, int flags)
+     }
+ #endif
+ 
+-    clear_fixmap(FIX_TEXT_POKE0);
++    ksu_set_fixmap_fn(FIX_TEXT_POKE0, 0, FIXMAP_PAGE_CLEAR);
+ 
+     if (flags & KSU_PATCH_TEXT_FLUSH_ICACHE)
+         ksu_flush_icache((uintptr_t)dst, (uintptr_t)dst + len);
+diff --git a/kernel/hook/arm64/syscall_hook.c b/kernel/hook/arm64/syscall_hook.c
+index 5f5b32c6..41bfe23d 100644
+--- a/kernel/hook/arm64/syscall_hook.c
++++ b/kernel/hook/arm64/syscall_hook.c
+@@ -13,6 +13,11 @@
+ syscall_fn_t *ksu_syscall_table = NULL;
+ int ksu_dispatcher_nr = -1;
+ 
++extern int ksu_dbg_sysent;
++extern int ksu_dbg_disp;
++extern int ksu_dbg_patch;
++extern int ksu_dbg_disp_hits;
++
+ // Hook registration table — read with READ_ONCE from tracepoint/dispatcher
+ // context, written with WRITE_ONCE from init/exit context.
+ static ksu_syscall_hook_fn syscall_hooks[__NR_syscalls];
+@@ -142,8 +147,10 @@ static int __init ksu_find_ni_syscall_slots(int *out_slots, int max_slots)
+ // Unified dispatcher: reads original NR from x8, dispatches to handler.
+ // Validates that syscallno matches our dispatcher slot (i.e. we redirected it),
+ // otherwise it's a spurious call — return -ENOSYS.
+-static long __nocfi ksu_syscall_dispatcher(const struct pt_regs *regs)
++static long ksu_syscall_dispatcher(const struct pt_regs *regs)
+ {
++    if (ksu_dbg_disp_hits++ == 0)
++        pr_info("KSUDBG dispatcher first hit, syscallno=%d\n", (int)regs->syscallno);
+     if (regs->syscallno != ksu_dispatcher_nr)
+         return -ENOSYS;
+ 
+@@ -204,6 +211,7 @@ void __init ksu_syscall_hook_init(void)
+     memset(syscall_hooks, 0, sizeof(syscall_hooks));
+ 
+     ksu_syscall_table = (syscall_fn_t *)ksu_resolve_symbol_for_functable_hook("sys_call_table");
++    ksu_dbg_sysent = ksu_syscall_table ? 1 : 0;
+     pr_info("sys_call_table=0x%lx", (unsigned long)ksu_syscall_table);
+ 
+     if (!ksu_syscall_table)
+@@ -217,6 +225,9 @@ void __init ksu_syscall_hook_init(void)
+ 
+     ksu_dispatcher_nr = ni_slot;
+     ksu_syscall_table_hook(ksu_dispatcher_nr, (syscall_fn_t)ksu_syscall_dispatcher, NULL);
++    ksu_dbg_disp = ksu_dispatcher_nr;
++    ksu_dbg_patch =
++        (ksu_syscall_table[ksu_dispatcher_nr] == (syscall_fn_t)ksu_syscall_dispatcher) ? 1 : 0;
+     pr_info("dispatcher installed at slot %d\n", ksu_dispatcher_nr);
+ }
+ 
+diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
+index 7eb2de3f..f3b651f8 100644
+--- a/kernel/hook/setuid_hook.c
++++ b/kernel/hook/setuid_hook.c
+@@ -32,6 +32,10 @@
+ #include <linux/workqueue.h>
+ #endif
+ 
++extern int ksu_dbg_setuid_hits;
++extern int ksu_dbg_nozygote;
++extern int ksu_dbg_noallow;
++
+ static inline void ksu_set_file_immutable(const char *path_name, bool immutable)
+ {
+     struct path path;
+@@ -133,6 +137,10 @@ do_susfs_work: {
+ 
+ int ksu_handle_setuid(uid_t new_uid, uid_t old_uid)
+ {
++    if (ksu_dbg_setuid_hits++ < 10)
++        pr_info("KSUDBG setuid entry #%d old=%u new=%u zygote=%d manager=%d\n",
++                ksu_dbg_setuid_hits, old_uid, new_uid, (int)is_zygote(current_cred()),
++                (int)ksu_is_manager_uid(new_uid));
+ #ifdef CONFIG_KSU_SUSFS
+     // Only susfs will process zygote_next
+     // We don't care it in Tracepoint / Manual hook
+@@ -143,6 +151,7 @@ int ksu_handle_setuid(uid_t new_uid, uid_t old_uid)
+ #endif
+     // We are only interested in processes spawned by zygote.
+     if (!is_zygote(current_cred())) {
++        ksu_dbg_nozygote++;
+         return 0;
+     }
+ 
+@@ -170,6 +179,7 @@ int ksu_handle_setuid(uid_t new_uid, uid_t old_uid)
+         return 0;
+     }
+ 
++    ksu_dbg_noallow++;
+     ksu_set_current_proc_unprivillege();
+ 
+     // Handle kernel umount
+diff --git a/kernel/hook/syscall_event_bridge.c b/kernel/hook/syscall_event_bridge.c
+index 605e0626..dbc54d9e 100644
+--- a/kernel/hook/syscall_event_bridge.c
++++ b/kernel/hook/syscall_event_bridge.c
+@@ -50,7 +50,7 @@ static int ksu_handle_init_mark_tracker(const char __user **filename_user)
+     return 0;
+ }
+ 
+-long __nocfi ksu_hook_newfstatat(int orig_nr, const struct pt_regs *regs)
++long  ksu_hook_newfstatat(int orig_nr, const struct pt_regs *regs)
+ {
+     if (!static_branch_unlikely(&ksu_su_compat_enabled))
+         return ksu_syscall_table[orig_nr](regs);
+@@ -58,7 +58,7 @@ long __nocfi ksu_hook_newfstatat(int orig_nr, const struct pt_regs *regs)
+     return ksu_handle_stat_sucompat_internal(orig_nr, (struct pt_regs *)regs);
+ }
+ 
+-long __nocfi ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
++long  ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
+ {
+     if (!static_branch_unlikely(&ksu_su_compat_enabled))
+         return ksu_syscall_table[orig_nr](regs);
+@@ -71,7 +71,7 @@ long __nocfi ksu_hook_faccessat(int orig_nr, const struct pt_regs *regs)
+ // I think we no need ifdef 4.3- kernel compatible in there?
+ extern struct static_key_true ksud_execve_key;
+ 
+-static long __nocfi ksu_hook_execve_common(int orig_nr, const struct pt_regs *regs, bool execveat)
++static long  ksu_hook_execve_common(int orig_nr, const struct pt_regs *regs, bool execveat)
+ {
+     const char __user **filename_user =
+         execveat ? (const char __user **)&PT_REGS_PARM2(regs) : (const char __user **)&PT_REGS_SYSCALL_PARM1(regs);
+@@ -111,17 +111,17 @@ static long __nocfi ksu_hook_execve_common(int orig_nr, const struct pt_regs *re
+     return ret;
+ }
+ 
+-long __nocfi ksu_hook_execve(int orig_nr, const struct pt_regs *regs)
++long  ksu_hook_execve(int orig_nr, const struct pt_regs *regs)
+ {
+     return ksu_hook_execve_common(orig_nr, regs, false);
+ }
+ 
+-long __nocfi ksu_hook_execveat(int orig_nr, const struct pt_regs *regs)
++long  ksu_hook_execveat(int orig_nr, const struct pt_regs *regs)
+ {
+     return ksu_hook_execve_common(orig_nr, regs, true);
+ }
+ 
+-long __nocfi ksu_hook_setresuid(int orig_nr, const struct pt_regs *regs)
++long  ksu_hook_setresuid(int orig_nr, const struct pt_regs *regs)
+ {
+     uid_t old_uid = ksu_get_uid_t(current_uid());
+     long ret = ksu_syscall_table[orig_nr](regs);
+diff --git a/kernel/hook/syscall_hook_manager.c b/kernel/hook/syscall_hook_manager.c
+index 30c23726..7cdd6de6 100644
+--- a/kernel/hook/syscall_hook_manager.c
++++ b/kernel/hook/syscall_hook_manager.c
+@@ -15,6 +15,7 @@
+ 
+ #include "arch.h"
+ #include "klog.h" // IWYU pragma: keep
++#include "infra/symbol_resolver.h"
+ #include "hook/syscall_hook_manager.h"
+ #include "hook/tp_marker.h"
+ #include "feature/sucompat.h"
+@@ -25,6 +26,13 @@
+ #include "hook/riscv64/syscall_regs.h"
+ #endif
+ 
++extern int ksu_dbg_tp_rc;
++extern int ksu_dbg_tp_sym;
++extern int ksu_dbg_krp1;
++extern int ksu_dbg_krp2;
++extern int ksu_dbg_tp_hits;
++extern int ksu_dbg_tp_redir;
++
+ #ifdef CONFIG_KRETPROBES
+ 
+ static struct kretprobe *init_kretprobe(const char *name, kretprobe_handler_t handler)
+@@ -98,6 +106,8 @@ static struct kretprobe *syscall_unregfunc_rp = NULL;
+ // sys_enter handler: redirect hooked syscalls to the dispatcher
+ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
+ {
++    if (ksu_dbg_tp_hits++ == 0)
++        pr_info("KSUDBG sys_enter handler first hit, id=%ld\n", id);
+ #if defined(__x86_64__)
+     if (unlikely(in_compat_syscall()))
+ #elif defined(__aarch64__) || defined(__riscv)
+@@ -111,6 +121,7 @@ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
+     if (ksu_has_syscall_hook(id)) {
+         struct pt_regs *current_regs = task_pt_regs(current);
+ 
++        ksu_dbg_tp_redir++;
+ #if defined(__x86_64__)
+         // Stash the original syscall number in ax.
+         // We use ax because it currently just holds -ENOSYS and is safe to overwrite.
+@@ -127,6 +138,36 @@ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
+ }
+ #endif
+ 
++#ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
++// KP-5.4 fork: __tracepoint_sys_enter is instantiated unconditionally by
++// arch/arm64/kernel/ptrace.c (CREATE_TRACE_POINTS) but is NOT exported on
++// this tree, so the generated register_trace_prio_sys_enter() inline would
++// leave an UNDEF.  Resolve the tracepoint struct from kallsyms
++// (KALLSYMS_ALL=y) and call the exported probe_register_prio core directly;
++// its regfunc (syscall_regfunc -> TIF_SYSCALL_TRACEPOINT on every task)
++// still runs, which is exactly what makes trace_sys_enter fire.
++static struct tracepoint *ksu_sys_enter_tp;
++
++static int ksu_register_sys_enter_tracepoint(void)
++{
++    ksu_sys_enter_tp = (struct tracepoint *)find_kernel_symbol_exact("__tracepoint_sys_enter");
++    ksu_dbg_tp_sym = ksu_sys_enter_tp ? 1 : 0;
++    if (!ksu_sys_enter_tp) {
++        pr_err("hook_manager: __tracepoint_sys_enter not found in kallsyms\n");
++        return -ENOENT;
++    }
++    return tracepoint_probe_register_prio(ksu_sys_enter_tp, (void *)ksu_sys_enter_handler, NULL, INT_MIN);
++}
++
++static void ksu_unregister_sys_enter_tracepoint(void)
++{
++    if (!ksu_sys_enter_tp)
++        return;
++    tracepoint_probe_unregister(ksu_sys_enter_tp, (void *)ksu_sys_enter_handler, NULL);
++    ksu_sys_enter_tp = NULL;
++}
++#endif
++
+ void __init ksu_syscall_hook_manager_init(void)
+ {
+     int ret;
+@@ -135,6 +176,8 @@ void __init ksu_syscall_hook_manager_init(void)
+ #ifdef CONFIG_KRETPROBES
+     syscall_regfunc_rp = init_kretprobe("syscall_regfunc", syscall_regfunc_handler);
+     syscall_unregfunc_rp = init_kretprobe("syscall_unregfunc", syscall_unregfunc_handler);
++    ksu_dbg_krp1 = syscall_regfunc_rp ? 0 : -1;
++    ksu_dbg_krp2 = syscall_unregfunc_rp ? 0 : -1;
+ #endif
+ 
+     // Register syscall hooks via dispatcher
+@@ -145,7 +188,8 @@ void __init ksu_syscall_hook_manager_init(void)
+     ksu_register_syscall_hook(__NR_faccessat, ksu_hook_faccessat);
+ 
+ #ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+-    ret = register_trace_prio_sys_enter(ksu_sys_enter_handler, NULL, INT_MIN);
++    ret = ksu_register_sys_enter_tracepoint();
++    ksu_dbg_tp_rc = ret;
+ #ifndef CONFIG_KRETPROBES
+     ksu_mark_running_process_locked();
+ #endif
+@@ -164,7 +208,7 @@ void __exit ksu_syscall_hook_manager_exit(void)
+ {
+     pr_info("hook_manager: ksu_hook_manager_exit called\n");
+ #ifdef CONFIG_HAVE_SYSCALL_TRACEPOINTS
+-    unregister_trace_sys_enter(ksu_sys_enter_handler, NULL);
++    ksu_unregister_sys_enter_tracepoint();
+     tracepoint_synchronize_unregister();
+     pr_info("hook_manager: sys_enter tracepoint unregistered\n");
+ #endif
+diff --git a/kernel/hook/tp_marker.c b/kernel/hook/tp_marker.c
+index c78bbbdd..3a447175 100644
+--- a/kernel/hook/tp_marker.c
++++ b/kernel/hook/tp_marker.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include "hook/tp_marker.h"
+ 
+ #include "linux/cred.h"
+diff --git a/kernel/infra/file_wrapper.c b/kernel/infra/file_wrapper.c
+index 710eebfc..593af84a 100644
+--- a/kernel/infra/file_wrapper.c
++++ b/kernel/infra/file_wrapper.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/gfp.h>
+ #include <linux/fdtable.h>
+ #include <linux/export.h>
+diff --git a/kernel/infra/su_mount_ns.c b/kernel/infra/su_mount_ns.c
+index f2412211..cd951fd1 100644
+--- a/kernel/infra/su_mount_ns.c
++++ b/kernel/infra/su_mount_ns.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/dcache.h>
+ #include <linux/errno.h>
+ #include <linux/fdtable.h>
+diff --git a/kernel/infra/symbol_resolver.c b/kernel/infra/symbol_resolver.c
+index 1fb4d7c6..33baf396 100644
+--- a/kernel/infra/symbol_resolver.c
++++ b/kernel/infra/symbol_resolver.c
+@@ -1,4 +1,5 @@
+ #include <linux/kallsyms.h>
++#include <linux/kprobes.h>
+ #include <linux/module.h>
+ #include <linux/string.h>
+ #include <linux/version.h>
+@@ -56,25 +57,37 @@ struct ksu_lookup_symbol_ctx {
+     void *match;
+ };
+ 
++// KP-5.4 fork (OPPO qgki): kallsyms_lookup_name and kallsyms_lookup are
++// NOT exported on this kernel (kernel/kallsyms.c only exports
++// sprint_symbol*).  Resolve kallsyms_lookup_name once through the standard
++// kprobe trick, then route every lookup through the cached pointer.  The
++// old module-symbol filter (kallsyms_lookup module_name check) is dropped:
++// kallsyms_lookup_name only walks the kernel image on 5.4 anyway, and none
++// of our queried names collide with loaded modules.
++static unsigned long (*kallsyms_lookup_name_fn)(const char *name);
++
+ unsigned long __nocfi find_kernel_symbol_exact(const char *symbol_name)
+ {
+-    unsigned long addr = 0;
+-#if HAVE_ON_EACH_MATCH_SYMBOL
+-    if (likely(kallsyms_on_each_match_symbol_fn)) {
+-        kallsyms_on_each_match_symbol_fn(find_kernel_symbol_exact_cb, symbol_name, &addr);
+-        return addr;
+-    }
+-#endif
+-    char *module_name = NULL;
+-    char buf[KSYM_SYMBOL_LEN];
+-
+-    addr = kallsyms_lookup_name(symbol_name);
+-    // check if it is kernel symbol
+-    kallsyms_lookup(addr, NULL, NULL, &module_name, buf);
+-    if (unlikely(module_name)) {
+-        pr_warn("ignore symbol %s of module %s\n", symbol_name, module_name);
++    if (unlikely(!kallsyms_lookup_name_fn))
+         return 0;
++    return kallsyms_lookup_name_fn(symbol_name);
++}
++
++static unsigned long ksu_resolve_kallsyms_lookup_name(void)
++{
++    struct kprobe kp = {
++        .symbol_name = "kallsyms_lookup_name",
++    };
++    unsigned long addr = 0;
++
++    if (register_kprobe(&kp) == 0) {
++        addr = (unsigned long)kp.addr;
++        unregister_kprobe(&kp);
+     }
++    if (!addr)
++        pr_err("failed to resolve kallsyms_lookup_name via kprobe\n");
++    else
++        pr_info("kallsyms_lookup_name @ 0x%lx (via kprobe)\n", addr);
+     return addr;
+ }
+ 
+@@ -176,6 +189,9 @@ void *ksu_resolve_symbol_for_functable_hook(const char *symbol_name)
+ 
+ void __init ksu_init_symbol_resolver()
+ {
++    kallsyms_lookup_name_fn = (void *)ksu_resolve_kallsyms_lookup_name();
++    if (!kallsyms_lookup_name_fn)
++        return;
+ #if !ALWAYS_HAVE_ON_EACH_SYMBOL
+     kallsyms_on_each_symbol_fn = (void *)find_kernel_symbol_exact("kallsyms_on_each_symbol");
+     if (!kallsyms_on_each_symbol_fn) {
+diff --git a/kernel/infra/symbol_resolver.h b/kernel/infra/symbol_resolver.h
+index 8ce4ef1e..e680c068 100644
+--- a/kernel/infra/symbol_resolver.h
++++ b/kernel/infra/symbol_resolver.h
+@@ -4,5 +4,6 @@
+ void *ksu_resolve_symbol_for_functable_hook(const char *symbol_name);
+ unsigned long find_kernel_symbol_exact(const char *symbol_name);
+ void ksu_init_symbol_resolver();
++int ksu_resolve_unexported(void);
+ 
+ #endif
+diff --git a/kernel/manager/pkg_observer.c b/kernel/manager/pkg_observer.c
+index 740887b4..db807f2a 100644
+--- a/kernel/manager/pkg_observer.c
++++ b/kernel/manager/pkg_observer.c
+@@ -21,6 +21,28 @@ struct watch_dir {
+ 
+ static struct fsnotify_group *g;
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
++// KP-5.4 fork: mainline 5.4 fsnotify_ops has only handle_event (8-arg);
++// android common kernels gained handle_inode_event later.
++static int ksu_handle_event(struct fsnotify_group *group, struct inode *inode, u32 mask,
++                            const void *data, int data_type, const struct qstr *file_name,
++                            u32 cookie, struct fsnotify_iter_info *iter_info)
++{
++    if (!file_name)
++        return 0;
++    if (mask & FS_ISDIR)
++        return 0;
++    if (file_name->len == 13 && !memcmp(file_name->name, "packages.list", 13)) {
++        pr_info("packages.list detected: %d\n", mask);
++        track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS);
++    }
++    return 0;
++}
++
++static const struct fsnotify_ops ksu_ops = {
++    .handle_event = ksu_handle_event,
++};
++#else
+ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct inode *inode, struct inode *dir,
+                                   const struct qstr *file_name, u32 cookie)
+ {
+@@ -38,6 +60,7 @@ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct i
+ static const struct fsnotify_ops ksu_ops = {
+     .handle_inode_event = ksu_handle_inode_event,
+ };
++#endif
+ 
+ static int add_mark_on_inode(struct inode *inode, u32 mask, struct fsnotify_mark **out)
+ {
+diff --git a/kernel/runtime/ksud_integration.c b/kernel/runtime/ksud_integration.c
+index e05a74a6..07812440 100644
+--- a/kernel/runtime/ksud_integration.c
++++ b/kernel/runtime/ksud_integration.c
+@@ -1026,10 +1026,10 @@ static long ksu_sys_fstat(const struct pt_regs *regs)
+         void __user *st_size_ptr = statbuf + offsetof(struct stat, st_size);
+         long size, new_size;
+         size_t extra = ksu_rc_len + module_rc_len;
+-        if (!copy_from_user_nofault(&size, st_size_ptr, sizeof(long))) {
++        if (!copy_from_user(&size, st_size_ptr, sizeof(long))) {
+             new_size = size + extra;
+             pr_info("adding rc len: %ld -> %ld", size, new_size);
+-            if (!copy_to_user_nofault(st_size_ptr, &new_size, sizeof(long))) {
++            if (!copy_to_user(st_size_ptr, &new_size, sizeof(long))) {
+                 pr_info("added rc len");
+             } else {
+                 pr_err("add rc len failed: statbuf 0x%lx", (unsigned long)st_size_ptr);
+diff --git a/kernel/selinux/rules.c b/kernel/selinux/rules.c
+index 4544b3d1..36ed68d0 100644
+--- a/kernel/selinux/rules.c
++++ b/kernel/selinux/rules.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/uaccess.h>
+ #include <linux/types.h>
+ #include <linux/version.h>
+@@ -40,10 +41,10 @@ static void reset_avc_cache()
+     selnl_notify_policyload(0);
+     selinux_status_update_policyload(0);
+ #else
+-    struct selinux_avc *avc = selinux_state.avc;
++    struct selinux_avc *avc = ksu_g_selinux_state->avc;
+     avc_ss_reset(avc, 0);
+     selnl_notify_policyload(0);
+-    selinux_status_update_policyload(&selinux_state, 0);
++    selinux_status_update_policyload(ksu_g_selinux_state, 0);
+ #endif
+     selinux_xfrm_notify_policyload();
+ }
+@@ -58,7 +59,7 @@ static struct policydb *get_policydb(void)
+ #ifdef SELINUX_POLICY_INSTEAD_SELINUX_SS
+ #error It should not happen!
+ #else
+-    struct selinux_ss *ss = selinux_state.ss;
++    struct selinux_ss *ss = ksu_g_selinux_state->ss;
+     db = &ss->policydb;
+ #endif
+ #else
+@@ -119,7 +120,7 @@ static inline void ksu_lock_sepolicy_legacy(void)
+ {
+ // 4.14 - 5.10
+ #if defined(KSU_COMPAT_USE_SELINUX_STATE) && !defined(SELINUX_POLICY_INSTEAD_SELINUX_SS)
+-    write_lock_irq(&selinux_state.ss->policy_rwlock);
++    write_lock_irq(&ksu_g_selinux_state->ss->policy_rwlock);
+ // 4.14-
+ #else
+     write_lock_irq(ksu_policy_rwlock_ptr);
+@@ -130,7 +131,7 @@ static inline void ksu_unlock_sepolicy_legacy(void)
+ {
+ // 4.14 - 5.10
+ #if defined(KSU_COMPAT_USE_SELINUX_STATE) && !defined(SELINUX_POLICY_INSTEAD_SELINUX_SS)
+-    write_unlock_irq(&selinux_state.ss->policy_rwlock);
++    write_unlock_irq(&ksu_g_selinux_state->ss->policy_rwlock);
+ // 4.14-
+ #else
+     write_unlock_irq(ksu_policy_rwlock_ptr);
+@@ -149,8 +150,8 @@ void apply_kernelsu_rules()
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_POLICY_MUTEX)
+     struct selinux_policy *pol, *old_pol;
+-    mutex_lock(&selinux_state.policy_mutex);
+-    old_pol = rcu_dereference_protected(selinux_state.policy, lockdep_is_held(&selinux_state.policy_mutex));
++    mutex_lock(&ksu_g_selinux_state->policy_mutex);
++    old_pol = rcu_dereference_protected(ksu_g_selinux_state->policy, lockdep_is_held(&ksu_g_selinux_state->policy_mutex));
+     backup_sepolicy = ksu_dup_sepolicy(old_pol);
+     if (IS_ERR(backup_sepolicy)) {
+         pr_err("failed to create backup sepolicy: %ld\n", PTR_ERR(backup_sepolicy));
+@@ -310,13 +311,13 @@ void apply_kernelsu_rules()
+     ksu_allow(db, "system_server", KERNEL_SU_DOMAIN, "process", "sigkill");
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_POLICY_MUTEX)
+-    rcu_assign_pointer(selinux_state.policy, pol);
++    rcu_assign_pointer(ksu_g_selinux_state->policy, pol);
+     synchronize_rcu();
+     ksu_destroy_sepolicy(old_pol);
+ 
+     reset_avc_cache();
+ out_unlock:
+-    mutex_unlock(&selinux_state.policy_mutex);
++    mutex_unlock(&ksu_g_selinux_state->policy_mutex);
+ #else
+     /* Save the old policydb to free later. */
+     memcpy(oldpolicydb, policydb_ptr, sizeof(*policydb_ptr));
+@@ -640,8 +641,8 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
+     //
+     // I think we can directly use this rcu to safety update selinux_policy
+     // this is also the upstream ksu way
+-    mutex_lock(&selinux_state.policy_mutex);
+-    old_pol = rcu_dereference_protected(selinux_state.policy, lockdep_is_held(&selinux_state.policy_mutex));
++    mutex_lock(&ksu_g_selinux_state->policy_mutex);
++    old_pol = rcu_dereference_protected(ksu_g_selinux_state->policy, lockdep_is_held(&ksu_g_selinux_state->policy_mutex));
+     pol = ksu_dup_sepolicy(old_pol);
+     if (IS_ERR(pol)) {
+         ret = PTR_ERR(pol);
+@@ -715,7 +716,7 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(KSU_COMPAT_HAS_POLICY_MUTEX)
+     // 5.10+
+-    rcu_assign_pointer(selinux_state.policy, pol);
++    rcu_assign_pointer(ksu_g_selinux_state->policy, pol);
+     synchronize_rcu();
+     ksu_destroy_sepolicy(old_pol);
+ 
+@@ -726,7 +727,7 @@ int handle_sepolicy(void __user *user_data, u64 data_len)
+ out_drop_new_policy:
+     ksu_destroy_sepolicy(pol);
+ out_unlock:
+-    mutex_unlock(&selinux_state.policy_mutex);
++    mutex_unlock(&ksu_g_selinux_state->policy_mutex);
+ #else
+     ret = success_cmd_count;
+     /* Save the old policydb to free later. */
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+index bf9ba1f6..1a4ca753 100644
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include "linux/cred.h"
+ #include "linux/sched.h"
+ #include "linux/security.h"
+diff --git a/kernel/selinux/selinux_defs.h b/kernel/selinux/selinux_defs.h
+index a1fcd6c1..a94baa13 100644
+--- a/kernel/selinux/selinux_defs.h
++++ b/kernel/selinux/selinux_defs.h
+@@ -1,6 +1,7 @@
+ #ifndef __KSU_H_SELINUX_DEFS
+ #define __KSU_H_SELINUX_DEFS
+ 
++#include "compat/unexported_data.h"
+ #include "selinux.h"
+ #include "objsec.h"
+ #ifdef SAMSUNG_SELINUX_PORTING
+@@ -12,7 +13,7 @@
+ 
+ #ifdef CONFIG_SECURITY_SELINUX_DISABLE
+ #ifdef KSU_COMPAT_USE_SELINUX_STATE
+-#define is_selinux_disabled() (selinux_state.disabled)
++#define is_selinux_disabled() (ksu_g_selinux_state->disabled)
+ #else
+ #define is_selinux_disabled() (selinux_disabled)
+ #endif
+@@ -22,8 +23,8 @@
+ 
+ #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+ #ifdef KSU_COMPAT_USE_SELINUX_STATE
+-#define __is_selinux_enforcing() (selinux_state.enforcing)
+-#define __setenforce(val) selinux_state.enforcing = val
++#define __is_selinux_enforcing() (ksu_g_selinux_state->enforcing)
++#define __setenforce(val) ksu_g_selinux_state->enforcing = val
+ #elif defined(SAMSUNG_SELINUX_PORTING) || !defined(KSU_COMPAT_USE_SELINUX_STATE)
+ #define __is_selinux_enforcing() (selinux_enforcing)
+ #define __setenforce(val) selinux_enforcing = val
+diff --git a/kernel/selinux/sepolicy.c b/kernel/selinux/sepolicy.c
+index 2655f548..aab8abd4 100644
+--- a/kernel/selinux/sepolicy.c
++++ b/kernel/selinux/sepolicy.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/gfp.h>
+ #include <linux/printk.h>
+ #include <linux/slab.h>
+@@ -1121,7 +1122,7 @@ static inline void ksu_lock_sepolicy_legacy(void)
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) && !defined(KSU_COMPAT_HAS_POLICY_MUTEX)
+ // 4.14 - 5.10
+ #if defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    read_lock(&selinux_state.ss->policy_rwlock);
++    read_lock(&ksu_g_selinux_state->ss->policy_rwlock);
+ // 4.14-
+ #else
+     read_lock(ksu_policy_rwlock_ptr);
+@@ -1134,7 +1135,7 @@ static inline void ksu_unlock_sepolicy_legacy(void)
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) && !defined(KSU_COMPAT_HAS_POLICY_MUTEX)
+ // 4.14 - 5.10
+ #if defined(KSU_COMPAT_USE_SELINUX_STATE)
+-    read_unlock(&selinux_state.ss->policy_rwlock);
++    read_unlock(&ksu_g_selinux_state->ss->policy_rwlock);
+ // 4.14-
+ #else
+     read_unlock(ksu_policy_rwlock_ptr);
+diff --git a/kernel/supercall/dispatch.c b/kernel/supercall/dispatch.c
+index 1edc0640..d73150ac 100644
+--- a/kernel/supercall/dispatch.c
++++ b/kernel/supercall/dispatch.c
+@@ -1,3 +1,4 @@
++#include "compat/unexported_data.h"
+ #include <linux/capability.h>
+ #include <linux/cred.h>
+ #include <linux/slab.h>
+diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
+index ca43b5a3..47017efa 100644
+--- a/kernel/supercall/supercall.c
++++ b/kernel/supercall/supercall.c
+@@ -21,6 +21,9 @@
+ #include "arch.h"
+ #include "klog.h" // IWYU pragma: keep
+ 
++extern int ksu_dbg_kp_rc;
++extern int ksu_dbg_kp_hits;
++
+ #define KSU_DRIVER_PERMISSION_SU_SESSION (1UL << 0)
+ 
+ struct ksu_driver_context {
+@@ -169,6 +172,9 @@ static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
+     int cmd = (int)PT_REGS_PARM3(real_regs);
+     void __user **arg = (void __user **)&PT_REGS_SYSCALL_PARM4(real_regs);
+ 
++    ksu_dbg_kp_hits++;
++    pr_info("KSUDBG reboot_pre real=%px m1=0x%x m2=0x%x\n", real_regs,
++            (unsigned)magic1, (unsigned)magic2);
+     ksu_handle_sys_reboot(magic1, magic2, cmd, arg);
+     return 0;
+ }
+@@ -187,6 +193,7 @@ void __init ksu_supercalls_init(void)
+ 
+ #ifdef CONFIG_KSU_TRACEPOINT_HOOK
+     rc = register_kprobe(&reboot_kp);
++    ksu_dbg_kp_rc = rc;
+     if (rc) {
+         pr_err("reboot kprobe failed: %d\n", rc);
+     } else {
