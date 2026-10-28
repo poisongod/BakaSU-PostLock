@@ -12,7 +12,7 @@
   - `336b7df` v1.42：tsKeepalive local-first（先 startTailscaled <2s，再 WanChannel）
   - `a0551fe` AdbShell 握手预算（TCP 4s / 首读 5s，CNXN 后回 12s）
   - assets：标准 key（adb keygen 格式，`40 00 00 00` 结构 + postlock_bootstrap comment）
-  - APK: `build/bakasu-work/postlock-app/app/build/outputs/apk/debug/app-debug.apk`（vc42）
+  - APK: `../PostLock-Boot/postlock-app/app/build/outputs/apk/debug/app-debug.apk`（vc42）
 - 主仓 commits：
   - `2aa7bd07` postlock.sh: adb keygen 标准 key + restore 清 `^2048 ` 坏行 + detached trigger
   - `c3c7441c` postlock.sh: 文件化 trigger（base64 push trigger.sh + nohup sh，run_fops 模式）

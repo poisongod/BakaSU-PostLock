@@ -1061,7 +1061,7 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
 ### PostLock:Boot 独立仓 + Tailscale/adb 异地通道（2026-10-20 第九轮）
 
 - **app 已独立成仓 `poisongod/PostLock-Boot`（private！assets 含设备 adb 授权
-  私钥）**，本地 = `build/bakasu-work/postlock-app`（原 BakaSU-PostLock 的
+  私钥）**，本地 = `../PostLock-Boot/postlock-app`（原 BakaSU-PostLock 的
   single-branch clone，refspec 只跟踪 `upstream-main`——fetch 其他分支要显式
   URL）。分支 main 从 v1.9 orphan 导入：**旧 ReSukiSU 上游 commit 链对象
   （`b2c595d…`）从未完整上传任何远端**，推空仓必 `remote unpack failed: did
@@ -1088,7 +1088,7 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   adb_keys（root 通道依赖链，链又依赖 adb……当前是死锁，突破口=用户在设备
   上操作）。
 - **Tailscale 官方构建**（tailscale-rs 已弃用勿碰）：go1.27.2 在 `~/sdk/go`，
-  克隆 `build/work/tailscale`，
+  克隆 `../tailscale`，
   `GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -tags ts_omit_ssh,ts_omit_systray
   ./cmd/tailscaled ./cmd/tailscale`（android 下 linux tag 为真会选中
   ssh/systray 依赖而构建失败，必须 omit）。产物 35/24MB push
@@ -2378,11 +2378,11 @@ stash、kernsrc 3.1G、kout-v15、clang、vendor 等原样带走）。**坑 = 3 
 **kernelsu.ko 重编（红条 UAPI 6 bump，原命令从未记录过，照此复刻）**：
 ```bash
 cd $REPO && export PATH=$PWD/work/clang/bin:$PATH   # 原构建同款 clang 11.0.1
-make -C $REPO/work/kout-v15 M=$REPO/work/ReSukiSU/kernel \
+make -C $REPO/work/kout-v15 M=$REPO/../BakaSU/kernel \
   CONFIG_KSU=m CONFIG_KSU_TRACEPOINT_HOOK=y CONFIG_KSU_DEBUG=y \
   ARCH=arm64 CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar \
   OBJCOPY=llvm-objcopy modules
-# 产物 work/ReSukiSU/kernel/kernelsu.ko → cp build/embed/kernelsu.ko（postlock KO_SRC）
+# 产物 ../BakaSU/kernel/kernelsu.ko → cp build/embed/kernelsu.ko（postlock KO_SRC）
 ```
 四个必踩坑（每个都花过一轮排查）：
 1. **`CONFIG_KSU=m` 必传**：kout-v15/.config 无任何 CONFIG_KSU 行（ddk 构建
@@ -2405,13 +2405,13 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
 计数 → 版本串 35220→35221 漂移，管理器红条判定复杂化。只 commit 主仓
 `build/embed/kernelsu.ko`（sha `f8bcbb45…`）与文档。
 
-## 本地仓库清理与 work/ReSukiSU 重建（2026-10-28）
+## 本地仓库清理与 ../BakaSU 重建（2026-10-28）
 
 **触发**：ReSukiSU 上游仓库已转移为 `Baka-SU/BakaSU`（301 实测，见「真实
 标准模式」节的来源修正），用户裁决删除本地所有旧仓库。编译源必须重建。
 
-- **重建流程**（三重验证全绿，make 路径 `M=$PWD/work/ReSukiSU/kernel` 不变）：
-  删旧仓为 `.old` → `git clone --no-hardlinks build/work/BakaSU work/ReSukiSU`
+- **重建流程**（三重验证全绿，make 路径 `M=$PWD/../BakaSU/kernel` 不变）：
+  删旧仓为 `.old` → `git clone --no-hardlinks build/work/BakaSU ../BakaSU`
   （新地址同源干净 clone 当本地源，免 67MB 网络下载）→ `remote set-url
   https://github.com/Baka-SU/BakaSU.git` → `checkout -B main 8450dd28`（恢复
   dirty 基线，线性祖先已验证）→ 应用 `build/dirty-backup/` patch + `install -D`
@@ -2427,12 +2427,12 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   `resukisu-stash-*.patch` + `resukisu-files/`（25 文件整树快照，按相对路径
   保结构，**不依赖基线，恢复时优先 cp 覆盖**）+ `resukisu-untracked/`（2 件）
   + `supercall.h` 单件副本。恢复后必跑三重验证。
-- **删除清单**（用户选定）：`work/ReSukiSU.old`、`/tmp/opencode/ReSukiSU`、
+- **删除清单**（用户选定）：`../BakaSU.old`、`/tmp/opencode/ReSukiSU`、
   `build/work/libsu`、`build/work/BakaSU`（重建源，用完即删）、`work/rsks`
   （ReSukiSU APK 反编译产物 base.apk/classes*.dex，主仓 **未跟踪** tracked=0，
-  可从设备 pull 重生成）。**保留**：主仓、`build/bakasu-work`（app 仓）、
-  `build/work/tailscale`、`build/work/android_kernel_oppo_sm6375`、
-  `work/ghostlock54`。
+  可从设备 pull 重生成）。**保留**：主仓、`../PostLock-Boot`（app 仓）、
+  `../tailscale`、`../android_kernel_oppo_sm6375`、
+  `../ghostlock54`。
 - 重建后编译输入冒烟 ✓：Kbuild/setuid_hook.c/sucompat.c/supercall.h 就位，
   `lsm_hooks.c` post_execve 宏链 6 处 + `kernel_compat.mk` 1 处 grep 命中。
   `build/embed/kernelsu.ko`（方案乙重编前的 fc6343a2）dirty 保持不 commit，
@@ -2453,7 +2453,7 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   Baka-SU/BakaSU 断开 fork 关系（不再是 fork）**——`poisongod/BakaSU`
   是唯一 fork（id 1436491370 实测 parent=Baka-SU/BakaSU）。`gh repo fork` 对新 fork 报 "already exists"
   是创建后重报，以 API id/parent 为准判定。
-- **remote 结构**（work/ReSukiSU）：origin=poisongod/BakaSU（可 push）、
+- **remote 结构**（../BakaSU）：origin=poisongod/BakaSU（可 push）、
   upstream=Baka-SU/BakaSU（同步源）——标准 fork 工作流，上游 403 时代结束。
 - **fork main = `a765a3e7`** = 基线 8450dd28 + **25 文件完整状态**
   （23 M + UAPI6 supercall.h + 2 untracked compat shim；commit 文件数 API
@@ -2464,11 +2464,11 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   HEAD**——`git add -A` → `git write-tree` →
   `git commit-tree $TREE -p HEAD -m ...` → `git push --force origin
   $COMMIT:main` → `git reset`（index 复原、工作树不动）。实测 rev-list
-  count 前后恒 4520、status 恒 25 行。**红线：work/ReSukiSU 禁止直接
+  count 前后恒 4520、status 恒 25 行。**红线：../BakaSU 禁止直接
   commit/checkout/move HEAD**（rev-list 漂移 35220→35221），刷新 fork
   一律走 commit-tree 流程。upstream 有新提交时先在 fork 侧分支 merge，
   本地基线 8450dd28 不动。
-- **新 clone 缺 git 身份**：work/ReSukiSU 无 user.name/email，commit-tree
+- **新 clone 缺 git 身份**：../BakaSU 无 user.name/email，commit-tree
   报「作者身份未知」——已补局部 `opencode <opencode@localhost>`（同主仓）。
 - **空 COMMIT 推送险情（防线备忘）**：commit-tree 失败时 `$COMMIT:main`
   被 git 解读为「删除分支 main」，GitHub 拒绝（refusing to delete the
@@ -2495,7 +2495,7 @@ poisongod/kernelsu-hotload-init」，源码基础经用户裁定 = **从零写�
     （load_allow_list/observer_init/stop_input_hook_runtime/
     selinux_hide_post_fs_data/track_throne/boot_completed 指针）。
     fork main = **`cafc9497`**（a765a3e7 → cafc9497，rev-list 恒 4520）。
-  - hotload 仓持有**流程编排**（顺序/诊断/校验）：`work/kernelsu-hotload-init/`
+  - hotload 仓持有**流程编排**（顺序/诊断/校验）：`../kernelsu-hotload-init/`
     （kernelsu_init.c + Kbuild + README），main = **`865436c3`**，
     **private**（含设备适配细节）。
 - **5.4 跨模块硬约束与绕法**：`kallsyms_lookup_name`（5.4）只查内核镜像
@@ -3908,15 +3908,15 @@ heredoc 注入 `ksud sepolicy apply <file>`（Permissive 期）→ 翻 enforce=1
 
 ### 任务①：apply_kernelsu_rules() 在 ko 加载时完整跑通（2026-10-28）
 
-- **根因（确定性闭环）**：编译源 `work/ReSukiSU/kernel/core/init.c` 是 fork 版——
+- **根因（确定性闭环）**：编译源 `../BakaSU/kernel/core/init.c` 是 fork 版——
   `ksu_late_loaded = false` **无条件赋值**（`#ifdef MODULE (current->pid != 1)`
   判定被删，三理由注释：ksud 驱动规则注入 / else 分支功能 ksu_ksud_init /
   LATE_LOAD flag 会打越狱徽章）。**LKM 场景 apply 三调用点全死**：init.c if
   分支（死代码）、ksud_integration.c:272（execve hook 检测 `init second_stage`，
   boot 0-10s，finitmod 280s 永远错过）、无第三处。历史 `secctx -22` 由此闭环
   （ksu 类型从未创建 → ksud sep 文件无 type 声明）。
-- **两树不一致坑**：`build/bakasu-work/kernel` 是未 fork 上游版（保留
-  `(current->pid != 1)` 判定）——**分析归因必须读 work/ReSukiSU**（实际编译源），
+- **两树不一致坑**：`../PostLock-Boot/kernel` 是未 fork 上游版（保留
+  `(current->pid != 1)` 判定）——**分析归因必须读 ../BakaSU**（实际编译源），
   两树 diff 曾误导方向。观测判据：dmesg else 分支特征（`ksud: input_event_kp`
   + `patch syscall 63/80` = ksu_ksud_init 唯一调用点 + `module_load_filter`）
   命中、if 分支 `late load mode` 全缺。
@@ -3976,6 +3976,30 @@ uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
   扩散到所有 allow uid 子进程），与本方案（仅 exec ksud 瞬间、仅 manager
   uid）范围完全不同。
 
+### 本地仓库迁移到 ~/Downloads/（2026-10-28 用户裁决）
+
+**7 个嵌套仓全部迁出主仓、独立成 `~/Downloads/` 顶层目录**（同盘 mv 瞬时，
+git 状态逐一验证一致：remote/HEAD/dirty 计数与迁移前相同）：
+
+| 原路径（主仓内） | 新路径 |
+|---|---|
+| `work/ReSukiSU` | `../BakaSU`（dirty 28 行、HEAD 8450dd28 不变） |
+| `build/bakasu-work` | `../PostLock-Boot`（dirty 43 = Gradle 缓存） |
+| `work/kernelsu-hotload-init` | `../kernelsu-hotload-init` |
+| `work/oplus-check-suppress` | `../oplus-check-suppress`（**注意 oplus 拼写**——迁移中一度手误 opus，已改回与 GitHub 仓名一致） |
+| `work/ghostlock54` | `../ghostlock54` |
+| `build/work/tailscale` | `../tailscale` |
+| `build/work/android_kernel_oppo_sm6375` | `../android_kernel_oppo_sm6375`（**覆盖**旧 gh-proxy 3.8G 克隆——旧仓的内建集成现场已备份 `build/work/kernel-integrate-backup/`：Kbuild 接线 patch + 复原说明，两棵 95M 源码树可重现不存实体） |
+
+- **留主仓 `work/` 原地的非 git 依赖**：`kout-v15`、`kernsrc`、`clang`、`vendor`、
+  `kout`——ko 编译命令只改 `M=`：`make -C work/kout-v15 M=$PWD/../BakaSU/kernel …`
+  （迁移后冒烟编译全绿 rc=0，kout/vendor symlink 未断）。
+- **引用已全量改写**：AGENTS.md + tools/RECOVERY_PLAN.md（`work/ReSukiSU`→
+  `../BakaSU` 等兄弟目录映射，21 处替换，`work/kout-v15` 等留原地项零误伤）；
+  tools/ 脚本对嵌套仓引用本就 =0（postlock 运行中迁移不破坏，已验证）。
+- 迁移后**新会话路径认知**：三驱动源码 = `../BakaSU`、`../oplus-check-suppress`、
+  `../kernelsu-hotload-init`；app = `../PostLock-Boot/postlock-app`。
+
 ### 独立仓补记：kernelsu-hotload-init 更名 + ocsk 独立（2026-10-28）
 
 **三驱动 × 三仓库 + app 一仓对应表（2026-10-28 用户裁决，最终格局）**：
@@ -3990,7 +4014,7 @@ uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
 
 - **kernelsu-init-hotload → kernelsu-hotload-init**（用户指令，2026-10-28
   执行 `gh repo rename`）：GitHub 仓库原名 kernelsu-init-hotload，改名后
-  旧 URL 301 重定向；本地目录 `work/kernelsu-hotload-init` 与 remote
+  旧 URL 301 重定向；本地目录 `../kernelsu-hotload-init` 与 remote
   origin 已同步新名，README 标题更新。dmesg tag `kernelsu-init-hotload:`
   是**代码内 pr_info 字符串**（kernelsu_init.c）——不改（设备已部署
   判据依赖）。
@@ -3998,4 +4022,4 @@ uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
   `ocsk.c`（17KB，v12 弹窗治理 + v11.2 kill_pre return 1 语义全史在头
   注释）+ Kbuild + README（编译命令/部署/state 诊断/版本史）。主仓
   `tools/ocsk/` **保留**（含构建产物，恢复链 KO_SRC 依赖）。本地
-  `work/oplus-check-suppress/`。
+  `../oplus-check-suppress/`。
