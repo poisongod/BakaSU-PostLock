@@ -20,25 +20,53 @@
 
 → **`Command::new("sh")` 的 exec 从未发生**（若 exec 必经 PATH 命中 mybin/sh）。
 
-## 根因链（当前最优解释）
+## 根因链（22:22 修正版——「吞 Err」假说被推翻）
 
-1. **设备 ksud 二进制版本吞 Err**：当前 BakaSU 源码（8450dd28 工作树）
-   `su::grant_root` 无 Ok 路径（尾部 `Err(command.exec().into())`）；所有
-   失败路径 Err → main → rc=1 + stderr "Error: ..."。实测 rc=0 无 Error
-   = **设备 ksud 的 cli 是 `Debug::Su => { grant_root(); Ok(()) }` 类结构
-   （吞 Err）**——版本行为与当前源码不符。
-2. **Err 本身来源**：kevent 实锤 `reboot(magic)` fallback 已发生
-   （`sys_call_number@@29`、`old_euid@@2000`、`curr_uid@@0`、
-   `curr_name@@ksud`）——init_driver_fd 的 scan 无 fd → fallback 走了；
-   之后 fd 装载或 GRANT_ROOT ioctl 阶段失败（具体未定，见下）。
-3. **设备 ksud ≠ 任何本地已知产物**：
-   - 设备 `/data/local/temp/ksud` 5955504B sha `1a45cddd`（restore cp 自
-     /data/adb/ksud）；
-   - `build/embed/ksud` 4556352B sha `5f71a2a0`（Sep 26 老版）；
-   - ../BakaSU 本地无 ksud 编译产物（target/ 空）。
-   - 版本串 `v4.2.0-rc3-8450dd28-dirty@BakaSU` 与工作树 dirty 自洽，但
-     行为差异证明是**更早 dirty 状态的编译产物**（userspace/ksud/src 现为
-     clean，mtime 09:51 checkout 时间）。
+**决定性对照（22:22 同分钟三连测）**：新编当前源码 ksud、设备旧 ksud、
+mybin PATH 版——**全部 `Error: could not retrieve kernelsu driver fd`
+rc=1**。旧 ksud 与当前源码行为一致（不吞 Err）——**吞 Err 假说作废**。
+
+1. **直接根因 = `could not retrieve kernelsu driver fd`**（ksucalls.rs
+   `init_driver_fd`：scan 无 fd → reboot(magic) fallback 后 fd 仍 <0 →
+   ksuctl bail）。fd 拿不到 → GRANT_ROOT 从未发生 → 无提权无 exec。
+2. **fd 获取状态同 boot 内变化（未定案的核心疑点）**：
+   - 20:36-21:19：info 输出 `Kernel Version: 35220`（ioctl 成功=fd 成功）；
+     期间 su 实验 rc=0 无 Error（fd 成功 + GRANT_ROOT 后行为仍未完全定案，
+     见「21:19 矛盾」）；
+   - 22:22 起：`debug info` 全 0（get_info 失败返零结构——rc=0 不代表成功）
+     + su 固化报 fd fail——**多次 reboot(magic) 后进入固化失败状态**；
+   - 变化期间设备无操作（host 编译），候选：多次 magic reboot 被 OPLUS
+     收紧/reboot kevent hook 不再记录（22:24 只有 execve 记录、无 syscall 29
+     记录）/kprobe 状态变化。
+3. **「21:19 rc=0 矛盾」（部分残留）**：当时 fd 成功（无 fd Error）但
+   mybin/sh 未执行（exec 未发生或被跳过）——候选解释：execvp 对 mybin/sh
+   的 open EACCES（SELinux 拒 ksu 域 exec shell_data_file）**继续 PATH 下一
+   候选**落 /system/bin/sh、sh 起来后立即退出（sh 死因本身仍未定案）。
+4. **设备 ksud 版本不可追溯教训不变**（5.9MB vs embed 4.5MB，非本地产物）。
+
+## ksud 本地重编（2026-10-28 建立，可复用）
+
+产物 `userspace/ksud/target/aarch64-linux-android/release/ksud` 4105064B
+sha `20373464`。完整命令（全部坑已踩平）：
+```bash
+export RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
+rustup toolchain install nightly --profile minimal   # main.rs 用 feature(decl_macro)
+rustup target add aarch64-linux-android --toolchain nightly
+cd userspace/ksud && export \
+  ANDROID_NDK_HOME=~/android-ndk-r29 \
+  LIBCLANG_PATH=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib \
+  CC_aarch64_linux_android=.../bin/aarch64-linux-android31-clang \
+  CXX_aarch64_linux_android=.../bin/aarch64-linux-android31-clang++ \
+  AR_aarch64_linux_android=.../bin/llvm-ar \
+  BINDGEN_EXTRA_CLANG_ARGS="-I/usr/include/x86_64-linux-gnu" \
+  CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=.../bin/aarch64-linux-android31-clang
+cargo +nightly build --release --target aarch64-linux-android
+```
+坑：① stable 不够（nightly feature）；② nightly 需单独 target add；
+③ bindgen 缺 host asm 头（BINDGEN_EXTRA_CLANG_ARGS）；④ **linker 必须用
+env**（CARGO_TARGET_..._LINKER）——.cargo/config.toml 曾因命令超时截断没
+建成，host ld.bfd 链接 aarch64 报 EM:183；⑤ crates.io 走 USTC sparse
+镜像（~/.cargo/config.toml source replace）。
 
 ## 排除清单（确定性，全部实测/代码验证）
 
@@ -66,16 +94,20 @@ allow）→ ioctl -EPERM → Err——**与吞 Err 后 rc=0 完全自洽**。但
 `ksu_handle_sys_reboot` 只装 fd 不改 cred，kevent hook 记录 curr_uid=0 的
 时机/语义未定（可能 hook 在 cred 读取上有特殊处理，不可全信）。
 
-## 下一步（分辨实验）
+## 下一步
 
-1. **重编当前源码 ksud**（rustup target aarch64-linux-android + NDK
-   linker，.cargo/config.toml）→ push 设备测 `debug su`——当前源码不吞
-   Err，**rc=1 + "Error: ..." 内容即定案 Err 来源**（fd bail vs ioctl EPERM）。
-2. 若 Err = fd 阶段 → 深挖 reboot fallback 装 fd 在 shell uid 下的失败点；
-   若 Err = ioctl EPERM → allowed_for_su/kevent uid=0 方向。
-3. 下轮 fresh boot 实验 A 对照：restore 跳过 hotload finitmod → 测 su
-   （hotload 是早上成功轮与现在的唯一实质环境变量——若新 ksud 显示 Err
-   与 hotload 无关则此实验可省）。
+1. **fd 获取固化失败是当前阻塞**（22:22 起三 ksud 全 fd fail）——先判
+   kprobe/OPLUS 状态：logcat kevent 对比（21:13 有 syscall 29 记录、22:24
+   只有 execve 记录）→ reboot syscall 在 OPLUS hook 层的拦截状态是首要
+   嫌疑。
+2. **下轮 fresh boot 实测 fd 时间线**：boot 后立即 `ksud debug info` 看
+   35220 持续多久、多少次 reboot(magic) 后转固化失败——定位 magic reboot
+   的「额度/拉黑」机制（若存在）。
+3. 若 fresh boot 上 fd 窗口短 → 修复方向 = 让 scan 继承 fd（方案乙 hand_fd
+   非 manager uid 不触发——或 KSUD 不用 reboot fallback 而用别的通道）。
+4. 「21:19 rc=0 矛盾」（fd 成功但 exec 未生效）待 fd 可用后重放 mybin
+   实验分辨（execvp EACCES 跳过假说）。
+5. 修复后 reboot fresh boot 重考（计数 0/3 起算）。
 
 ## 教训
 
