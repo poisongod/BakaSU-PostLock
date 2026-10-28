@@ -201,12 +201,12 @@ if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/fi
 # that a late finitmod can't get from boot hooks (allowlist load / manager
 # observer / boot_completed).  Requires kernelsu.ko exports (loaded above,
 # reverse order fails cleanly with -ENOENT).  WARN-only.
-if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; else $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0 || log WARN-hotload-finitmod-failed; fi
+if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
 # oplus_check_suppress: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
-if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; else $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1 || log WARN-oplus_check_suppress-finitmod-failed; fi
+if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; elif $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok; else log WARN-oplus_check_suppress-finitmod-failed; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
 # precede the app start)
@@ -600,7 +600,19 @@ fi
 # --- verify as shell (su wrapper: non-root falls to the KP fake, whose
 # whitelist covers shell uid 2000; the wrapper passes root through) ------
 step "verify"
-ab shell "/product/bin/su -c id" | grep -q "uid=0" || die "/product/bin/su failed (overlay wrapper?)"
+if ! ab shell "/product/bin/su -c id" | grep -q "uid=0"; then
+  echo "  [diag] overlay/targets:"
+  ab shell "ls -la /product/bin/su /data/local/temp/ksud /data/local/temp/su_profiles.dat 2>&1" | sed 's/^/    /' || true
+  echo "  [diag] su wrapper raw output:"
+  ab shell "timeout 8 /product/bin/su -c id 2>&1; echo rc=\$?" | sed 's/^/    /' || true
+  echo "  [diag] temp ksud direct:"
+  ab shell "timeout 8 sh -c 'echo id | /data/local/temp/ksud debug su 2>&1' | head -5" | sed 's/^/    /' || true
+  echo "  [diag] modules:"
+  ab shell "ls /sys/module/ 2>/dev/null | grep -E '^kernelsu|^oplus_check'" | sed 's/^/    /' || true
+  echo "  [diag] chain log tail:"
+  ab shell "tail -12 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true
+  die "/product/bin/su failed (overlay wrapper?)"
+fi
 # strict-mode exam criterion (2026-10-25): the restore must leave
 # Enforcing on.  restore's own fail-safe reverts to Permissive + WARN on
 # channel failure -- that path must fail the round here, never pass.
