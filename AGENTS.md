@@ -2449,7 +2449,9 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   parent=Baka-SU/BakaSU、在上游 fork 网络里）。同名创建**覆盖**了旧
   「poisongod/BakaSU → BakaSU-PostLock」的改名 301 重定向（api 200 实证）。
   旧名历史：曾叫 BakaSU 的仓库 10-19 改名 BakaSU-PostLock（id 1425442783，
-  主仓镜像，勿动勿覆盖）。`gh repo fork` 对新 fork 报 "already exists"
+  主仓镜像，勿动勿覆盖）。**2026-10-28 用户确认 BakaSU-PostLock 已与
+  Baka-SU/BakaSU 断开 fork 关系（不再是 fork）**——`poisongod/BakaSU`
+  是唯一 fork（id 1436491370 实测 parent=Baka-SU/BakaSU）。`gh repo fork` 对新 fork 报 "already exists"
   是创建后重报，以 API id/parent 为准判定。
 - **remote 结构**（work/ReSukiSU）：origin=poisongod/BakaSU（可 push）、
   upstream=Baka-SU/BakaSU（同步源）——标准 fork 工作流，上游 403 时代结束。
