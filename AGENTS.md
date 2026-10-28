@@ -2475,6 +2475,55 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   shim），无 CVE 编号/链实现细节（init.c 一句 "exploit bootstrap" 注释
   无伤大雅），fork public 安全。
 
+### poisongod/kernelsu-init-hotload：kernelsu_init.ko 独立源码仓（2026-10-28）
+
+用户指令「kernelsu_init.ko 负责全链后 kernelsu init 全流程，全部源码独立为
+poisongod/kernelsu-init-hotload」，源码基础经用户裁定 = **从零写独立 init
+模块**。已完成（仓 + 编译验证 + 推送）；设备实测待恢复链集成。
+
+- **背景机制**（缺口定案）：finitmod 晚于 zygote → `on_post_fs_data()`
+  的触发（init second_stage 后第一个 zygote exec 的 execve hook）**永远
+  不来**；`ksu_late_loaded=false` 强制使 late 分支不走 → 缺口 =
+  allowlist 未 load、manager observer 未起、无 track_throne（appid 空）、
+  `boot_completed=false`。postlock restore 一直用 `ksu_debug_manager_appid`
+  参数绕过 appid 空，但 allowlist/observer/boot_completed 仍缺。
+- **架构（companion 模式）**：
+  - BakaSU fork 侧最小 diff：`kernel/runtime/hotload.{c,h}` + Kbuild 一行，
+    `ksu_hotload_api_get()` EXPORT_SYMBOL_GPL 返回 vtable
+    （load_allow_list/observer_init/stop_input_hook_runtime/
+    selinux_hide_post_fs_data/track_throne/boot_completed 指针）。
+    fork main = **`cafc9497`**（a765a3e7 → cafc9497，rev-list 恒 4520）。
+  - hotload 仓持有**流程编排**（顺序/诊断/校验）：`work/kernelsu-init-hotload/`
+    （kernelsu_init.c + Kbuild + README），main = **`865436c3`**，
+    **private**（含设备适配细节）。
+- **5.4 跨模块硬约束与绕法**：`kallsyms_lookup_name`（5.4）只查内核镜像
+  **不查模块符号**（symbol_resolver.c 注释自证）；finitmod 上下文
+  `filp_open` 失败（ocsk v6b 教训）。故**不用** kallsyms 解析方案——
+  改用内核标准跨模块依赖：BakaSU 导出符号 + hotload 模块 extern 未决
+  `ksu_hotload_api_get`（本内核构建无 Module.symvers → modpost no-op
+  放行 → finitmod 时加载器从 kernelsu.ko ksymtab 解析绑定）。
+  license=GPL 必需（EXPORT_SYMBOL_GPL）。
+- **版本漂移防线**：vtable 首字段 `u32 struct_size`，hotload 模块校验
+  `== sizeof(自己副本)` 才执行任何步骤，不匹配 -EINVAL 拒跑（两份
+  struct 定义：fork `runtime/hotload.h` 与 hotload `kernelsu_init.c`
+  内嵌副本——**append-only，改一处必改两处**）。
+- **编译验证全绿**（clang-11 同 BakaSU 工具链）：fork ko `ksymtab_gpl`
+  含 `ksu_hotload_api_get` + CRC；hotload ko UND 仅
+  `printk/ksu_hotload_api_get/param_ops_int`、license=GPL、
+  vermagic `5.4.254-qgki` 与设备一致。hotload ko 不入 build/embed
+  （等方案乙一起设备实测再定部署路径）。
+- **加载顺序**：先 `finitmod kernelsu.ko 0`（提供导出）→ 后
+  `finitmod kernelsu_init.ko 0`；反序干净失败 -ENOENT。诊断 =
+  dmesg `kernelsu-init-hotload:` 前缀 + `/sys/module/kernelsu_init/
+  parameters/hl_stage`（0-8 进度表见 README）。
+- **待办**：① restore.sh（postlock + app assets 两份）在 kernelsu.ko
+  finitmod 后追加 hotload finitmod（与方案乙 ko 一起部署实测）；
+  ② 实测判据 = hl_stage=8 + `boot_completed=1` + 管理器蓝卡 +
+  allowlist/observer 生效（superuser 授予状态、app profile 功能）。
+- **重建手册升级**：fork main（cafc9497）已是完整源码状态权威——
+  `git clone poisongod/BakaSU && checkout <commit>` 即恢复工作树，
+  比 build/dirty-backup patch 快照更可靠（后者保留作双保险）。
+
 ### 新考试轮第 2 轮失败（2026-10-25 redo7, boot 0636ab86）→ 归零 0/3——root child SIGKILL 家族
 
 quiet-gate 20min 超时放行（11:15:18）→ 链 4 分钟走完第一遍写（selinux early
