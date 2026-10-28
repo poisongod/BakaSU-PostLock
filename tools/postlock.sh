@@ -59,6 +59,12 @@ FIN_SRC=$REPO/build/embed/finitmod
 # detector -> force_sig).  Must match this kernel exactly.
 OCSK_SRC=$REPO/../oplus-check-suppress/oplus_check_suppress.ko
 [ -f "$OCSK_SRC" ] || die "missing $OCSK_SRC (build in ../oplus-check-suppress)"
+# kernelsu_hotload_init.ko (renamed 2026-10-28 from kernelsu_init.ko):
+# companion module driving the full KSU init sequence that a late
+# finitmod misses (allowlist / manager observer / boot_completed).
+# Requires kernelsu.ko exports, loaded first in the restore below.
+HOTLOAD_SRC=$REPO/../kernelsu-hotload-init/kernelsu_hotload_init.ko
+[ -f "$HOTLOAD_SRC" ] || die "missing $HOTLOAD_SRC (build in ../kernelsu-hotload-init)"
 [ -f "$KO_SRC" ] || die "missing $KO_SRC (ReSukiSU kernelsu.ko build artifact, lives in build/embed/)"
 [ -f "$FIN_SRC" ] || die "missing $FIN_SRC (NDK aarch64-linux-android31-clang -static -O2 -o build/embed/finitmod tools/finitmod.c)"
 if [ ! -f "$PRELOAD_SRC" ]; then
@@ -77,6 +83,7 @@ ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
 ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
 ab push "$OCSK_SRC" "$STAGE/oplus_check_suppress.ko" >/dev/null
+ab push "$HOTLOAD_SRC" "$STAGE/kernelsu_hotload_init.ko" >/dev/null
 ab push "$REPO/tools/sepolicy_enforce1.txt" "$STAGE/sep_enforce1.txt" >/dev/null
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
@@ -184,12 +191,17 @@ echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 [ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && log OMK-ROLLED-BACK || log WARN-no-omk-bak
 # rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
 # a binary some previous round left mapped/executing.
-for f in kernelsu.ko finitmod oplus_check_suppress.ko preload.so; do
+for f in kernelsu.ko finitmod oplus_check_suppress.ko kernelsu_hotload_init.ko preload.so; do
   rm -f $TMP/\$f
   cp $STAGE/\$f $TMP/\$f
 done
-chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/preload.so
+chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/kernelsu_hotload_init.ko $TMP/preload.so
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
+# kernelsu_hotload_init (hotload companion): runs the full KSU init sequence
+# that a late finitmod can't get from boot hooks (allowlist load / manager
+# observer / boot_completed).  Requires kernelsu.ko exports (loaded above,
+# reverse order fails cleanly with -ENOENT).  WARN-only.
+if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; else $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0 || log WARN-hotload-finitmod-failed; fi
 # oplus_check_suppress: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
