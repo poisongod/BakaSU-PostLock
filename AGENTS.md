@@ -2438,6 +2438,43 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   `build/embed/kernelsu.ko`（方案乙重编前的 fc6343a2）dirty 保持不 commit，
   等方案乙 sucompat edit + 重编后连同 AGENTS 任务④记录一起提交。
 
+### poisongod/BakaSU fork：kernelsu.ko 源码独立（2026-10-28）
+
+用户指令「kernelsu.ko 全部源码独立为 fork BakaSU，poisongod/BakaSU」——
+**已完成**；「kernelsu_init.ko 负责全链后 kernelsu init 全流程，全部源码
+独立为 poisongod/kernelsu-init-hotload」——仓库待建（源码基础待裁定）。
+
+- **fork**：`gh repo fork Baka-SU/BakaSU --clone=false`（2026-10-28
+  02:02 UTC）→ poisongod/BakaSU（id 1436491370，fork=true、
+  parent=Baka-SU/BakaSU、在上游 fork 网络里）。同名创建**覆盖**了旧
+  「poisongod/BakaSU → BakaSU-PostLock」的改名 301 重定向（api 200 实证）。
+  旧名历史：曾叫 BakaSU 的仓库 10-19 改名 BakaSU-PostLock（id 1425442783，
+  主仓镜像，勿动勿覆盖）。`gh repo fork` 对新 fork 报 "already exists"
+  是创建后重报，以 API id/parent 为准判定。
+- **remote 结构**（work/ReSukiSU）：origin=poisongod/BakaSU（可 push）、
+  upstream=Baka-SU/BakaSU（同步源）——标准 fork 工作流，上游 403 时代结束。
+- **fork main = `a765a3e7`** = 基线 8450dd28 + **25 文件完整状态**
+  （23 M + UAPI6 supercall.h + 2 untracked compat shim；commit 文件数 API
+  实证 25）。fork 创建时已同步上游全历史到 d5e9e025（对象在 fork 库里，
+  以后 sync upstream 在 fork 侧 merge，不动本地）。push 后 blob hash 与
+  本地工作树逐一比对一致（untracked 两件 hash 相等实证）。
+- **版本纪律保持（关键手法）**：固化推送用 `commit-tree`，**不动本地
+  HEAD**——`git add -A` → `git write-tree` →
+  `git commit-tree $TREE -p HEAD -m ...` → `git push --force origin
+  $COMMIT:main` → `git reset`（index 复原、工作树不动）。实测 rev-list
+  count 前后恒 4520、status 恒 25 行。**红线：work/ReSukiSU 禁止直接
+  commit/checkout/move HEAD**（rev-list 漂移 35220→35221），刷新 fork
+  一律走 commit-tree 流程。upstream 有新提交时先在 fork 侧分支 merge，
+  本地基线 8450dd28 不动。
+- **新 clone 缺 git 身份**：work/ReSukiSU 无 user.name/email，commit-tree
+  报「作者身份未知」——已补局部 `opencode <opencode@localhost>`（同主仓）。
+- **空 COMMIT 推送险情（防线备忘）**：commit-tree 失败时 `$COMMIT:main`
+  被 git 解读为「删除分支 main」，GitHub 拒绝（refusing to delete the
+  current branch）防线生效——固化脚本必须 `[ -n "$COMMIT" ]` 守卫后再 push。
+- 内容敏感性已扫描：dirty 全部是内核源码适配（sepolicy/hook/sucompat/
+  shim），无 CVE 编号/链实现细节（init.c 一句 "exploit bootstrap" 注释
+  无伤大雅），fork public 安全。
+
 ### 新考试轮第 2 轮失败（2026-10-25 redo7, boot 0636ab86）→ 归零 0/3——root child SIGKILL 家族
 
 quiet-gate 20min 超时放行（11:15:18）→ 链 4 分钟走完第一遍写（selinux early
