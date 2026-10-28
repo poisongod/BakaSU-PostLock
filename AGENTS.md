@@ -3978,6 +3978,16 @@ uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
 
 ### 独立仓补记：kernelsu-hotload-init 更名 + ocsk 独立（2026-10-28）
 
+**三驱动 × 三仓库 + app 一仓对应表（2026-10-28 用户裁决，最终格局）**：
+| 产物 | GitHub 仓 |
+|---|---|
+| `kernelsu.ko`（方案乙+hotload api，fork dirty） | `poisongod/BakaSU`（fork of Baka-SU/BakaSU，main 用 commit-tree 刷新） |
+| `oplus_check_suppress.ko`（= ocsk.ko，恢复链里文件名 ocsk.ko） | `poisongod/oplus-check-suppress`（private） |
+| `kernelsu_hotload_init.ko`（= kernelsu_init.ko） | `poisongod/kernelsu-hotload-init`（private） |
+| PostLock:Boot app | `poisongod/PostLock-Boot`（private） |
+注：`poisongod/BakaSU-PostLock` 是**主仓镜像**（CVE exploit 仓结构，fork=false，10-19 后未推）——
+**不含 kernelsu 源码，勿与 kernelsu.ko 归属混淆**（用户一度口误对应，已确认保持 poisongod/BakaSU）。
+
 - **kernelsu-init-hotload → kernelsu-hotload-init**（用户指令，2026-10-28
   执行 `gh repo rename`）：GitHub 仓库原名 kernelsu-init-hotload，改名后
   旧 URL 301 重定向；本地目录 `work/kernelsu-hotload-init` 与 remote
