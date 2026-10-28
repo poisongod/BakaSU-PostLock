@@ -2442,7 +2442,7 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
 
 用户指令「kernelsu.ko 全部源码独立为 fork BakaSU，poisongod/BakaSU」——
 **已完成**；「kernelsu_init.ko 负责全链后 kernelsu init 全流程，全部源码
-独立为 poisongod/kernelsu-init-hotload」——仓库待建（源码基础待裁定）。
+独立为 poisongod/kernelsu-hotload-init」——仓库待建（源码基础待裁定）。
 
 - **fork**：`gh repo fork Baka-SU/BakaSU --clone=false`（2026-10-28
   02:02 UTC）→ poisongod/BakaSU（id 1436491370，fork=true、
@@ -2475,10 +2475,10 @@ commit**——Kbuild `KSU_VERSION = 30000 + rev-list --count + 700`，commit 增
   shim），无 CVE 编号/链实现细节（init.c 一句 "exploit bootstrap" 注释
   无伤大雅），fork public 安全。
 
-### poisongod/kernelsu-init-hotload：kernelsu_init.ko 独立源码仓（2026-10-28）
+### poisongod/kernelsu-hotload-init：kernelsu_init.ko 独立源码仓（2026-10-28）
 
 用户指令「kernelsu_init.ko 负责全链后 kernelsu init 全流程，全部源码独立为
-poisongod/kernelsu-init-hotload」，源码基础经用户裁定 = **从零写独立 init
+poisongod/kernelsu-hotload-init」，源码基础经用户裁定 = **从零写独立 init
 模块**。已完成（仓 + 编译验证 + 推送）；设备实测待恢复链集成。
 
 - **背景机制**（缺口定案）：finitmod 晚于 zygote → `on_post_fs_data()`
@@ -2493,7 +2493,7 @@ poisongod/kernelsu-init-hotload」，源码基础经用户裁定 = **从零写�
     （load_allow_list/observer_init/stop_input_hook_runtime/
     selinux_hide_post_fs_data/track_throne/boot_completed 指针）。
     fork main = **`cafc9497`**（a765a3e7 → cafc9497，rev-list 恒 4520）。
-  - hotload 仓持有**流程编排**（顺序/诊断/校验）：`work/kernelsu-init-hotload/`
+  - hotload 仓持有**流程编排**（顺序/诊断/校验）：`work/kernelsu-hotload-init/`
     （kernelsu_init.c + Kbuild + README），main = **`865436c3`**，
     **private**（含设备适配细节）。
 - **5.4 跨模块硬约束与绕法**：`kallsyms_lookup_name`（5.4）只查内核镜像
@@ -3937,3 +3937,52 @@ heredoc 注入 `ksud sepolicy apply <file>`（Permissive 期）→ 翻 enforce=1
   重编命令同「kernelsu.ko 重编」节）。同轮任务③复测通过：enforce=1 蓝卡
   Built-in + 超级用户页全列表 + pm 382 + `su -c id` context=`u:r:ksu:s0`
   + sep check rc=0。
+
+### 方案乙：execve 前钩给 ksud 装非 CLOEXEC driver fd（2026-10-28，任务④根治）
+
+**架构认知（TRACEPOINT 构建无 post_execve 通道——两个死位置，白改过一次）**：
+- `lsm_hooks.o` 只在 `ifndef CONFIG_KSU_TRACEPOINT_HOOK` 且内核 <6.8 时编
+  （Kbuild:212）→ TRACEPOINT 构建 **bprm_committed_creds hook 不注册**
+  （nm 无 bprm 符号；`-DKSU_COMPAT_NO_POST_EXECVE_HOOK` 编了也没用——
+  lsm_hooks.c 本身没进链接）。
+- `ksu_handle_post_execve` 系列在 sucompat.c `:344 #if defined(CONFIG_KSU_SUSFS)
+  || defined(CONFIG_KSU_MANUAL_HOOK)` **死块内**——TRACEPOINT 构建两者都未
+  定义 → 整块不编译。**往这两处加代码 = 编译过但不进 ko**（首次 edit 落
+  sucompat.c 死块，strings 0 命中才发现；排查法：`strings ko | grep 新串`
+  + `llvm-nm ko | grep 新函数`——.o 是 bitcode，llvm-dis 读不出属正常）。
+- `ksu_seccomp_allow_cache` 依赖 `struct seccomp_filter.cache`（KSU 对内核
+  结构的扩展字段）——**本内核无此字段**（kernsrc grep 空）→ 5.4 给 app
+  filter 放行 reboot 的路线死（setuid_hook <5.10 keep-filter 注释自证）。
+
+**最终实现（supercall.c + syscall_event_bridge.c，fork main=`8d221767`）**：
+execve **前钩**（sys_enter tracepoint，`ksu_hook_execve_common` 的
+sucompat 分支首行）调 `ksu_hand_fd_for_ksud_exec(*filename_user)`：
+uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
+（= `ksu_install_fd_with_permissions(0, 0)`）。
+- **机制**：app spawn ksud = fork 子进程 → 子进程 exec——前钩 current =
+  子进程 → fd 装进**子进程** fdtable（不是 app）→ 非 CLOEXEC exec 保留
+  → ksud `scan_driver_fd` 找到 `[ksu_driver]` → reboot(magic) fallback
+  不再需要（keep-filter 不用动）。
+- **零泄漏零防重**：每次 exec 都是 fork 的新 fdtable，fd 生命周期 = ksud
+  进程本身；app 主进程从不 exec ksud 故从不装。
+- 判定内做 strncpy_from_user 拷 path 比对（照抄 bridge init_mark_tracker
+  先例），其余 exec 全 no-op。
+- dmesg 特征：`hand driver fd %d to exec'ing ksud (pid %d)`。
+- **勿动**：setuid_hook `:187 ksu_install_fd()`（O_CLOEXEC 装给 manager
+  自己）保留——那是 app 进程内 root 检测用的；方案乙只管 spawn 出去的
+  ksud 子进程。曾有「方案A 失败定案+回滚」= 改 CLOEXEC 全局语义（权限
+  扩散到所有 allow uid 子进程），与本方案（仅 exec ksud 瞬间、仅 manager
+  uid）范围完全不同。
+
+### 独立仓补记：kernelsu-hotload-init 更名 + ocsk 独立（2026-10-28）
+
+- **kernelsu-init-hotload → kernelsu-hotload-init**（用户指令）：GitHub
+  仓库名本就是 `kernelsu-hotload-init`（建仓时已按 fork 同名风格），本次
+  统一**本地目录** `work/kernelsu-hotload-init`（原 work/kernelsu-init-
+  hotload）与 README 标题。dmesg tag `kernelsu-init-hotload:` 是**代码内
+  pr_info 字符串**（kernelsu_init.c）——不改（设备已部署判据依赖）。
+- **ocsk.ko 独立 → `poisongod/oplus-check-suppress`**（private）：源文件
+  `ocsk.c`（17KB，v12 弹窗治理 + v11.2 kill_pre return 1 语义全史在头
+  注释）+ Kbuild + README（编译命令/部署/state 诊断/版本史）。主仓
+  `tools/ocsk/` **保留**（含构建产物，恢复链 KO_SRC 依赖）。本地
+  `work/oplus-check-suppress/`。
