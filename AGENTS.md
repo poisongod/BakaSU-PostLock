@@ -3976,11 +3976,12 @@ uid==manager && filename==KSUD_PATH → `ksu_install_fd_no_cloexec()`
 
 ### 独立仓补记：kernelsu-hotload-init 更名 + ocsk 独立（2026-10-28）
 
-- **kernelsu-init-hotload → kernelsu-hotload-init**（用户指令）：GitHub
-  仓库名本就是 `kernelsu-hotload-init`（建仓时已按 fork 同名风格），本次
-  统一**本地目录** `work/kernelsu-hotload-init`（原 work/kernelsu-init-
-  hotload）与 README 标题。dmesg tag `kernelsu-init-hotload:` 是**代码内
-  pr_info 字符串**（kernelsu_init.c）——不改（设备已部署判据依赖）。
+- **kernelsu-init-hotload → kernelsu-hotload-init**（用户指令，2026-10-28
+  执行 `gh repo rename`）：GitHub 仓库原名 kernelsu-init-hotload，改名后
+  旧 URL 301 重定向；本地目录 `work/kernelsu-hotload-init` 与 remote
+  origin 已同步新名，README 标题更新。dmesg tag `kernelsu-init-hotload:`
+  是**代码内 pr_info 字符串**（kernelsu_init.c）——不改（设备已部署
+  判据依赖）。
 - **ocsk.ko 独立 → `poisongod/oplus-check-suppress`**（private）：源文件
   `ocsk.c`（17KB，v12 弹窗治理 + v11.2 kill_pre return 1 语义全史在头
   注释）+ Kbuild + README（编译命令/部署/state 诊断/版本史）。主仓
