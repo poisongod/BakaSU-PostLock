@@ -2520,10 +2520,13 @@ poisongod/kernelsu-hotload-init」，源码基础经用户裁定 = **从零写�
   `finitmod kernelsu_init.ko 0`；反序干净失败 -ENOENT。诊断 =
   dmesg `kernelsu-init-hotload:` 前缀 + `/sys/module/kernelsu_init/
   parameters/hl_stage`（0-8 进度表见 README）。
-- **待办**：① restore.sh（postlock + app assets 两份）在 kernelsu.ko
-  finitmod 后追加 hotload finitmod（与方案乙 ko 一起部署实测）；
-  ② 实测判据 = hl_stage=8 + `boot_completed=1` + 管理器蓝卡 +
+- ~~**待办①** restore.sh 两份追加 hotload finitmod~~ **已完成**（2026-10-28）：
+  app assets 侧随三模块更名（app 仓 d11abba）+ 主仓 postlock.sh heredoc
+  补齐（主仓 64c9dac4，HOTLOAD_SRC die 检查 + stage push + restore 顺序
+  kernelsu → hotload → oplus_check_suppress 与 app assets 一致，WARN-only）。
+- **待办②**：实测判据 = hl_stage=8 + `boot_completed=1` + 管理器蓝卡 +
   allowlist/observer 生效（superuser 授予状态、app profile 功能）。
+  注：`/sys/module/kernelsu_hotload_init/parameters/hl_stage`（改名后路径）。
 - **重建手册升级**：fork main（cafc9497）已是完整源码状态权威——
   `git clone poisongod/BakaSU && checkout <commit>` 即恢复工作树，
   比 build/dirty-backup patch 快照更可靠（后者保留作双保险）。
