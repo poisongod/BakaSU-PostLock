@@ -599,7 +599,16 @@ interpose ioctl/prctl 模拟 KSU uAPI**，并把授予状态落到文件、驱�
 legacy fallback 是 `prctl(0xdeadbeef)`（设备 KP 白名单仅 shell，app 拿不到）。**无真驱动则
 app 真实路径必失败** → 我们现有的 libgrant(app 侧 interpose)+ libkernelsu 补丁(mov+ret)
 就是用户禁止的「欺骗」。判定链源码在 `/tmp/opencode/ReSukiSU`（clone 自
-github.com/ReSukiSU/ReSukiSU，tmp 会清，可重克隆）。
+github.com/ReSukiSU/ReSukiSU，tmp 会清，可重克隆——**该仓库已于 2026-10 前后
+转移/改名为 github.com/Baka-SU/BakaSU**，旧 URL 靠 GitHub 301 重定向仍可用
+（git clone/ls-remote 实测通过）；org `ReSukiSU` 下现只剩 3 个附属仓：
+`ReSukiSU.github.io`（resukisu.org 文档站）、`ReSukiSU_Patches`、`.github`——
+**在 org 列表页看不到主仓 ≠ 仓库不存在**，克隆/换 remote 一律用新地址
+`https://github.com/Baka-SU/BakaSU.git`）。上游已完成 ReSukiSU→BakaSU 品牌
+替换：Kbuild `REPO_NAME := BakaSU`（上游原样非本地改）、源码 namespace =
+`org.bakasu.bakasu`，但 `applicationId` 仍保留 `com.resukisu.resukisu`
+（build.gradle.kts 的 `managerPackageName`；换 applicationId 会断升级路径，
+上游没换 → 我们任务②术语替换也**不含包名**）。
 
 **决策（用户授权自主定，需考虑回锁）：走真装 `kernelsu.ko`**——唯一同时满足「真实」+
 「回锁后可用」的路线（KPM 死路：回锁后 KP 消失）：
