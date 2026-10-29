@@ -4266,3 +4266,35 @@ no bl force_sig` sites=0。
 - **v14 验收**：restore state `kill.scan sites≥1` + `ret.kill ret=0` +
   `rep armed=2` + 无 `WARN-...-rep-not-armed-popup-risk` + restore OK 后
   150s+ boot 不变（弹窗消失）。
+
+## exam4 考试轮 3/3 达成 + ksud 缺口/PT_REGS_PARM4 两修复（2026-10-30 凌晨）
+
+- **考试 3/3**：R6(857f41d3)/R7(10f4fae1)/R8(47c2479f) 三连全自动 PASS
+  （判据：chain `pipe-physrw-summary.*done=1 root=1` + 双 OK 原生 + probe
+  append uid=0 + host OK:(enforce=1) + 120s boot 稳定 + 蓝卡工作中 Built-in
+  无红条）。归档 `/tmp/opencode/exam4/`（EXAM4_RESULT.txt + SUCCESS_r*）。
+  轮间失败家族今晚命中：页死抽签 ×2（R2/R3）、root child SIGKILL ×2（R5/R9）。
+- **ksud 缺口修复（ed4bed4a + app 62aa4f1）**：fresh factory-reset 设备
+  `/data/adb/ksud` 不存在 + `KSUD_NO_PARENT_INSTALL=1` → temp ksud 缺 →
+  wrapper exec 127 → verify die（R1 死因）。修 = host push `build/embed/ksud`
+  → `$STAGE/ksud`，restore 三处源改 `$STAGE/ksud`；app assets 内嵌 ksud +
+  PAYLOAD_VERSION `v14-ksud-stage-20261030`。R4 起 ksud 轮轮就位。
+- **新 ko（prctl hook 主动驱动发现）ENOENT 根因闭环（R10→R11）**：
+  `syscall_event_bridge.c:200` 用 `PT_REGS_PARM4` 但 KSU shim
+  `kernel/include/arch.h` 只定义 PARM1/2/3/5/6（缺裸 PARM4）→ 隐式函数声明
+  → ko 里 `U PT_REGS_PARM4`（+SCS .cfi_jt）→ 内核 load_module 符号解析失败
+  **-ENOENT** → kernelsu 没加载 → hotload 连锁 ENOENT（依赖
+  ksu_hotload_api_get）→ 红卡「未检测到驱动」。修 = arch.h 补
+  `__PT_PARM4_REG=regs[3]` + `PT_REGS_PARM4` 宏（../BakaSU dirty 保持不
+  commit，版本纪律）→ 重编 UND 干净（`llvm-nm ko | grep PT_REGS` 应空）。
+  新 ko sha `249b4a69` 入 build/embed（备份旧 4386dcf7 在
+  /tmp/opencode/kernelsu_old_4386dcf7.ko）；R11 首验 PASS（driver-already-
+  loaded + hotload ok + dmesg `install fd for ksu manager(uid=10277)` 动态
+  appid + 蓝卡）。**排查法沉淀：finitmod `-ENOENT` 先比对
+  `llvm-nm` 新旧 UND 差集**（modversions CRC 不匹配是 -ENOEXEC，别混）。
+- **driver 两级 dump（R4 教训）**：USB 选择弹窗遮挡 uiautomator（ui.xml 抓到
+  弹窗文字判 FAIL，蓝卡实际在）——dump 后无「工作中」则 BACK 关弹窗重 dump。
+  判官看图可破例计轮，但采集器必须修（验收自动化不可靠则连续合格无意义）。
+- **prctl 兜底路径未实测**（setuid hook 先装 fd，prctl hook 静默）——真实
+  红卡场景（app 老进程无 fd + 模块已加载 → app 主动 prctl 查询即装 fd，
+  免杀重启）出现时验证 dmesg 特征行 `active driver fd ... manager prctl`。
