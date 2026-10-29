@@ -4172,6 +4172,24 @@ restore 已加 `kallsyms-ors`/`kallsyms-oeb` dump（符号变体全量，root �
 - 下一步：**考试轮（严格判据，计数 0/3）**——须 reboot fresh 起（多轮 reboot
   循环，开跑前征询用户）。
 
+### 考试轮（第三批，严格判据）第 1 轮合格（2026-10-29 晚，r8 boot 45900136）→ 计数 1/3
+
+用户批准开考。reboot 20:39 → boot 45900136 → 布防重挂
+（`/tmp/opencode/exam1/guard.sh`，setsid 2s screencap+logcat 跨轮复用）→
+postlock.sh 20:40:11 起（quiet gate 放行 load 4.85）→ **restore OK
+20:43:06，全轮 4 分钟一次过**：
+- 链 `pipe-physrw-summary done=1 root=1 kaslr=1` + `uid=2000->0
+  selinux=1->0 setenforce=0/0` + exit tail 安全 + CHAIN_EXIT_DONE；
+- **双 OK 原生各 1 次**（SELINUX-STRICT-OK + POSTLOCK-RESTORE-OK，零人工）
+  + `[host-verify] probe: uid=0 context=u:r:ksu:s0` append；
+- v14 判据持续全绿（`kill.scan sites=2` / `rep armed=2` / 零 popup WARN）；
+- restore OK 后 4min+ boot=45900136 恒定 + enforce=1；
+- 蓝卡「工作中 Built-in」+ 驱动 (35220/6) == 管理器 (35252/6) 无红条 +
+  SELinux 强制执行 + 无越狱徽章（截图实拍）。
+- 取证 `/tmp/opencode/exam/SUCCESS_r8_45900136/`。**连续计数 1/3**；
+  第 2 轮 = reboot fresh 重考（host.log 轮询判据
+  `manual check|FAIL|ERROR|OK:` + boot 变化照旧）。
+
 **布防 SOP（用户裁决：慢=不合格）**：每轮链先挂
 `setsid nohup bash -c '…while…'`：每 2s `exec-out screencap` 轮转 6 张
 `/tmp/opencode/gN_shot_*.png` + `logcat -d -t 120` 落盘，~23 分钟覆盖
