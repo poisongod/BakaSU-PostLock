@@ -1088,7 +1088,9 @@ app v1.7（versionCode 8）保留 wake lock+FSI 双保险（延长存活时间�
   URL）。分支 main 从 v1.9 orphan 导入：**旧 ReSukiSU 上游 commit 链对象
   （`b2c595d…`）从未完整上传任何远端**，推空仓必 `remote unpack failed: did
   not receive expected object`（老仓推送能过是因为 negotiation 排除了服务端
-  已有对象）——故截断历史，v1.0-v1.8 留 BakaSU-PostLock `postlock-app` 分支。
+  已有对象）——故截断历史，v1.0-v1.8 留 BakaSU-PostLock `postlock-app` 分支
+  （**2026-10-30 该分支已 orphan 重建为纯 app 源码**，v1.0-v1.8 历史移存
+  `work/archives/BakaSU-PostLock-pruned-refs.bundle`，见「清理」节）。
   `BakaSU-PostLock` main 是**主仓镜像（另一路维护，勿覆盖）**。
 - **该仓 workflows/runs 会列出 10 个 ReSukiSU 系幽灵 workflow**（id 3899405xx，
   disable API 全 404=非本仓注册，BakaSU-PostLock 的 id 也不同——网络层共享
@@ -1336,6 +1338,28 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 祖先，领先 245 落后 0）一次推成，`8c3ae0d8..a866fcaf`，245 个未推 commit
 全部上齐，远端 main == 本地 HEAD。**以后主仓推送一律 `git push postlock
 HEAD:main`**；`origin`（woshimaniubi8）保持不动仅作 fetch 参考。
+
+**BakaSU-PostLock 仓清理（2026-10-30 用户裁决「清理不属于 PostLock 的所有东西」）**：
+- **清理前** 11 分支 + 19 tag：main（主仓镜像）+ postlock-app（app 源码）
+  之外全是上游 BakaSU 残留——删 9 分支（auto-hook/refine-flash/
+  renovate×2/sync-susfs/sync-upstream/uapi-mismatch/upstream-main/
+  weblate-main）+ 19 tag（v2.0_beta~v4.2.0-rc3 管理器版本号）；0 release、
+  无 wiki、fork=false、description 本项目自述均不动。
+- **postlock-app 分支 orphan 重建**（b24ddedb → `335cd96e`，force push）：
+  树仅 30 文件 = `postlock-app/`（Gradle app 项目 28 件）+
+  `.github/workflows/build-postlock-app.yml`（CI，路径 `postlock-app/**`
+  与子目录结构匹配）+ gradle 通用 `.gitignore`；上游 `kernel/manager/
+  userspace/scripts/uapi/docs/js/justfile/repack_*` 等全移除。
+- **终态远端 refs = 2 分支 0 tag**：`main=cf0f7a55`（主仓镜像）+
+  `postlock-app=335cd96e`（纯 app）。
+- **删除前 mirror 备份**（30 refs 全量）→ bundle 持久化
+  `work/archives/BakaSU-PostLock-pruned-refs.bundle`（98M，含旧
+  postlock-app `b24ddedb` = app **v1.0-v1.8 历史**，`git bundle verify`
+  过）——**`/tmp/opencode/BakaSU-PostLock-backup.git` 会被清，此 bundle
+  是唯一持久副本**；恢复任一被删 ref：`git fetch <bundle> refs/heads/x`。
+- **未动**：PostLock-Boot 仓（`poisongod/PostLock-Boot`）顶层同样驮着上游
+  全套（kernel/manager/userspace…，其 main 分支 = 10-19 旧结构），用户本次
+  只点名 BakaSU-PostLock；若同样瘦身走 restructure→main 合并时一并处理。
 
 **重启循环与守护策略迭代（2026-10-21 深夜，第 12-15 次重启）**：
 - **恢复期起链 = 重启连爆**（d2c6e342→4069896e→6fa5e792→44d6359a→e09c6c96
