@@ -68,7 +68,16 @@ make clean                        # 只删 build/*/bin，保留 build/embed
 
 ## 运行与排障
 
-**设备端工作目录是 `/data/local/temp`**（与另一 agent 用的 `/data/local/tmp` 隔离）。
+**设备端工作目录 = `/data/local/tmp`（单一大本营，2026-10-29 集中化）**——
+原 `/data/local/temp` 全部并入（src `KS_DEV_DIR`/锁文件/skbdelta/fakemiss、
+tools 三脚本、restore heredoc、app Kotlin+assets 全切换）；理由：fresh 设备
+`/data/local/tmp` shell 天然可写（temp 需 root mkdir+chcon，fresh boot 链锁
+文件写不了），运行时产物不再依赖 chcon。主仓 `adec22e6`（so `9816d8ff`）+
+app 仓 `4b770f1`（PAYLOAD_VERSION v12-unify-tmp-20261029）。**旧 temp 残留**
+（链物料旧副本/tailscaled 通道件/ovl/su.allow/拒删项 kernelsu_uapi6.ko+
+su.sock）等下轮链成功 root 窗口统一清；app WanChannel 部署 tailscaled 到新
+路径由装机后首次部署自然切换（现跑实例在 temp 不动防断通道）。新写设备路径
+一律 `/data/local/tmp`，**禁止再引入 `/data/local/temp`**。
 
 **设备工作目录整洁纪律（2026-10-29 用户裁决：主动保持，不要等指出）**：每轮链判明
 （成功或失败）后、每次批量调试/取证结束后，**主动**清设备端当轮日志、调试脚本、
