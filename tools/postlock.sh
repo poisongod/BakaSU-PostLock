@@ -215,6 +215,7 @@ if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-al
 # FAIL; rep-anchor MISMATCH is per-boot static), WARN loudly when not armed=2
 # so the next popup is attributed, not rediscovered.
 OCS=/sys/module/oplus_check_suppress/parameters
+log "ocsk-state: \$(tr '\n' '|' < \$OCS/state 2>/dev/null)"
 if grep -q patched=1 \$OCS/state 2>/dev/null; then log ocsk-kill-armed; else log WARN-ocsk-kill-not-armed; fi
 if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed-after-retry; else log WARN-ocsk-rep-not-armed-popup-risk; fi; else log WARN-ocsk-rep-not-armed-popup-risk; fi
 # register the manager appid so zygote setresuid installs the
@@ -431,6 +432,15 @@ exit 0
 EOF
 sh -n "$RESTORE_LOCAL" || die "restore.sh syntax error"
 ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push restore.sh to $STAGE"
+
+# --- popup source kill (2026-10-29) ---------------------------------------
+# Manager cold-start execs libksud.so; oplus_exec_block reports that execve
+# (pstore: kevent_send_to_user:execve .../libksud.so x2) and exsystemservice
+# pops the no-button 15s forced-reboot dialog.  The report fires BEFORE our
+# chain (manager autostarts mid-boot), so force-stop here -- early, ahead of
+# the whole quiet-gate wait -- and restore's tail restarts it afterwards
+# (force-stop + am start under the ocsk-armed window).
+ab shell "am force-stop com.resukisu.resukisu" 2>/dev/null || true
 
 # --- wait for system quiet ----------------------------------------------
 # 2026-10-24 PM verdict history below, but 2026-10-25 the user verdict
