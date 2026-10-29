@@ -216,6 +216,8 @@ if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-al
 # so the next popup is attributed, not rediscovered.
 OCS=/sys/module/oplus_check_suppress/parameters
 log "oplus_check_suppress-state: \$(tr '\n' '|' < \$OCS/state 2>/dev/null)"
+log "kallsyms-ors: \$(grep -a oplus_root_check_succ /proc/kallsyms 2>/dev/null | tr '\n' '|')"
+log "kallsyms-oeb: \$(grep -a oplus_exec_block /proc/kallsyms 2>/dev/null | tr '\n' '|')"
 if grep -q patched=1 \$OCS/state 2>/dev/null; then log oplus_check_suppress-kill-armed; else log WARN-oplus_check_suppress-kill-not-armed; fi
 if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed-after-retry; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi
 # register the manager appid so zygote setresuid installs the
