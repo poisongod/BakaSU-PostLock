@@ -1329,6 +1329,13 @@ fork，poisongod 名下也无该 repo 的 fork；远端 main 停在 f2c26147
 旧结论「端点不稳定改走 gh API」不成立——同一 token api 也必 403。
 **本地 git 是唯一权威**，恢复远端需 woshimaniubi8 凭证或加协作者（用户侧
 操作）。
+**→ 终审（2026-10-30 用户裁决）：主仓权威远端不是 woshimaniubi8 仓，而是
+`poisongod/BakaSU-PostLock`（主仓镜像，public，push=true）**——仓里早有
+`postlock` remote 指向它，此前排查走错了目标仓。实测
+`git push postlock HEAD:main` 纯 fast-forward（远端 main=8c3ae0d8 是本地
+祖先，领先 245 落后 0）一次推成，`8c3ae0d8..a866fcaf`，245 个未推 commit
+全部上齐，远端 main == 本地 HEAD。**以后主仓推送一律 `git push postlock
+HEAD:main`**；`origin`（woshimaniubi8）保持不动仅作 fetch 参考。
 
 **重启循环与守护策略迭代（2026-10-21 深夜，第 12-15 次重启）**：
 - **恢复期起链 = 重启连爆**（d2c6e342→4069896e→6fa5e792→44d6359a→e09c6c96
