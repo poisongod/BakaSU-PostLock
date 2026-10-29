@@ -207,7 +207,7 @@ if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
 if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; elif $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok; else log WARN-oplus_check_suppress-finitmod-failed; fi
-# popup-suppress diagnostics (2026-10-29): restore's own ksud execve trips
+# popup-suppress diagnostics (2026-10-29, oplus_check_suppress): restore's own ksud execve trips
 # oplus_exec_block and was reported -> popup forced-reboot wiped the boot
 # right after POSTLOCK-RESTORE-OK (pstore kevent_send_to_user:execve x3 at
 # finitmod+2s).  v12 popup probes (rep1/rep2) are best-effort: finitmod-ok
@@ -215,9 +215,9 @@ if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-al
 # FAIL; rep-anchor MISMATCH is per-boot static), WARN loudly when not armed=2
 # so the next popup is attributed, not rediscovered.
 OCS=/sys/module/oplus_check_suppress/parameters
-log "ocsk-state: \$(tr '\n' '|' < \$OCS/state 2>/dev/null)"
-if grep -q patched=1 \$OCS/state 2>/dev/null; then log ocsk-kill-armed; else log WARN-ocsk-kill-not-armed; fi
-if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed-after-retry; else log WARN-ocsk-rep-not-armed-popup-risk; fi; else log WARN-ocsk-rep-not-armed-popup-risk; fi
+log "oplus_check_suppress-state: \$(tr '\n' '|' < \$OCS/state 2>/dev/null)"
+if grep -q patched=1 \$OCS/state 2>/dev/null; then log oplus_check_suppress-kill-armed; else log WARN-oplus_check_suppress-kill-not-armed; fi
+if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed-after-retry; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
 # precede the app start)
@@ -439,7 +439,7 @@ ab push "$RESTORE_LOCAL" "$STAGE/restore.sh" >/dev/null || die "cannot push rest
 # pops the no-button 15s forced-reboot dialog.  The report fires BEFORE our
 # chain (manager autostarts mid-boot), so force-stop here -- early, ahead of
 # the whole quiet-gate wait -- and restore's tail restarts it afterwards
-# (force-stop + am start under the ocsk-armed window).
+# (force-stop + am start under the oplus_check_suppress-armed window).
 ab shell "am force-stop com.resukisu.resukisu" 2>/dev/null || true
 
 # --- wait for system quiet ----------------------------------------------
