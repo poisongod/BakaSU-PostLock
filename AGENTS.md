@@ -4051,3 +4051,64 @@ git 状态逐一验证一致：remote/HEAD/dirty 计数与迁移前相同）：
   `WARN-ocsk-finitmod-failed`→`WARN-oplus_check_suppress-finitmod-failed`、
   `lsmod` grep `^oplus_check_suppress`。历史记录（本文上文/forensics）里的 ocsk
   旧名是当时实名不回改。设备 stage 残留旧名 ko 无害（restore 只引用新名）。
+
+## 无按钮 15s 强制重启弹窗根因（2026-10-29，三轮 pstore 交叉定案）
+
+**弹窗性质修正**：restore 成功（POSTLOCK-RESTORE-OK）后约 1 分钟，
+`com.oplus.exsystemservice` 弹「检测到恶意程序…已阻止本次破坏行为」——
+**无按钮、15 秒倒计时强制重启、不可取消**；历史应急坐标 (293,1396)（知道了）/
+(775,1396)（立即重启）对它**无效**（那是另一形态/已不适用）。收到弹窗报告
+只做单条最快取证（exec-out screencap），或依赖预挂布防循环——15 秒内
+现场敲命令来不及（用户批评过响应慢）。
+
+**上报链**：任意进程 `execve /data/local/temp/ksud`（或 libksud.so）→ 内核
+`oplus_exec_block` → `kevent_send_to_user:execve` printk（pstore 可见行
+`=======>[kevent_send_to_user:execve]:common <path> result execve_report`）→
+exsystemservice 收上报 → 弹窗 → 15s 重启。
+
+**触发源三轮 pstore 实证（boot 2b81063a/1d595d9b/3d81585c）**：
+1. **host verify 的 `/product/bin/su -c id`**（restore OK 后 postlock.sh 必跑）→
+   su wrapper → `exec /data/local/temp/ksud debug su` → 上报 ×3（comm su/su/sh）
+   ——当前主源（restore 完成后 ~40-60s，恰在下一条 host 命令时刻）。
+2. **BakaSu 管理器自启** `libksud.so` execve ×2（comm sh，**早于链、早于
+   oplus_check_suppress 加载**，必报）。已治：postlock.sh 在 quiet-gate 之前
+   `am force-stop com.resukisu.resukisu`（链期保持 stopped，restore 尾部
+   force-stop+am start 重启它）——实测该源上报消失。
+3. restore 自身的 ksud exec（uid0 kernel:s0）——上一轮 restore 时段亦有
+   ×3 上报组（待与源 1 用时刻分辨；`uid0 免报`假设未成立）。
+
+**拦截失败根因 = `oplus_check_suppress` kill 锚两连 FAIL（确定性非抽签）**：
+state dump（restore kernel:s0 读 `/sys/module/oplus_check_suppress/parameters/state`）
+```
+ret.entry=0  entry=ffffffd9f74ea620  anchor tries=0 word=d4200080   ← entry 锚接受 brk ✓（v10 行为）
+kill.word.before=d4200080 bl=0   dead.word@268=94004607
+FAIL kill-anchor d4200080         ← kill 锚(entry+0xa30)期望 bl force_sig=0x94004415，实读 brk #0x80
+```
+→ `armed_flag=0` → **rep1/rep2 弹窗拦截探针在 FAIL 早退分支根本不注册**
+（`WARN-oplus_check_suppress-rep-not-armed-popup-risk` 是连锁结果非独立失败）→
+拦截为零 → 弹窗裸奔；kill fuse（app 提权拦截）同样失效。
+**`+0xa30` 处 `brk #0x80` 来源未定**：当前 boot `tracefs events/kprobes/`
+目录不存在（无活 kprobe，排除 OPPO trace 探针占位）——候选 = kallsyms resolve
+命中 `oplus_root_check_succ` 死克隆/CFI 变体（该位置死代码 brk）或镜像原生；
+restore 已加 `kallsyms-ors`/`kallsyms-oeb` dump（符号变体全量，root 全地址读）
+等下轮链成功落盘分辨。
+
+**restore 诊断增强（本节配套 commits，主仓/app 两份同步）**：
+- `oplus_check_suppress-state:` state 全文 dump（`tr '\n' '|'` 单行）——shell 域
+  读 state 被 SELinux 拒（Permission denied 属预期），只有 restore kernel:s0 能读；
+- `oplus_check_suppress-kill-armed` / `-rep-armed` / `WARN-...-not-armed-popup-risk`
+  判据行 + `echo 1 > .../arm` 重试一次（只救 entry 阶段 FAIL；kill 锚 MISMATCH
+  每 boot 静态，重试无效但无害）；
+- `kallsyms-ors` / `kallsyms-oeb` 符号变体 dump；
+- 日志串术语纪律：新串一律全名 `oplus_check_suppress`（ocsk 旧名停止使用）。
+
+**布防 SOP（用户裁决：慢=不合格）**：每轮链先挂
+`setsid nohup bash -c '…while…'`：每 2s `exec-out screencap` 轮转 6 张
+`/tmp/opencode/gN_shot_*.png` + `logcat -d -t 120` 落盘，~23 分钟覆盖
+（gate 超时最长 20min）；弹窗证据事后从截图文件捞，不依赖 15 秒内现场命令。
+**后台进程必须 `setsid nohup … < /dev/null &`**——工具 shell 会话收尾会组杀
+普通 `nohup &`（实测两后台进程连同日志文件全丢）。
+
+**链轮记录**：r2（boot 1d595d9b）root=1+restore OK 但 WARN×2 全灭→弹窗；
+r4（d9a73c92）route 段 `opening ashmem` δ 相位抽签 panic（已知 ~1/6 家族，
+非本节改动回归，restore 未跑到）；r5（85078990）gate 等恢复风暴中。
