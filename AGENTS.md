@@ -4190,6 +4190,40 @@ postlock.sh 20:40:11 起（quiet gate 放行 load 4.85）→ **restore OK
   第 2 轮 = reboot fresh 重考（host.log 轮询判据
   `manual check|FAIL|ERROR|OK:` + boot 变化照旧）。
 
+### 考试轮（第三批，严格判据）第 2 轮合格（2026-10-29 晚，r9 boot c892a28a）→ 计数 2/3——含红卡事件（管理器重装 appId 重分配）修复
+
+r8 后 reboot fresh 重考。链一次过：`pipe-physrw-summary done=1 root=1` ×3 + exit tail
+安全 + **双 OK 原生各 1 次**（SELINUX-STRICT-OK + POSTLOCK-RESTORE-OK）+
+`[host-verify] probe: uid=0 context=u:r:ksu:s0` append → enforce=1 → boot c892a28a 稳定
+→ 蓝卡「工作中 Built-in」+ 驱动 (35220/6)==管理器 (35252/6) 无红条。
+
+**本轮红卡事件（用户发现，已修复定案）**：用户手动卸载重装管理器 APK → **appId 重分配
+10279→10300** → 模块参数 `ksu_debug_manager_appid=10279` 失配 → `ksu_is_manager_uid`
+恒 false → setuid hook 不装 fd → 红卡「未检测到驱动」。修复 = root 写参数 10300 →
+root kill 管理器进程（**shell(2000) kill = EPERM 静默失败**，必须
+`/product/bin/su -c kill`）→ monkey 冷启动 → dmesg `install fd for ksu manager(uid=10300)`
+→ 蓝卡。**appid 失配 vs fd 窗口错过两类红卡区分**：dmesg 有无 install fd 行 + 参数值
+vs 当前 uid。
+- **app 侧修复**：assets `restore.sh` appid 硬编码 10279 → 运行时动态解析
+  （packages.list 直读 → `pm list -U` fallback → 10279 兜底）；host `postlock.sh`
+  早已动态（:227 stage 时 pm 解析 MUID）。
+- **主动驱动发现机制（用户方向「让管理器主动发现驱动，只改内核」，已实施编译通过）**：
+  ../BakaSU 加 **prctl hook**——管理器 legacy fallback（`legacy.c ksuctl`）发
+  `prctl(0xDEADBEEF, CMD_GET_VERSION)` → 内核 `ksu_hook_prctl` 判
+  `ksu_is_manager_uid`（**appId RCU 链表 = throne_tracker APK 签名加冕或 root 写
+  debug 参数，三层防线：链表准入→appId 不复用→ioctl 每次再验 manager_or_root**；
+  与方案乙同级判定）→ 防重（`ksu_current_has_driver_fd` f_op 扫描）装 CLOEXEC fd +
+  CMD_GET_VERSION 应答真实 version/flags（其它 cmd 只装 fd 不应答——防
+  CMD_CHECK_SAFEMODE 假安全模式）→ 管理器下次 ksuctl `scan_driver_fd` 命中 → 蓝卡。
+  触发链 = jni.c getVersion JNI：ioctl 无 fd 失败 → `legacy_get_info()` prctl 兜底
+  → 管理器冷启动即触发。改动 5 处：supercall.c/.h（防重 helper）、bridge.c/.h
+  （ksu_hook_prctl）、hook_manager.c（注册 `__NR_prctl`）。新 ko sha `b2b98c3d94fe`
+  （版本串 v4.2.0-rc3-8450dd28 不漂移，rev-list 4520 恒定）。
+  **部署策略：决胜轮仍用旧 ko**（`build/embed/kernelsu.ko` 不动保考试稳定），考后
+  替换部署 + reboot 实测（appid 失配场景 → 冷启动 → prctl 兜底 → 蓝卡）。
+- 取证 `SUCCESS_r9_c892a28a/{chain.log,restore.log,ui_home.png}`。
+- **连续计数 2/3**；下一轮 = **决胜轮（第 3 轮）**。
+
 **布防 SOP（用户裁决：慢=不合格）**：每轮链先挂
 `setsid nohup bash -c '…while…'`：每 2s `exec-out screencap` 轮转 6 张
 `/tmp/opencode/gN_shot_*.png` + `logcat -d -t 120` 落盘，~23 分钟覆盖
