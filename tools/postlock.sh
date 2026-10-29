@@ -84,6 +84,19 @@ ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
 ab push "$OCSK_SRC" "$STAGE/oplus_check_suppress.ko" >/dev/null
 ab push "$HOTLOAD_SRC" "$STAGE/kernelsu_hotload_init.ko" >/dev/null
+# ksud blob (2026-10-30, fresh-boot first-run gap): the restore script and
+# the su wrapper exec ksud from $TMP, and restore used to source it from
+# /data/adb/ksud -- a file only previous chain runs leave behind.  On a
+# factory-reset device that file does not exist, the chain itself never
+# writes it (KSUD_NO_PARENT_INSTALL=1 skips install_embedded_ksud), the
+# cp is silently skipped by its `[ -x /data/adb/ksud ]` guard, and the
+# wrapper dies with rc=127 -> verify fails on the very first run.  Stage
+# the embedded blob (same binary the preload.so incbin ships) directly;
+# restore now sources ksud from $STAGE exclusively.
+KSUD_SRC="$REPO/build/embed/ksud"
+[ -f "$KSUD_SRC" ] || die "missing $KSUD_SRC (embedded ksud blob)"
+ab push "$KSUD_SRC" "$STAGE/ksud" >/dev/null
+ab shell "chmod 755 $STAGE/ksud" >/dev/null || true
 ab push "$REPO/tools/sepolicy_enforce1.txt" "$STAGE/sep_enforce1.txt" >/dev/null
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
@@ -266,10 +279,10 @@ settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || l
 # post-chain window is still a suspect for the 12:21 panic): default OFF,
 # KS_RUN_KSUD_EVENTS=1 to enable.  All three events tested safe on a
 # healthy system (14:26-14:39, OMK injector came up clean).
-if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x /data/adb/ksud ]; then
-  timeout 60 /data/adb/ksud post-fs-data > /dev/null 2>&1 || log WARN-ksud-postfs
-  timeout 90 /data/adb/ksud services > /dev/null 2>&1 || log WARN-ksud-services
-  timeout 30 /data/adb/ksud boot-completed > /dev/null 2>&1 || log WARN-ksud-bootcomp
+if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x $STAGE/ksud ]; then
+  timeout 60 $STAGE/ksud post-fs-data > /dev/null 2>&1 || log WARN-ksud-postfs
+  timeout 90 $STAGE/ksud services > /dev/null 2>&1 || log WARN-ksud-services
+  timeout 30 $STAGE/ksud boot-completed > /dev/null 2>&1 || log WARN-ksud-bootcomp
 fi
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
@@ -318,8 +331,8 @@ fi
 exec $TMP/ksud debug su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
-  if [ -x /data/adb/ksud ]; then
-    cp /data/adb/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
+  if [ -x $STAGE/ksud ]; then
+    cp $STAGE/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
     chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
   fi
   mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin || log WARN-overlay-mount
@@ -333,8 +346,11 @@ fi
 # wrapper comment (shell cannot exec system_file, dontaudit-silent).
 # Idempotent: runs even when the overlay branch above was skipped, so a
 # stale overlay from a previous boot still gets its wrapper fed.
-if [ -x /data/adb/ksud ]; then
-  cp -f /data/adb/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
+# 2026-10-30: source moved from /data/adb/ksud to $STAGE/ksud (host
+# stages the embedded blob; /data/adb/ksud only exists on devices where
+# an older chain run left it behind -- factory-reset first run died here).
+if [ -x $STAGE/ksud ]; then
+  cp -f $STAGE/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
 fi
