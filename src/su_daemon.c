@@ -19,15 +19,15 @@
 #include <termios.h>
 #include <unistd.h>
 
-#define DEFAULT_SOCK_PATH "/data/local/temp/su.sock"
-#define PID_PATH "/data/local/temp/su.pid"
-#define LOG_PATH "/data/local/temp/su.log"
+#define DEFAULT_SOCK_PATH "/data/local/tmp/su.sock"
+#define PID_PATH "/data/local/tmp/su.pid"
+#define LOG_PATH "/data/local/tmp/su.log"
 
 static const char *sock_path(void) {
   static char path[sizeof(((struct sockaddr_un *)0)->sun_path)];
   const char *env = getenv("SU_SOCK");
   if (env && env[0] &&
-      (strncmp(env, "/data/local/temp/", 17) == 0 ||
+      (strncmp(env, "/data/local/tmp/", 16) == 0 ||
        strncmp(env, "/data/local/tmp/", 16) == 0) &&
       strlen(env) < sizeof(path)) {
     snprintf(path, sizeof(path), "%s", env);
@@ -42,7 +42,7 @@ static void set_root_env(void) {
          "/apex/com.android.virt/bin:/system_ext/bin:/system/bin:/system/xbin:"
          "/odm/bin:/vendor/bin:/vendor/xbin",
          1);
-  setenv("HOME", "/data/local/temp", 1);
+  setenv("HOME", "/data/local/tmp", 1);
   setenv("USER", "root", 1);
   setenv("LOGNAME", "root", 1);
 }
@@ -609,7 +609,7 @@ static int client_uid_allowed(int client_uid) {
   if (list && list[0]) {
     return uid_list_contains(list, client_uid);
   }
-  const char *path = "/data/local/temp/su.allow";
+  const char *path = "/data/local/tmp/su.allow";
   FILE *f = fopen(path, "r");
   if (!f) {
     return 1;

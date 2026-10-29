@@ -13,11 +13,11 @@
 # Env guards (src/preload.c, src/root.c):
 #   KSUD_DST= under /data/local/tmp  -> ksud write goes to staging (exists),
 #                                       otherwise write to missing
-#                                       /data/local/temp pr_error-kills us
+#                                       /data/local/tmp pr_error-kills us
 #   KSUD_NO_PARENT_INSTALL=1         -> skips in-process ksud install
 #   SU_INSTALL=0                     -> skip chain su install; we cp our own
 #                                       static su (chain would write it into
-#                                       /data/local/temp before it exists)
+#                                       /data/local/tmp before it exists)
 #
 # Usage: tools/postlock.sh            (idempotent, re-runnable)
 set -euo pipefail
@@ -26,7 +26,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 APP=com.resukisu.resukisu
 ACT=org.bakasu.bakasu.ui.MainActivity
 STAGE=/data/local/tmp/ksu_boot
-TMP=/data/local/temp
+TMP=/data/local/tmp
 
 die() { echo "postlock: ERROR: $*" >&2; exit 1; }
 # unified log line prefix, same shape as chain/restore/receiver logs
@@ -163,7 +163,7 @@ log() { printf "[%s %s] %s\\n" "\$BOOT8" "\$(date +%H:%M:%S 2>/dev/null || echo 
 # (fix77's runcon --strict-child branch removed by fix81 -- see the tail block.)
 log "== restore start \$(date '+%F %T') pid=\$\$ uid=\$(id -u)"
 id
-ls -ld /data /data/local /data/local/temp 2>&1 || true
+ls -ld /data /data/local /data/local/tmp 2>&1 || true
 getenforce 2>/dev/null || true
 set -e
 # Wait for the chain itself to finish its exit tail (neutralize/pipe
@@ -469,7 +469,7 @@ done
 [ "$quiet" = 1 ] || info "WARN-quiet-timeout (still triggering; expect storm-phase risk)"
 
 # --- ONE exploit run ----------------------------------------------------
-# stale restore.log survives in /data/local/temp across reboots (temp
+# stale restore.log survives in /data/local/tmp across reboots (temp
 # is NOT wiped) -- without this the wait loop below false-positives on
 # the PREVIOUS boot's POSTLOCK-RESTORE-OK (observed 2026-10-24 round
 # where the chain panicked before ever forking restore).
@@ -624,11 +624,11 @@ fi
 step "verify"
 if ! ab shell "/product/bin/su -c id" | grep -q "uid=0"; then
   echo "  [diag] overlay/targets:"
-  ab shell "ls -la /product/bin/su /data/local/temp/ksud /data/local/temp/su_profiles.dat 2>&1" | sed 's/^/    /' || true
+  ab shell "ls -la /product/bin/su /data/local/tmp/ksud /data/local/tmp/su_profiles.dat 2>&1" | sed 's/^/    /' || true
   echo "  [diag] su wrapper raw output:"
   ab shell "timeout 8 /product/bin/su -c id 2>&1; echo rc=\$?" | sed 's/^/    /' || true
   echo "  [diag] temp ksud direct:"
-  ab shell "timeout 8 sh -c 'echo id | /data/local/temp/ksud debug su 2>&1' | head -5" | sed 's/^/    /' || true
+  ab shell "timeout 8 sh -c 'echo id | /data/local/tmp/ksud debug su 2>&1' | head -5" | sed 's/^/    /' || true
   echo "  [diag] modules:"
   ab shell "ls /sys/module/ 2>/dev/null | grep -E '^kernelsu|^oplus_check'" | sed 's/^/    /' || true
   echo "  [diag] chain log tail:"

@@ -431,7 +431,7 @@ static int ks_probe_fetch_batch(const uintptr_t *addrs, int n,
   for (int i = 0; i < n && off < (int)sizeof(cmd) - 64; i++)
     off += snprintf(cmd + off, sizeof(cmd) - off, " a%d=@0x%llx", i,
                     (unsigned long long)addrs[i]);
-  int lfd = open("/data/local/temp/.ks_kvfy.lock", O_CREAT | O_RDWR, 0666);
+  int lfd = open("/data/local/tmp/.ks_kvfy.lock", O_CREAT | O_RDWR, 0666);
   int locked = lfd >= 0 && flock(lfd, LOCK_EX) == 0;
   int wr = -1;
   for (int attempt = 0; attempt < 3 && wr != 0; attempt++) {
@@ -2101,7 +2101,7 @@ void prepare_ctxs(void) {
 }
 
 /* skbdelta stores this run's payload base for reload_payload_base() at
- * route time.  Default sits in /data/local/temp, but a fresh locked
+ * route time.  Default sits in /data/local/tmp, but a fresh locked
  * device has no temp dir and shell cannot create it (/data/local is
  * root-only), so postlock stages the file under /data/local/tmp via
  * KS_PAYLOAD_BASE_FILE (prepare writes it there before the route). */
@@ -2109,7 +2109,7 @@ static const char *pb_file_path(void) {
   const char *e = getenv("KS_PAYLOAD_BASE_FILE");
   if (e && e[0] && strcmp(e, "0") != 0)
     return e;
-  return "/data/local/temp/skbdelta";
+  return "/data/local/tmp/skbdelta";
 }
 
 /* Read the payload line out of the skbdelta file into line[cap].
@@ -2402,7 +2402,7 @@ int prepare_skb_payload(uintptr_t base, int payload_mode) {
   return 1;
 }
 
-/* Re-derive the payload-relative globals from /data/local/temp/skbdelta.
+/* Re-derive the payload-relative globals from /data/local/tmp/skbdelta.
  * Called right before a real pselect attempt so the globals point at the
  * *current* reclaim queue instead of whatever a previous prepare latched. */
 int reload_payload_base(void) {
@@ -4609,7 +4609,7 @@ static int env_on(const char *name) {
  */
 int cfgfs_lock(void) {
   static const char *const paths[] = {
-      "/data/local/temp/.cfgfslock",
+      "/data/local/tmp/.cfgfslock",
       "/data/local/tmp/.cfgfslock",
   };
   for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {

@@ -1159,7 +1159,7 @@ void do_pselect_fake_lock_route(void) {
         /* Early release: once the measurer has cleared fakemiss for this
          * attempt, stop idling and let the loop reload+fire right away. */
         {
-          FILE *pf = fopen("/data/local/temp/fakemiss", "r");
+          FILE *pf = fopen("/data/local/tmp/fakemiss", "r");
           if (pf) {
             char pb[32];
             memset(pb, 0, sizeof(pb));
@@ -1211,7 +1211,7 @@ void do_pselect_fake_lock_route(void) {
     const char *fm = getenv("KS_PSELECT_FAKE_MISS");
     if (fm && fm[0]) fake_miss = (int)strtol(fm, NULL, 0);
     {
-      FILE *ff = fopen("/data/local/temp/fakemiss", "r");
+      FILE *ff = fopen("/data/local/tmp/fakemiss", "r");
       if (ff) {
         char fb[32];
         memset(fb, 0, sizeof(fb));

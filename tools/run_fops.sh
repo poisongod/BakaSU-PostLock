@@ -70,7 +70,7 @@ fi
 # way, Comm=sh of the *other* session).  ARGS-grep is unusable here: the
 # chain child's own ARGS is just `sh -c echo CHAIN_EXIT_OK` (LD_PRELOAD is
 # in its ENVIRON), and grepping ARGS for the so name matches this runner's
-# own launch wrapper (PRELOAD_SO=/data/local/temp/preload_fix47.so ...).
+# own launch wrapper (PRELOAD_SO=/data/local/tmp/preload_fix47.so ...).
 # Scan same-uid /proc/*/environ for a live LD_PRELOAD pointing at a
 # preload*.so instead; skip our own pid and our nohup wrapper (which only
 # carries PRELOAD_SO, not LD_PRELOAD).
@@ -118,7 +118,7 @@ echo "P_START_OK"
 ( while :; do sleep 5; sync; done ) &
 SYNCER=$!
 
-rm -f /data/local/temp/chain5.log /data/local/tmp/chain5.log /sdcard/chain5.log /sdcard/chain5.log.mirror 2>/dev/null
+rm -f /data/local/tmp/chain5.log /data/local/tmp/chain5.log /sdcard/chain5.log /sdcard/chain5.log.mirror 2>/dev/null
 # Runner step markers (2026-10-15): the 23:26 app round died with START
 # written and nothing else — no SCRIPT_RC, empty chain5.log — with the
 # runner and chain both gone and a kernel panic ~1min later.  Silent gaps
@@ -133,13 +133,13 @@ echo "P_RM_DONE rc=$?"
 # 2026-10-14: log moved to f2fs /data/local/tmp/chain5.log (CHAIN_LOG) —
 # /sdcard is FUSE and lost every row of run5 on panic; /data/local/tmp
 # survives reboot (verified 10-01..10-08 coexistence) and fsync per line
-# hits real f2fs.  Old /sdcard//data/local/temp copies are rm'd above so a
+# hits real f2fs.  Old /sdcard//data/local/tmp copies are rm'd above so a
 # stale file can never masquerade as this run's log.
 # Stale preload.so can end up owned by shell but labelled system_data_file
 # (a boot where the chcon -R never ran); shell then cannot unlink/overwrite
 # it, and push fails with "Permission denied" while still exiting 0.  In
 # that case push the new build under a fresh name and point PRELOAD_SO at it.
-PRELOAD_SO="${PRELOAD_SO:-/data/local/temp/preload.so}"
+PRELOAD_SO="${PRELOAD_SO:-/data/local/tmp/preload.so}"
 # KS_PSELECT_FOPS_VOFF: the payload lattice lays fops tables ALIGNED every
 # 0x80 bytes (put_fake_fops_table(p, fo)), and 0xe80 (the skb head/frag
 # split) is a multiple of 0x80 so frag-relative kernel offsets still hit

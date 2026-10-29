@@ -9,11 +9,11 @@
 #include <sys/stat.h>
 #include <dlfcn.h>
 
-#define GRANT_LOG   "/data/local/temp/grant.log"
-#define PROFILE_F   "/data/local/temp/su_profiles.dat"
-#define FEATURES_F  "/data/local/temp/su_features"
-#define ALLOW_F     "/data/local/temp/su.allow"
-#define VERBOSE_F   "/data/local/temp/grant_verbose"
+#define GRANT_LOG   "/data/local/tmp/grant.log"
+#define PROFILE_F   "/data/local/tmp/su_profiles.dat"
+#define FEATURES_F  "/data/local/tmp/su_features"
+#define ALLOW_F     "/data/local/tmp/su.allow"
+#define VERBOSE_F   "/data/local/tmp/grant_verbose"
 
 #define VER          35193
 #define UAPI_VER     4

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Host-side idempotent bootstrap for the CVE-2026-43499 chain run. Run this
 # whenever the device comes online (after a reboot temp is wiped): recreates
-# /data/local/temp, pushes preload.so + run_fops.sh, fixes the SELinux label.
+# /data/local/tmp, pushes preload.so + run_fops.sh, fixes the SELinux label.
 # Usage: tools/prep_device.sh [PROJECT]   (default PROJECT=pfum10c48)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,12 +26,12 @@ echo "== recreate temp + labels:"
 # `|| true`: -R walks into the mounted ovl/lower subtree and those bind-mount
 # endpoints return EOPNOTSUPP — expected, only real files need relabeling;
 # a bare failure would abort prep here (set -e) before any push.
-"$ADB" shell '/system/bin/su -c "mkdir -p /data/local/temp && chmod 777 /data/local/temp && chcon -R u:object_r:shell_data_file:s0 /data/local/temp || true"'
+"$ADB" shell '/system/bin/su -c "mkdir -p /data/local/tmp && chmod 777 /data/local/tmp && chcon -R u:object_r:shell_data_file:s0 /data/local/tmp || true"'
 
 echo "== push artifacts:"
-"$ADB" push "$SO" /data/local/temp/preload.so
-"$ADB" push "$RUN" /data/local/temp/run_fops.sh
-"$ADB" shell 'chmod 755 /data/local/temp/preload.so /data/local/temp/run_fops.sh'
+"$ADB" push "$SO" /data/local/tmp/preload.so
+"$ADB" push "$RUN" /data/local/tmp/run_fops.sh
+"$ADB" shell 'chmod 755 /data/local/tmp/preload.so /data/local/tmp/run_fops.sh'
 
 # The chain itself sets permissive mid-run, but its early kprobe/tracefs
 # probes run before that; needs root (plain `setenforce 0` as shell = EPERM).
@@ -42,7 +42,7 @@ echo "== push artifacts:"
 "$ADB" shell '/system/bin/su -c "echo 262144 > /proc/sys/fs/pipe-user-pages-soft" 2>/dev/null || true'
 
 echo "== verify:"
-"$ADB" shell 'ls -la /data/local/temp/preload.so /data/local/temp/run_fops.sh; getenforce'
+"$ADB" shell 'ls -la /data/local/tmp/preload.so /data/local/tmp/run_fops.sh; getenforce'
 echo "== bootstrap done. Next:"
-echo "   $ADB shell sh /data/local/temp/run_fops.sh"
+echo "   $ADB shell sh /data/local/tmp/run_fops.sh"
 echo "   $ADB pull /sdcard/chain5.log ."

@@ -7,7 +7,7 @@ extern const unsigned char embedded_ksud_end[];
 extern const unsigned char embedded_su_start[];
 extern const unsigned char embedded_su_end[];
 
-#define KS_DEV_DIR "/data/local/temp"
+#define KS_DEV_DIR "/data/local/tmp"
 #define KSUD_DEFAULT_DST KS_DEV_DIR "/ksud"
 #define KSUD_DEFAULT_LOG KS_DEV_DIR "/ksud.preload.log"
 #define SU_DST KS_DEV_DIR "/su"
