@@ -4111,4 +4111,36 @@ restore 已加 `kallsyms-ors`/`kallsyms-oeb` dump（符号变体全量，root �
 
 **链轮记录**：r2（boot 1d595d9b）root=1+restore OK 但 WARN×2 全灭→弹窗；
 r4（d9a73c92）route 段 `opening ashmem` δ 相位抽签 panic（已知 ~1/6 家族，
-非本节改动回归，restore 未跑到）；r5（85078990）gate 等恢复风暴中。
+非本节改动回归，restore 未跑到）；r5（85078990）同样死 `opening ashmem`
+（δ 家族二连，restore 未跑）；r6（47560123）root=1+kallsyms dump 到手→弹窗
+（触发源=host verify su 实锤）；r7-v13 首战（771fb636）`FAIL kill-scan
+no bl force_sig` sites=0。
+
+**v13 扫描 0 命中 = 离线 kallsyms 定案（2026-10-29，bootdump.img 静态反汇编）**：
+- **历史锚点命名错误**：`entry+0x268/+0xa30` 的 bl 一直被叫「bl force_sig」
+  ——离线 kallsyms 实证 bl 目标 `entry+0x11a84 = K0+0x27c0a4 = **do_group_exit**`；
+  真 force_sig 在 `K0+0x28b500`（= entry+0x20EEE0，与 v13 runtime resolve
+  实测差值精确一致 → resolve 没错、**函数体里根本没有 bl force_sig**）。
+- stock 5.4 kill 子函数真实布局（两个平行克隆，sub1 活 sub2 另说）：
+  `adrp+add x0=kill字串 → bl printk → mov w0,#9(SIGKILL) → bl do_group_exit`
+  ——v10-12 的固定词 `0x94004415`（@+0xa30）拦的就是 do_group_exit 的 bl，
+  语义一直对（skip 掉 bl = 进程不被 do_group_exit 杀），只是名字叫错。
+- v13 把判据换成 `bl_target == resolve(force_sig)` → **永不匹配** → sites=0。
+- bootdump 静态 @0x268=`94004607` / @0xa30=`94004415`（均活 bl）——runtime
+  读到 brk 的位置（若有）= 共存 kprobe 占位，v14 state 的 `kill.words`
+  行下轮直接对照分辨。
+- **离线定锚方法（复用）**：`build/work/analyze_ocs.py`（映射校验+xref+段
+  hex）+ `build/work/harvest_ocs.py bootdump.img out`（recover_kallsyms 提
+  任意符号地址，带 sig_enforce 校准断言）——bootdump.img=原厂 boot dump，
+  link 基址 `0xffffffc010080000`，`fileoff = 0x1000 + (link - K0)`。
+- **v14（commit 01ad0c9，rc=0 238160B）**：① kill 扫描主判据改
+  `resolve("do_group_exit")`（fs/fsc 匹配保留作兼容）；② **解耦三段 FAIL**
+  ——entry resolve/锚 FAIL 与 kill scan/register FAIL 全部 `goto do_rep`
+  （popup 拦截不再被 kill fuse 门控，rep 段用独立 EXEC_SYM resolve）；
+  ③ state 加 `kill.words @268/@a30` 词 dump + `dgx=` 行 + scan 命中带
+  `t=%lx`；④ state_buf 2048；⑤ rep 注册防重入（kill-fail retry 路径再进
+  不 EBUSY、不丢 `rep armed` 判据）。判据行兼容：`kill.scan sites=`
+  /`rep armed=`/`FAIL kill-scan`（串尾词改「no kill-path bl」）。
+- **v14 验收**：restore state `kill.scan sites≥1` + `ret.kill ret=0` +
+  `rep armed=2` + 无 `WARN-...-rep-not-armed-popup-risk` + restore OK 后
+  150s+ boot 不变（弹窗消失）。
