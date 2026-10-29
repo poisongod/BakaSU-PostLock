@@ -70,6 +70,17 @@ make clean                        # 只删 build/*/bin，保留 build/embed
 
 **设备端工作目录是 `/data/local/temp`**（与另一 agent 用的 `/data/local/tmp` 隔离）。
 
+**设备工作目录整洁纪律（2026-10-29 用户裁决：主动保持，不要等指出）**：每轮链判明
+（成功或失败）后、每次批量调试/取证结束后，**主动**清设备端当轮日志、调试脚本、
+旧物料副本、跨 boot 账本（`ksu_kaslr`/`ksu_payload`/`.ks_lock_slots`/`chain_run.*`），
+host 侧 `/tmp/opencode` 轮次日志归档到 `exam/` 后同样及时清。**保留清单（删前列
+对照，禁误删）**：链物料全套（finitmod/kernelsu.ko/hotload/ksud/oplus_check_suppress.ko/
+preload.so/su）、`ksu_boot/` stage、`ksud_dbg`（插桩诊断）、`postlock_adbkey.pub`
+（keypair 永久沿用）、tailscaled 通道件、`home/`（裸链默认路径）、诊断数据
+（pstore_dump/rc_syms/kheaders）、`/data/misc/adb/adb_keys`（红线永不碰）。
+SELinux 标签拒 unlink 的文件（dontaudit 报 Permission denied，如旧 ko/socket）留待
+root 窗口删，不强攻。
+
 ```bash
 # temp 目录默认 label 是 system_data_file，shell 无法读写；每次 reboot 后须重新改：
 adb.exe shell 'su -c "chcon u:object_r:shell_data_file:s0 /data/local/temp"'
