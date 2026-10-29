@@ -207,6 +207,16 @@ if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
 if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; elif $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok; else log WARN-oplus_check_suppress-finitmod-failed; fi
+# popup-suppress diagnostics (2026-10-29): restore's own ksud execve trips
+# oplus_exec_block and was reported -> popup forced-reboot wiped the boot
+# right after POSTLOCK-RESTORE-OK (pstore kevent_send_to_user:execve x3 at
+# finitmod+2s).  v12 popup probes (rep1/rep2) are best-effort: finitmod-ok
+# does NOT mean they armed.  Read state, retry arm once (helps entry-stage
+# FAIL; rep-anchor MISMATCH is per-boot static), WARN loudly when not armed=2
+# so the next popup is attributed, not rediscovered.
+OCS=/sys/module/oplus_check_suppress/parameters
+if grep -q patched=1 \$OCS/state 2>/dev/null; then log ocsk-kill-armed; else log WARN-ocsk-kill-not-armed; fi
+if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log ocsk-rep-armed-after-retry; else log WARN-ocsk-rep-not-armed-popup-risk; fi; else log WARN-ocsk-rep-not-armed-popup-risk; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
 # precede the app start)
