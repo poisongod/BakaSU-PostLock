@@ -4122,6 +4122,56 @@ restore 已加 `kallsyms-ors`/`kallsyms-oeb` dump（符号变体全量，root �
 - `kallsyms-ors` / `kallsyms-oeb` 符号变体 dump；
 - 日志串术语纪律：新串一律全名 `oplus_check_suppress`（ocsk 旧名停止使用）。
 
+**v14 首验通过（2026-10-29 晚，r7 boot 704f6735，判据全绿）**：
+`kill.scan sites=2`（do_group_exit resolve 生效，t=dgx 精确地址）+
+`ret.kill off=268/25c ret=0 patched=1` ×2 + `rep armed=2`（rep1/rep2 ret=0）
++ 零 `WARN-...-rep-not-armed-popup-risk`（仅 2 条已知无害 WARN：
+`no-omk-bak`/`phantom-settings`）+ **restore OK 后 150s+ boot 不变**（弹窗
+15s 强制重启未发生）。v13 的 `kill.scan sites=0`（判据换 force_sig 永不匹配）
+→ v14 换 resolve(do_group_exit) 一步到位。restore state 单行全字段 dump
+（`oplus_check_suppress-state:`）是唯一判据源，shell 域读被拒属预期。
+
+### v14 首验 + 集中化首跑三连轮（2026-10-29 晚，r5-r7）+ moduleLoaded 假阴性修复
+
+- **r5（8b8cebac，集中化首跑）**：链本体在新栈（so `9816d8ff` + 全 `/data/local/tmp`
+  路径）推进到 `waves=12 taken=11 owned=1` + `pipe-physrw-summary done=1
+  root=1` 契约 + fail path `neutralize ok=1 verified=1`——**集中化无路径类
+  回归**（锁文件/skbdelta/cfgfs/neutralize 全通）。死点 = root child SIGKILL
+  家族第 7 次（fix75 `beat_age=15381ms beat_uid=2000` = fork+~20ms 无痕死，
+  proceeding=0）；链 19:34:53 安全退出后 **104s 设备被外部软件重启**
+  （pstore `oplus_reboot normal_reboot`→`sysrq Kill All Tasks`，**kevent
+  上报 0 条 = 弹窗排除**，child 死与重启无因果——时序差 104s）。
+- **r6（ac946eb5）**：route 段 `opening ashmem` δ 相位 panic（`SP/PC
+  alignment exception` + `Comm: ks_waiter`，链断在 `attempt=1`）——已知
+  ~1/6 结构性家族，判明即 reboot。
+- **r7（704f6735）全绿轮**：链 `root=1 uid=2000->0 selinux=1->0` → v14
+  首验（上节）→ fix81 双 OK 原生 + `[host-verify]` probe → enforce=1 →
+  150s+ boot 不变 → **BakaSu 蓝卡「工作中 Built-in」+ 驱动 (35220/6) ==
+  管理器 (35252/6) 无红条 + SELinux 强制执行**（1 超级用户 1 模块真 store）。
+  **`[DBG]` 插桩 ksud 定案数据**（趁 fd 窗口 `echo id | /data/local/tmp/
+  ksud_dbg debug su`）：`GRANT_ROOT ioctl Ok uid=0 context=u:r:ksu:s0` +
+  `stdin before exec: FIONREAD rv=0 bytes=3`（**stdin 管道 exec 前就绪，
+  排除「数据没传到」假说**）+ `uid=0(root) ... u:r:ksu:s0`——ksud 侧全通，
+  且本轮 host verify 本身 `OK:` = **verify 卡点本轮未复发**。诊断完成，
+  `../BakaSU` su.rs 插桩已 `git checkout --` revert（HEAD 8450dd28 不动、
+  rev-list 4520 恒定、diff 空）；设备 `tmp/ksud_dbg` 二进制保留作诊断工具。
+- **moduleLoaded 假阴性修复（app `5fd8125`）**：r7 链三模块全加载
+  （lsmod + `/sys/module/` 三目录 + restore 三行 finitmod-ok 实证）但
+  PostLock 主页显示 **3×未加载**——`SysProps.moduleLoaded()` 只读
+  `/proc/modules`，**untrusted_app 域被 SELinux 拒**（runas 实测 app uid
+  Permission denied，点 ↻ 刷新无效排除快照假说）。修 = catch 回落 stat
+  `/sys/module/<name>` 目录（app uid 实测 DIR_YES/不存在 DIR_NO，三目标
+  均 loadable 模块无 builtin 假阳性）；装机验证三卡片变绿。
+  **app 域探测类新坑备案**：读 `/proc/*`（modules/kallsyms 地址）与
+  `/sys/module/*/parameters` 在 app 域全被拒——实时状态探测走
+  `/sys/module/<name>` 目录 stat 或 `/data/local/tmp` 共享文件。
+- 取证：`/tmp/opencode/exam/SUCCESS_r7_704f6735/{chain,restore,host}.log +
+  ui_bluecard.png + ui_postlock_modules.png`、`FAIL_r5_8b8cebac/`（chain+
+  pstore_full）、`FAIL_r6_ac946eb5/`（chain+pstore）；g10 布防循环在 r6
+  panic 重启后已死（19:54 后无截图）——下轮链前重挂。
+- 下一步：**考试轮（严格判据，计数 0/3）**——须 reboot fresh 起（多轮 reboot
+  循环，开跑前征询用户）。
+
 **布防 SOP（用户裁决：慢=不合格）**：每轮链先挂
 `setsid nohup bash -c '…while…'`：每 2s `exec-out screencap` 轮转 6 张
 `/tmp/opencode/gN_shot_*.png` + `logcat -d -t 120` 落盘，~23 分钟覆盖
