@@ -4418,3 +4418,78 @@ HEAD 未动、rev-list 4520、init.c 保持 dirty）。主仓 commit `d32d0a2f`�
 `ksu_debug_manager_appid` 参数兜底（restore 仍写）；③ `escape_to_root_for_init()`
 把 **finitmod 进程自己**设成 `u:r:ksu:s0`（链 fork 的独立子进程，退出即消失，
 父/restore 不受影响）。
+
+### 真协议修复的耦合点核查（2026-10-31，逐项过）
+
+- `escape_to_root_for_init()` 只 `prepare_creds`+`setup_selinux`+`commit_creds`
+  改**当前进程**（链 fork 的 finitmod 子进程），父/restore 不受影响；且
+  `apply_kernelsu_rules()` 里有 `ksu_allow(db, KERNEL_SU_DOMAIN, ALL, ALL, ALL)`
+  → ksu 域可写一切，finitmod 日志不丢。
+- `initialize_fake_status()`（selinux_hide.c:837）upstream late 分支设计：mutex +
+  `status_page` 空检查 + `alloc_page` 失败 goto out，安全。
+- `ksu_observer_init()`（pkg_observer.c:159）在 TRACEPOINT 构建下是真实实现
+  （`#if DISABLE_MANAGER || (<6.8 && !TRACEPOINT)` 才 inline 空），fsnotify 监听
+  `/data/system` ✓。**注意 `ksu_observer_exit` 仍会在 rmmod 时 panic（历史
+  `ksu_observer_exit+0x7c`）——我们从不 rmmod，验证只走 dmesg。**
+- `ksu_load_allow_list()` 走 `ksu_run_in_init_if_possible` 异步投 pid 1，
+  `override_creds(ksu_cred)` 在 `setup_ksu_cred()` 之后 ✓，文件缺失安全退出。
+  `allow_shell=true`（`CONFIG_KSU_DEBUG=y`，init.c:152）→ `__ksu_is_allow_uid`
+  对 SHELL_UID 恒 true → restore/host verify 的 `su -c id` 不受 allowlist 影响。
+- `ksu_prune_allowlist` 唯一调用点 `throne_tracker.c:355`；init 时 allowlist 尚空
+  → no-op ✓。
+- `ksu_debug_manager_appid` 参数（`module_param_cb`，apk_sign.c:382）保留 —— 写参数
+  触发 `ksu_register_manager(uid, KSU_SIGNATURE_INDEX_KSU_DEBUG)`；与 late 分支
+  `track_throne` 的注册经 `ksu_register_manager` 的 RCU 去重（`ksu_is_manager_uid`
+  已存在即 return）不会重复节点。顺序：insmod 时 throne 先扫，restore 后写参数
+  兜底 ✓。
+- `module_load_filter`：`ksu_block_modules[0]` 为空时
+  `ksu_module_load_filter_hook_init()` 直接 return（只打
+  `module_load_filter: no modules should be blocked`），不装 hook、不拦 restore 的
+  finitmod ✓。
+- `ksu_dbg_stage` late 分支停在 4（else 是 6）**决定不改**：app 不读该参数、两路径
+  末尾都设 100，补它等于偏离 upstream。
+- `ksu_ksud_init()` **不补进 late**：late 模式 `ksu_is_safe_mode()` 首行
+  `return false`（音量键探针永不 arm），init.rc 注入只服务开机模块自加载（本设备
+  每 boot 重跑链用不上），补它等于给全系统每进程装 read+fstat 全局 hook 换零收益。
+
+### assets 二进制必须与仓库产物一致（2026-10-31 实测踩坑）
+
+app 触发链加载的是 **APK assets 里那份**，与 `build/embed/` 脱节会静默加载旧内核
+行为。本轮发现三处脱节（全部已同步，装机后靠 `PAYLOAD_VERSION` bump 刷新设备侧
+staging）：
+
+| assets 文件 | 旧 | 新 |
+|---|---|---|
+| `kernelsu.ko` | `249b4a69`（`ksu_late_loaded=false` 谎报版） | `01ae74a5`（真协议版） |
+| `oplus_check_suppress.ko` | v11（kill 锚必 FAIL、弹窗拦截根本不注册） | v14（do_group_exit 判据 + 三段 FAIL 解耦） |
+| `preload.so` | `917b2785` | `a9216661`（含 `KS_SLIDE_ONLY` 修复） |
+
+**纪律**：改 ko/preload/ocsk 后，除了 `build/embed/` 与独立仓产物，必须同步
+`PostLock-Boot/postlock-app/app/src/main/assets/postlock/` 下的同名文件，并 bump
+`PayloadRepo.PAYLOAD_VERSION`；核对方式 = 双端 `sha1sum` 逐一比对（含
+`finitmod`/`ksud`/`su`/`kernelsu_hotload_init.ko`）。
+
+### 安全演练开关曾静默失效（2026-10-31 修复）
+
+app 的演练模式注入 `KS_SLIDE_ONLY=1`（其余开关都带 `KS_` 前缀），而 `src/main.c:606`
+只认 `SLIDE_ONLY` → **在 app 里打开「安全演练」实际执行完整链**（可能 panic 重启），
+演练反而更危险。现 `env_truthy("SLIDE_ONLY") || env_truthy("KS_SLIDE_ONLY")` 双拼写
+兼容（`src/targets/*/main.c` 的副本是别的设备、用 `env_flag` API，不在范围）。
+教训：**新增 env 开关时先 grep 一遍调用方拼写**——app 侧字符串与 C 侧字面量没有任何
+编译期约束。
+
+### hotload companion 退役为 legacy 可选
+
+`kernelsu_hotload_init.ko` 默认**不加载**（late 分支自给 allowlist/observer/
+boot_completed/track_throne），`KS_HOTLOAD_LEGACY=1` 才加载：
+
+- `tools/postlock.sh`：`HOTLOAD_SRC` 缺失由 `die` 改 WARN（不再因独立仓未编而中断
+  整轮）；stage push 与 restore 内 `cp/chmod` 条件化。
+- app `assets/postlock/restore.sh`：`for f in ...` 移除 hotload ko（放回去会让缺该
+  ko 的 stage 在 `set -e` 下杀掉 restore），改独立 `if [ -f ... ]` 块；legacy 分支
+  缺文件打 `WARN-hotload-missing-stage`。
+- UI：Hotload 卡未加载 → `— 不需要（内核 late-init 自给）`（中性色）；已加载 →
+  `✓ 已加载（legacy）`。`ServicesScreen` 驱动行标注 `（legacy 可选）`。
+- 仓库 `../kernelsu-hotload-init/README.md` 顶部加 LEGACY/OPTIONAL 状态块，并订正
+  「Why this module existed」——旧文写的正是已被推翻的「强制 false 消徽章」理由。
+

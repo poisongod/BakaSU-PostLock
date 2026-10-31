@@ -171,10 +171,11 @@ susfs 775 行补丁中约 60% 是「在已有内核函数体内插入判断」
 | 内核 | TRACEPOINT hook | ✅ 已在 5.4 Non-GKI 打通（自研 gate 解除） |
 | 内核 | 7 feature | ✅ 全在（401 个 `ksu_*` 符号实证） |
 | 内核 | manager 组 | ✅ |
-| 内核 | hotload api（自研） | ✅ `ksu_hotload_api_get` |
+| 内核 | hotload api（自研） | ✅ 导出仍在；companion 模块已降为 **legacy 可选**（late 分支自给） |
 | 内核 | prctl 主动驱动发现（自研） | ✅ `ksu_current_has_driver_fd` |
 | 内核 | PT_REGS_PARM4 shim（自研修复） | ✅ |
-| 内核 | `ksu_late_loaded=false`（自研，消越狱徽章） | ✅ |
+| 内核 | `ksu_late_loaded` 真实值 + 真走 late 分支（2026-10-31） | ✅（旧的强制 `=false` 已推翻——谎报加载时机违反真协议；越狱徽章出现属真实状态） |
+| 内核 | `ksu_enforce_on_load` 参数（自研，默认 0） | ✅ 恢复链在 Permissive 期装 overlay/daemon，尾部才 flip enforce=1 |
 | 内核 | UAPI 6 bump（自研） | ✅ |
 | 内核 | **SUSFS** | ❌ **0 符号，需重编内核+解锁** |
 | 内核 | MULTI_MANAGER_SUPPORT | ❌ 未开（可选） |
