@@ -60,11 +60,15 @@ FIN_SRC=$REPO/build/embed/finitmod
 OCSK_SRC=$REPO/../oplus-check-suppress/oplus_check_suppress.ko
 [ -f "$OCSK_SRC" ] || die "missing $OCSK_SRC (build in ../oplus-check-suppress)"
 # kernelsu_hotload_init.ko (renamed 2026-10-28 from kernelsu_init.ko):
-# companion module driving the full KSU init sequence that a late
-# finitmod misses (allowlist / manager observer / boot_completed).
-# Requires kernelsu.ko exports, loaded first in the restore below.
+# OPTIONAL legacy companion.  Since 2026-10-31 kernelsu.ko reports its real
+# load timing (current->pid != 1) and therefore runs the driver's own
+# late-load init (allowlist / observer / throne scan / boot_completed), so
+# the companion is only loaded when KS_HOTLOAD_LEGACY=1 is passed.  A missing
+# build artifact must never block a run, hence WARN instead of die.
 HOTLOAD_SRC=$REPO/../kernelsu-hotload-init/kernelsu_hotload_init.ko
-[ -f "$HOTLOAD_SRC" ] || die "missing $HOTLOAD_SRC (build in ../kernelsu-hotload-init)"
+if [ ! -f "$HOTLOAD_SRC" ]; then
+  info "WARN: missing $HOTLOAD_SRC (optional: hotload companion is legacy-only, KS_HOTLOAD_LEGACY=1)"
+fi
 [ -f "$KO_SRC" ] || die "missing $KO_SRC (ReSukiSU kernelsu.ko build artifact, lives in build/embed/)"
 [ -f "$FIN_SRC" ] || die "missing $FIN_SRC (NDK aarch64-linux-android31-clang -static -O2 -o build/embed/finitmod tools/finitmod.c)"
 if [ ! -f "$PRELOAD_SRC" ]; then
@@ -83,7 +87,9 @@ ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
 ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
 ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
 ab push "$OCSK_SRC" "$STAGE/oplus_check_suppress.ko" >/dev/null
-ab push "$HOTLOAD_SRC" "$STAGE/kernelsu_hotload_init.ko" >/dev/null
+if [ -f "$HOTLOAD_SRC" ]; then
+  ab push "$HOTLOAD_SRC" "$STAGE/kernelsu_hotload_init.ko" >/dev/null
+fi
 # ksud blob (2026-10-30, fresh-boot first-run gap): the restore script and
 # the su wrapper exec ksud from $TMP, and restore used to source it from
 # /data/adb/ksud -- a file only previous chain runs leave behind.  On a
@@ -204,11 +210,19 @@ echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 [ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && log OMK-ROLLED-BACK || log WARN-no-omk-bak
 # rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
 # a binary some previous round left mapped/executing.
-for f in kernelsu.ko finitmod oplus_check_suppress.ko kernelsu_hotload_init.ko preload.so; do
+for f in kernelsu.ko finitmod oplus_check_suppress.ko preload.so; do
   rm -f $TMP/\$f
   cp $STAGE/\$f $TMP/\$f
 done
-chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/kernelsu_hotload_init.ko $TMP/preload.so
+chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/preload.so
+# hotload companion is legacy-only (see the load block below): copy it only
+# when the stage actually carries it.  Keeping it in the loop above would make
+# a stage built without ../kernelsu-hotload-init kill the restore under set -e.
+if [ -f $STAGE/kernelsu_hotload_init.ko ]; then
+  rm -f $TMP/kernelsu_hotload_init.ko
+  cp $STAGE/kernelsu_hotload_init.ko $TMP/kernelsu_hotload_init.ko
+  chmod 755 $TMP/kernelsu_hotload_init.ko
+fi
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
 # kernelsu_hotload_init (hotload companion) is no longer needed: kernelsu.ko
 # now reports its real load timing (current->pid != 1) and therefore takes the
@@ -217,7 +231,7 @@ if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/fi
 # companion on top of that would run the same steps twice.  Kept as an opt-in
 # fallback for older kernelsu.ko builds: KS_HOTLOAD_LEGACY=1.
 if [ "\${KS_HOTLOAD_LEGACY:-0}" = 1 ]; then
-  if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
+  if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif [ ! -f $TMP/kernelsu_hotload_init.ko ]; then log WARN-hotload-missing-stage; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
 else
   log hotload-skipped-late-init-selfsufficient
 fi

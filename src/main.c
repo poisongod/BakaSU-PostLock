@@ -603,7 +603,12 @@ int run_exploit(int argc, char **argv) {
                (unsigned long long)sig);
     if (fd >= 0) close(fd);
   }
-  if (env_truthy("SLIDE_ONLY")) {
+  /* Accept both names: the documented/debug switch is SLIDE_ONLY (AGENTS),
+   * while the PostLock app's "safe drill" injects KS_SLIDE_ONLY (all its
+   * other knobs carry the KS_ prefix).  Before 2026-10-31 only SLIDE_ONLY
+   * was read, so the app's drill silently ran the FULL chain -- a drill
+   * that panics is worse than no drill, hence both spellings now. */
+  if (env_truthy("SLIDE_ONLY") || env_truthy("KS_SLIDE_ONLY")) {
     pr_success("slide-only done base=%016zx slide=%016zx\n",
                kaslr_base, kaslr_slide);
     return 0;
