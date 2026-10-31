@@ -4635,3 +4635,85 @@ untrusted_app 的 seccomp/SELinux 三重墙）：`zygote` 域对链的三个原�
 `/tmp/opencode/selinux/{plat_sepolicy.cil,plat_pub_versioned.cil,device_policy.bin}`
 + `cil_app.py <域> all`。注意只覆盖 platform 策略，但 `zygote` 是 platform 域且
 Android `neverallow` 禁止 vendor 侧给 platform 域加 platform 资源权限，结论可靠。
+
+## SUSFS LKM 集成（阶段 1 已落地并设备验收，2026-11-01）
+
+**目标**：不改 boot.img（纯 LKM）让 BakaSU 拥有真 SUSFS，管理器显示已启用。
+
+### 架构定案
+
+- **集成进 `kernelsu.ko` 单模块**，不拆独立 ko（避免跨模块 UND 解析、加载顺序、
+  双 kprobe 冲突）；复用 `ksu_handle_sys_reboot` + `reboot_handler_pre` kprobe 承接
+  `SUSFS_MAGIC`。
+- **权威 ABI 基线 = `ShirkNeko/susfs4ksu` 分支 `gki-android12-5.10`（SuSFS v2.3.0）**，
+  不是 `kernel-5.4`：该分支 `susfs.h` 全部签名 `void f(void __user **user_info)` 与
+  BakaSU `supercall/dispatch.c` 逐字匹配，命令码与 userspace `magic.rs` 一致，
+  **结构体成员零改动**。上游 `simonpunk/susfs4ksu` master 已 API 重构
+  （缺 `susfs_show_version`/`add_sus_path_loop`/`add_sus_map`/`set_avc_log_spoofing`）。
+- **`CONFIG_KSU_SUSFS` 宏范围 = 仅 `supercall/dispatch.o` + `supercall/supercall.o` +
+  `susfs/*` 自身**。**禁止**全局 `ccflags-y += -DCONFIG_KSU_SUSFS`——
+  `feature/sucompat.h:17` 会改 `ksu_handle_faccessat`/`ksu_handle_stat` 签名破编译。
+  也**不要**传 make 变量 `CONFIG_KSU_SUSFS=y`（会走 `Kbuild:189` 的
+  `$(error You should integrate susfs in your kernel)` 并要求 `$(srctree)/fs/susfs.c`）。
+- 子功能宏只对「已实现且已验证」的特性定义——`susfs_get_enabled_features()` 完全由
+  `#ifdef CONFIG_KSU_SUSFS_*` 驱动，**天然诚实上报**；未实现命令统一回
+  `ERR_CMD_NOT_SUPPORTED`(126)。
+- `susfs_init()` 必须自己调：`core/init.c:121` 的调用在 `#elif defined(CONFIG_KSU_SUSFS)`
+  （inline-hook 分支），我们走 TRACEPOINT → 已加到 `ksu_hook_init()` 的 TRACEPOINT 分支。
+- 日志开关用 `bool` + `READ_ONCE/WRITE_ONCE`，不用 `DEFINE_STATIC_KEY_TRUE`
+  （命令全部从 kprobe debug-exception 上下文进来，切 static key 要取
+  `jump_label_mutex` + `cpus_read_lock()`）。
+
+### 落位文件（`../BakaSU`，**dirty 不 commit**，rev-list 4520 / 版本串 35220 不漂移）
+
+- `kernel/susfs/include/linux/susfs.h`（GKI 原样 253 行，ABI 唯一权威）
+- `kernel/susfs/include/linux/susfs_def.h`（命令码 + `ERR_CMD_NOT_SUPPORTED 126`）
+- `kernel/susfs/susfs.c`（阶段 1：`enable_log`/`show_version`/`show_variant`/
+  `copy_config_to_buf`/`get_enabled_features`/`set_avc_log_spoofing`(诚实 126)/
+  `start_sdcard_monitor_fn`(空)/`susfs_init`）
+- `kernel/Kbuild`（:39-64 接线）、`kernel/core/init.c`（TRACEPOINT 分支调 `susfs_init()`）
+
+### 设备验收（boot `5394a404`，阶段 1 全绿）
+
+- dmesg `susfs: v2.3.0 (GKI) lkm edition, features: enable_log`
+- `ksud susfs show version` → `v2.3.0`；`show variant` → `GKI`；
+  `show enabled_features` → `CONFIG_KSU_SUSFS_ENABLE_LOG`
+- 诚实失败：`enable_avc_log_spoofing` → `Unsupported SuSFS command: 0x60010`；
+  `add_sus_path`/`add_sus_map`/`set_uname`/`add_sus_kstat` → 各自 unsupported
+- **管理器 UI 实拍**：主页「SuSFS 版本 v2.3.0」+ 右上 SUSFS 配置按钮出现；
+  SUSFS 页「状态」= 管理器开关开 + `v2.3.0` + 变体 `GKI` + 支持功能
+  `CONFIG_KSU_SUSFS_ENABLE_LOG`（`/tmp/opencode/susfs/ui/`）
+
+### ksud 二进制必须与源码树一致（本轮踩坑）
+
+`build/embed/ksud` 曾是 `5f71a2a0`（4.1MB，**无 susfs 子命令**，也缺 anykernel3/
+umount-config/boot-patch-v2）。而管理器 **APK 自带的 `libksud.so`
+（`1a45cddd`，5.95MB，官方 release）已含完整 susfs**——所以「管理器能看到 SUSFS、
+root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统一换成本源码树重编的
+**`025823e4`**（`--help` 子命令面与官方 libksud.so 完全一致）。
+
+- 管理器执行路径 = `getNativeLibraryPath("ksud")` → APK 的 `libksud.so`（不是
+  `/product/bin/ksud`，也不是 `/data/adb/ksud`）→ **改 SUSFS CLI 行为要换 APK 内
+  libksud.so，不能用命令行那份代替**。
+- **`/product/bin`（overlay，`context=u:object_r:system_file:s0`）与 overlay upper
+  目录都只有 kernel:s0（restore 域）能写**——ksu 域 `touch /product/bin/x` 被
+  SELinux 拒（dontaudit 静默）。当前 boot 的 `/product/bin/ksud` 只能靠下一轮
+  restore 覆盖（`$STAGE/ksud` 已更新）；要立刻生效只能改 overlay upper 的
+  `context=` 挂载选项（不可行）或加 sepolicy。
+- 设备侧原子替换（避免截断正在执行的文件）：`cp new .ksud_tmp && chmod && mv -f`。
+
+### 后续阶段（未实施，按序推进，每完成一项才定义对应宏）
+
+1. 纯 kprobe 项：SUS_KSTAT（`generic_fillattr` **kretprobe**，void 返回）、
+   SUS_READDIR（`filldir64$51ab165f...`，pre 设 `pc=regs[30]`+`x0=0`）、
+   SUS_KALLSYMS（`s_show$80702cd9...`）、UNAME（`__arm64_sys_newuname`）。
+2. SUS_PATH：采用 master 的 syscall 入口级策略（`__arm64_sys_openat`/`openat2`/
+   `mkdirat`/`unlinkat`/`renameat2`/`linkat`/`symlinkat`/`mknodat` + `vfs_statx`），
+   比 GKI 的 dentry 级内联点对 kprobe 友好；`link_path_walk` 循环中间拦截做不到
+   （kprobe pre_handler 只在入口）→ 靠 `__d_lookup`/`__lookup_slow`/`may_open` 三层挡。
+3. SUS_MOUNT（`show_vfsmnt$55b2...`/`show_mountinfo$55b2...`/`vfs_statfs` +
+   kretprobe `alloc_vfsmnt`）→ SUS_MAP / OPEN_REDIRECT / CMDLINE / AVC_LOG。
+4. GKI `susfs.c` 的 7 个真 extern 需自实现：`susfs_is_current_ksu_domain()`、
+   `susfs_get_non_sus_mnt_id_from_mnt()`、`susfs_get_non_sus_vfsmnt_from_vfsmnt()`、
+   `calculate_f_flags_wrapper`、`statfs_by_dentry_wrapper`（`ksu_cred`/`setup_selinux`
+   BakaSU 已有）。
