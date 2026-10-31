@@ -210,11 +210,17 @@ for f in kernelsu.ko finitmod oplus_check_suppress.ko kernelsu_hotload_init.ko p
 done
 chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/kernelsu_hotload_init.ko $TMP/preload.so
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
-# kernelsu_hotload_init (hotload companion): runs the full KSU init sequence
-# that a late finitmod can't get from boot hooks (allowlist load / manager
-# observer / boot_completed).  Requires kernelsu.ko exports (loaded above,
-# reverse order fails cleanly with -ENOENT).  WARN-only.
-if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
+# kernelsu_hotload_init (hotload companion) is no longer needed: kernelsu.ko
+# now reports its real load timing (current->pid != 1) and therefore takes the
+# driver's own late-load init path, which performs allowlist load / manager
+# observer / throne scan / boot_completed inside kernelsu_init().  Loading the
+# companion on top of that would run the same steps twice.  Kept as an opt-in
+# fallback for older kernelsu.ko builds: KS_HOTLOAD_LEGACY=1.
+if [ "\${KS_HOTLOAD_LEGACY:-0}" = 1 ]; then
+  if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
+else
+  log hotload-skipped-late-init-selfsufficient
+fi
 # oplus_check_suppress: silence the OPPO oplus_root_check_succ kill path BEFORE the app
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
