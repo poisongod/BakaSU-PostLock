@@ -4717,3 +4717,17 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
    `susfs_get_non_sus_mnt_id_from_mnt()`、`susfs_get_non_sus_vfsmnt_from_vfsmnt()`、
    `calculate_f_flags_wrapper`、`statfs_by_dentry_wrapper`（`ksu_cred`/`setup_selinux`
    BakaSU 已有）。
+
+### 验收判读陷阱：`ksud susfs ...` 必须 root 上下文
+
+shell（uid 2000）直接跑 `/data/local/tmp/ksud susfs show version` 会打印
+`Unsupported SuSFS command: 0x555e1`——**不是内核没实现**：susfs 命令走
+`reboot()` magic，非 root 上下文根本到不了 `ksu_handle_sys_reboot`，userspace
+的 `err` 字段保持初值 126 就照原样报「不支持」（dmesg 里对应**零** susfs 行）。
+必须 `/product/bin/su -c '... susfs ...'`。区分方法：**dmesg 有没有
+`susfs:[uid][pid][func] CMD_... -> ret: 0`**——有 = 内核真跑了；没有 = 根本没进去。
+
+设备实测（boot `5394a404`）两条证据链：
+- `comm=libksud.so`（管理器 UI 查询）：`susfs_show_version`/`susfs_show_variant`/
+  `susfs_get_enabled_features` 各 `ret: 0`
+- `comm=ksud`（root CLI 复验）：同三条 `ret: 0`
