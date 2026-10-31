@@ -4549,3 +4549,89 @@ pstore `Comm: ks_waiter` / `pc : 0xffffffd2321e2f` / `lr : misc_open+0x140`；
 `pc = want >> 8` 精确吻合，即 AGENTS「单 voff 无法双 p 安全（数学死路）」那一族。
 
 **处置**：两轮都是已知家族，reboot 换 fresh boot 重抽（第 3 轮已在跑）。
+
+### v16 验收通过（第 3 轮，boot `b17aff44`，2026-10-31）——真协议修复全判据实测
+
+第 1、2 轮被已知抽签家族打断后，第 3 轮 fresh boot 一次过。**判据全绿**：
+
+- 链：`pipe-physrw-summary done=1 root=1 kaslr=1` ×3 + `CHAIN_EXIT_DONE` ×1
+- restore：`SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`
+  各 1 次**原生出现**（fix81 零人工）+ `[host-verify] probe: uid=0
+  context=u:r:ksu:s0` append + `hotload-skipped-late-init-selfsufficient`
+- `enforce=1`；boot `b17aff44` 稳定 5min+（uptime 593s 未变）
+- **新 ko（`bae4f3cd`）真协议判据**：
+  - 正向：`late load mode, skipping kprobe hooks`(1) / `Cached su SID: 2151`(1) /
+    `backup sepolicy success!`(1) / `manager pkg: com.resukisu.resukisu`(1) /
+    `KSUDBG init done`(1) / `module_load_filter`(1)
+  - 负向：`Permissive SELinux, enforcing`=**0**（`enforce_on_load=0` 生效）/
+    `input_event_kp`=**0**（`ksu_ksud_init` 未 wire，late 分支设计如此）
+- 三模块：kernelsu=YES / oplus_check_suppress=YES / kernelsu_hotload_init=**NO**
+  （legacy 未加载，符合设计）
+- ocsk v14：`kill.scan sites=2`（do_group_exit 判据）+ `ret.kill ret=0` ×2 +
+  `rep armed=2` + 零 `WARN-...-rep-not-armed-popup-risk`
+- 状态卡（`ui.png`）：蓝卡「工作中 **Built-in** **越狱模式**」、0 超级用户 5 模块、
+  驱动 `(35220/6)` == 管理器 `(35252/6)`、SELinux 强制执行、无红条
+  —— **越狱徽章真实出现 = 真协议修复生效**
+- 取证 `/tmp/opencode/exam/SUCCESS_v16_2135/`（ui.png / chain.log / restore.log /
+  dmesg.txt / ocsk_state.txt / restore_markers.txt）
+
+**`install fd for ksu manager` = 0 不是缺口**（曾疑 late 分支漏注册 setuid hook）：
+管理器走 **`libksud.so` 的 `reboot(0xdeadbeef, 0xcafebabe)` 自取 fd**（BakaSU 设计
+路径），dmesg 见 7 次 `[pid:ksud] install ksu fd: N` + `KSUDBG reboot_pre
+m1=0xdeadbeef m2=0xcafebabe`；setuid hook 的 manager 分支（`setuid_hook.c:188`）
+只在 app 主进程 setresuid 时触发，本环境走不到，属正常。
+
+### 自动越狱（Magica）机制定案 + usap 攻击面判死（2026-10-31）
+
+**开关真相**：设置 →「自动越狱」= **纯 manifest 组件开关**
+（`SettingsPlatformRepository.kt:298` `setComponentEnabledSetting(
+BootCompletedReceiver, ENABLED/DISABLED)`），manifest 里 `android:enabled="false"`，
+**不是内核 feature**（内核 grep `magica` 为空）。描述「开机检测到 Permissive
+SELinux 时自动使用 Magica 提权」准确。
+
+**Magica 机制（实测证据链）**：
+1. 组件启用 → `BOOT_COMPLETED` → `startService(MagicaService)`
+2. `MagicaService` 声明 = `isolatedProcess="true"` + `useAppZygote="true"` →
+   AMS 创建 **App Zygote（usap）**
+3. **实测 usap（pid 906/13024）= uid 0 + `u:r:zygote:s0` +
+   `CapEff 0x3fffffffff`（全 cap）+ `Seccomp 0`**（对比 untrusted_app：
+   uid 10277 / CapEff 0 / Seccomp **2**；shell：uid 2000 / CapBnd 0xc0 / Seccomp 0）
+4. `AppZygotePreload.doPreload()` 在 usap 里跑 → `fork_dont_care_and_exec_ksud`
+   → `setuid(0)`（本来就是 0，必然成功）→ `exec libksud.so late-load --magica 5555`
+5. ksud `enable_adb_root()`：`chmod 0644 /dev/__properties__/*` →
+   `resetprop ro.debuggable=1 / ro.adb.secure=0`（**直接改属性内存，绕过
+   property_service**）→ `setprop service.adb.root=1` /
+   `service.adb.tcp.port=5555` / **`ctl.restart adbd`**
+6. adbd 以 **root** 重启 → ksud 连 `127.0.0.1:5555` → adb shell 跑
+   `ksud late-load --post-magica` → 加载 `kernelsu.ko` + 跑 stage 脚本 + 还原属性
+
+**为什么对我们无用（SELinux 静态分析：`plat_sepolicy.cil` +
+`plat_pub_versioned.cil` + `cil_app.py`）**：
+
+| 查询 | `zygote` 域结果 |
+|---|---|
+| `properties_device` | 仅 `dir (getattr search)` — **不能 chmod/写** |
+| `properties_serial` | 仅 `getattr ioctl lock map open read` — **不能写** |
+| `property_service` class | **无 `(set)`**（仅 `init` 有 `powerctl_prop (set)`） |
+| `ctl_*` 属性 | **0 条** |
+| `perf_event` | **0 条**（`shell` 有 `allow shell self (perf_event (kernel open read write))`） |
+| `tracefs` 写 / `configfs` / `kallsyms` | **全 0 条** |
+| `filesystem` | 仅 `tmpfs (mount unmount)`，**无 overlay** |
+
+→ Magica 第 1 步 `chmod /dev/__properties__` 就被拒 ⇒ **必须 Permissive**；而
+Permissive 需 `setenforce 0` ⇒ 需 root ⇒ 需链 = **循环依赖**。fresh boot 恒
+Enforcing 故必然失败（无害）；万一 Permissive 下真成功，`ctl.restart adbd`
+会**打断唯一 host 通道**。**保持关闭正确**。
+
+**usap 攻击面判死**（原设想：PostLock-Boot 加 `useAppZygote` Service，在 usap
+里 `System.loadLibrary("preload")` 跑链，用 uid0+全 cap+无 seccomp 绕过
+untrusted_app 的 seccomp/SELinux 三重墙）：`zygote` 域对链的三个原语
+（`perf_event` / `tracefs` / `configfs`）**全部无权限**，连 `kallsyms` 也 deny
+—— **比 shell 域还差**（shell 有 `perf_event`，这正是 shell 能跑 KASLR leak 的
+原因）。**该路径不成立**，考试二仍只能靠 `paste` 泄题 + `untrusted_app` 域。
+
+**方法备忘**：`/sys/fs/selinux/access`（`security_compute_av` 用户态查询）写
+返回 rc=1（shell 无权限）；静态分析用已有资产
+`/tmp/opencode/selinux/{plat_sepolicy.cil,plat_pub_versioned.cil,device_policy.bin}`
++ `cil_app.py <域> all`。注意只覆盖 platform 策略，但 `zygote` 是 platform 域且
+Android `neverallow` 禁止 vendor 侧给 platform 域加 platform 资源权限，结论可靠。
