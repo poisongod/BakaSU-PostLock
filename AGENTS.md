@@ -4393,10 +4393,18 @@ no bl force_sig` sites=0。
   「KS_RUN_KSUD_EVENTS=1 重放把 zygote64+system_server 打死」那条路。
 - 越狱徽章会出现——**这是真实状态**（模块确实 boot 后加载），符合真协议。
 
-**产物**：ko sha1 `01ae74a544eac604e57390a3ae2b24410f634ba0`（前一版 `249b4a69`，
-备份 `/tmp/opencode/kernelsu_old_249b4a69.ko`）；版本串仍 35220（`../BakaSU`
-HEAD 未动、rev-list 4520、init.c 保持 dirty）。主仓 commit `d32d0a2f`、app 仓
-`32a02ad`。
+**产物**：ko sha1 `bae4f3cdb3e5e511974cf69133f859d0fe6c2082`（历史：`01ae74a5` →
+真协议首版、`249b4a69` → 谎报版；后者备份 `/tmp/opencode/kernelsu_old_249b4a69.ko`）；
+版本串仍 35220（`../BakaSU` HEAD 未动、rev-list 4520、`init.c`/`hotload.c`/
+`throne_tracker.c` 保持 dirty）。主仓 commit `d32d0a2f`（真协议）、`794e69ec`
+（appid 不猜测）；app 仓 `32a02ad`、`0440b39`。
+
+**`bae4f3cd` 相对 `01ae74a5` 的唯一改动 = `track_throne()` 判空**（`throne_tracker.c`）：
+原码 `kzalloc` 后直接 `tts->flags = flags`，无 NULL 检查。我们这次把
+`track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS)` 搬进 insmod 路径，等于新开一条
+「kmalloc-8 失败 → 解引用 NULL → insmod 阶段 oops → panic」的路（链的 root 窗口里
+panic = 整轮报废 + 重启）。加判空后失败只丢一次 throne 扫描（下次 packages.list
+事件重跑、`ksu_debug_manager_appid` 参数兜底），行为无其它变化。
 
 **实机验证判据（设备回网后首轮，未执行）**：
 
@@ -4460,14 +4468,32 @@ staging）：
 
 | assets 文件 | 旧 | 新 |
 |---|---|---|
-| `kernelsu.ko` | `249b4a69`（`ksu_late_loaded=false` 谎报版） | `01ae74a5`（真协议版） |
+| `kernelsu.ko` | `249b4a69`（`ksu_late_loaded=false` 谎报版） | `bae4f3cd`（真协议 + throne 判空；经 `01ae74a5`） |
 | `oplus_check_suppress.ko` | v11（kill 锚必 FAIL、弹窗拦截根本不注册） | v14（do_group_exit 判据 + 三段 FAIL 解耦） |
 | `preload.so` | `917b2785` | `a9216661`（含 `KS_SLIDE_ONLY` 修复） |
 
 **纪律**：改 ko/preload/ocsk 后，除了 `build/embed/` 与独立仓产物，必须同步
 `PostLock-Boot/postlock-app/app/src/main/assets/postlock/` 下的同名文件，并 bump
 `PayloadRepo.PAYLOAD_VERSION`；核对方式 = 双端 `sha1sum` 逐一比对（含
-`finitmod`/`ksud`/`su`/`kernelsu_hotload_init.ko`）。
+`finitmod`/`ksud`/`su`/`kernelsu_hotload_init.ko`）。当前版本号
+`v16-late-truth-20261031`，7 个资产全部 `sha1` 双端一致（`kernelsu.ko`=
+`bae4f3cd`、`oplus_check_suppress.ko`=`11ee8f88`、`kernelsu_hotload_init.ko`=
+`66331a89`、`preload.so`=`a9216661`、`ksud`=`5f71a2a0`、`finitmod`=`e4ba768d`、
+`su`=`9a71038e`）。
+
+### manager appid 不再猜测（2026-10-31，安全修复）
+
+`restore.sh` 原先在 `packages.list` 与 `pm list -U` 都失败时兜底写死
+`ksu_debug_manager_appid=10279`。管理器卸载重装会重分配 uid（实测 10279→10300），
+猜错的后果不止是红卡：写参数走的是
+`ksu_register_manager(uid, KSU_SIGNATURE_INDEX_KSU_DEBUG)`（`apk_sign.c:371`
+`set_expected_size`），**该路径不做签名校验**——若猜的 uid 恰好被别的 app 占用，
+那个 app 会被加冕成 manager 并获得 `[ksu_driver]` fd，等于把 root 能力发给错误
+对象。现改为：解析失败只打 `WARN-manager-appid-unresolved`，**不写参数**；late
+分支的同步 `track_throne()` 按 APK 签名（`manager_sign.h` 内置 BakaSU 官方
+`d3469712…`）加冕，参数只是兜底。host 侧同步改（解析失败 `die` → WARN，避免白丢
+一轮）；host 生成物的 appid 段也从「host 解析后烘死」改为**运行时解析**，与 app
+资产同款、跨 boot 复用正确。
 
 ### 安全演练开关曾静默失效（2026-10-31 修复）
 
