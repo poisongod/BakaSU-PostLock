@@ -76,9 +76,16 @@ if [ ! -f "$PRELOAD_SRC" ]; then
 fi
 [ -f "$PRELOAD_SRC" ] || die "make failed"
 
-# manager appid (for the ROOT_SCRIPT below; resolve from package manager)
+# manager appid (belt-and-braces for the driver param; see the restore
+# block).  Empty is NOT fatal: kernelsu.ko's late-load branch runs a
+# synchronous track_throne() scan that crowns the manager by APK signature,
+# so the param is only a fallback.  Never guess a value -- a wrong uid would
+# be crowned as manager (KSU_SIGNATURE_INDEX_KSU_DEBUG) and could obtain a
+# driver fd.
 MUID=$(ab shell "pm list packages -U $APP" | tr -d '\r' | grep -oE 'uid:[0-9]+' | head -n1 | cut -d: -f2 || true)
-[ -n "$MUID" ] || die "cannot resolve uid of $APP (installed?)"
+if [ -z "$MUID" ]; then
+  info "WARN: cannot resolve uid of $APP -- relying on track_throne (appid param will not be written)"
+fi
 
 # --- stage payloads (shell-writable, NO root needed) --------------------
 step "stage payloads at $STAGE"
@@ -255,9 +262,25 @@ if grep -q patched=1 \$OCS/state 2>/dev/null; then log oplus_check_suppress-kill
 if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed; elif echo 1 > \$OCS/arm 2>/dev/null; then sleep 0.2; if grep -q '^rep armed=2' \$OCS/state 2>/dev/null; then log oplus_check_suppress-rep-armed-after-retry; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi; else log WARN-oplus_check_suppress-rep-not-armed-popup-risk; fi
 # register the manager appid so zygote setresuid installs the
 # [ksu_driver] fd for the manager (CONFIG_KSU_DEBUG param; must
-# precede the app start)
+# precede the app start).  Resolved HERE at run time, not baked in by
+# the host: an uninstall+reinstall re-allocates the uid (10279 -> 10300
+# observed 2026-10-29) and a stale value leaves the manager without a
+# driver fd ("no KernelSU driver detected" red card).  packages.list is
+# a plain file readable in kernel:s0 without binder; pm is the fallback.
+# Never fall back to a hardcoded uid -- the driver's late-load branch
+# runs a synchronous track_throne() scan that crowns the manager by APK
+# signature, so an unresolved uid only means "skip this belt-and-braces
+# param"; a guessed uid would be crowned as manager
+# (KSU_SIGNATURE_INDEX_KSU_DEBUG) and could obtain a driver fd.
 if [ -w /sys/module/kernelsu/parameters/ksu_debug_manager_appid ]; then
-  echo $MUID > /sys/module/kernelsu/parameters/ksu_debug_manager_appid
+  MUID=\$(grep -m1 '^$APP ' /data/system/packages.list 2>/dev/null | awk '{print \$2}')
+  [ -n "\$MUID" ] || MUID=\$(pm list packages -U $APP 2>/dev/null | grep -oE 'uid:[0-9]+' | head -n1 | cut -d: -f2)
+  if [ -n "\$MUID" ]; then
+    echo \$MUID > /sys/module/kernelsu/parameters/ksu_debug_manager_appid
+    log "manager-appid=\$MUID"
+  else
+    log WARN-manager-appid-unresolved
+  fi
 fi
 # --- adb-loopback bootstrap (idempotent) ---------------------------------
 # postlock pubkey -> /data/misc/adb/adb_keys: lets the PostLock app AUTH
@@ -691,7 +714,11 @@ fi
 # Permission denied" as the last line.  Value-empty only triggers the WARN
 # below, which is the designed handling.
 CUR_MUID=$(ab shell "/product/bin/su -c 'cat /sys/module/kernelsu/parameters/ksu_debug_manager_appid'" | tr -d '\r') || true
-[ "$CUR_MUID" = "$MUID" ] || echo "WARN: manager param=$CUR_MUID, want $MUID (app fd may be missing)"
+if [ -n "$MUID" ]; then
+  [ "$CUR_MUID" = "$MUID" ] || echo "WARN: manager param=$CUR_MUID, want $MUID (app fd may be missing)"
+else
+  echo "INFO: appid param not written (unresolved); driver must crown the manager via track_throne (param=$CUR_MUID)"
+fi
 echo "OK:"
 echo "  $(ab shell "/product/bin/su -c id" | tr -d '\r')"
 echo "  $(ab shell "grep ^kernelsu /proc/modules" | tr -d '\r')"
