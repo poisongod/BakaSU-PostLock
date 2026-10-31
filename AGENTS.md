@@ -4519,3 +4519,33 @@ boot_completed/track_throne），`KS_HOTLOAD_LEGACY=1` 才加载：
 - 仓库 `../kernelsu-hotload-init/README.md` 顶部加 LEGACY/OPTIONAL 状态块，并订正
   「Why this module existed」——旧文写的正是已被推翻的「强制 false 消徽章」理由。
 
+
+### v16 验收前两轮 panic 定案（2026-10-31）——两个已知家族 + flush 槽 `-5` 定案
+
+新 ko `bae4f3cd` 的验收轮前两次都被链的已知抽签家族打断，**root 均未到达**
+（`restore.log` 不存在），新内核行为完全未被检验。
+
+**第 1 轮（boot `0c77b403`）= 页死 + fail path SIGKILL 家族**：
+pstore `(0)[5547:pipe_prepare] pc : 0xfffffffffffffffb` / `lr : filp_close+0x54/0xbc` /
+栈 `get_signal → do_group_exit → exit_files → put_files_struct`。连带受害者
+`(1)[2100:ks_consumer]`（483.7s）。
+- **`0xfffffffffffffffb` = -5 = `-EIO`** → AGENTS 长期标注的「flush 槽污染源未定案」
+  **就此定案：那是页被内核复用后填充的数据**（errno 量级的随机值），不是我们写的。
+- `fix74c` 的 `hold dump wintick ... ALIVE` **不能证明表页活着**——它读的是 hold pipe
+  里 pin 住的副本；但本轮 hold 值与 `cfgfs read ...1051` 完全一致
+  （`ffffffd671de2434`），且 `cfgfs write ...1079 wr=8` 回读 `val=0`，
+  说明 **win +4s 时页确实还活着**，死亡发生在最后一行日志之后（<1s 窗口）。
+- 死因链：win +4s 后页死 → `phys prepare` abort → fail path SIGKILL
+  `pipe_prepare` child → `exit_files` 自动 close 继承的 fake fd →
+  `filp_close` 读脏 flush(-5) → `blr -5` → Fatal exception。
+- **fix72 挡不住**（只 block 可捕获信号，SIGKILL 不可挡）；**fix75 的页死自清挡不住**
+  （依赖 `init_on_alloc` 清零窗口，页被非 SLUB 路径复用即失效，且它跑在 child 线程里）。
+- **fix70b（孙进程精确关 fd）对本家族无效**——执行体是 `pipe_prepare` child 本身，
+  它必须持 fake fd 做 cfgfs，无法提前关闭。**该家族确认结构性，维持 fail amplifier**。
+
+**第 2 轮（boot `112a8bfb`）= δ 相位 p=0（~1/6 结构性抽签）**：
+pstore `Comm: ks_waiter` / `pc : 0xffffffd2321e2f` / `lr : misc_open+0x140`；
+链日志 `payload view detect ... want=ffffffd2321e2f38 -> voff=-1` →
+`pc = want >> 8` 精确吻合，即 AGENTS「单 voff 无法双 p 安全（数学死路）」那一族。
+
+**处置**：两轮都是已知家族，reboot 换 fresh boot 重抽（第 3 轮已在跑）。
