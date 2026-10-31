@@ -732,5 +732,10 @@ if [ -n "$APID" ] && ab shell "/product/bin/su -c 'ls -l /proc/$APID/fd 2>/dev/n
 else
   echo "  WARN: app fd not confirmed — restart the app if the blue card is missing"
 fi
+# 版本对齐验收（用户要求：内核驱动版本号必须与管理器完全一致）。
+# 内核侧唯一权威来源 = insmod 时打的那行 dmesg；shell 域读 dmesg 被拒，
+# 走 su 通道读。KSU_VERSION/KSU_VERSION_FULL 由 make 命令行覆盖注入。
+DRV=$(ab shell "/product/bin/su -c 'dmesg | grep -m1 \"Initialized with driver version\"'" | tr -d '\r') || true
+echo "  driver: $DRV"
 echo
-echo "manual check: ReSukiSU blue card, driver == manager UAPI, no 越狱模式 badge"
+echo "manual check: BakaSU blue card 工作中 Built-in, driver == manager version (v4.2.0-rc3 / 35252 / UAPI 6), 越狱模式 badge expected (真 late load), enforce=1"
