@@ -667,8 +667,10 @@ github.com/ReSukiSU/ReSukiSU，tmp 会清，可重克隆——**该仓库已于 
   ③ coldstart/postlock 需加 finitmod 步（驱动持久化）；④ libgrant/su_profiles 授予链
   退役与 overlay/自研 daemon 去留待实测真 ksud 后定。
 - **`ksu_late_loaded` 陷阱**（`kernel/core/init.c:189`：`=(pid!=1)`）：我们的 insmod 必然
-  pid≠1 → 内核如实报 LATE_LOAD → 标签又回来；解法 = 编我们自己的 fork 时把该判定改
-  `false`（自定义驱动的真实行为，非欺骗 app）。
+  pid≠1 → 内核如实报 LATE_LOAD → 标签又回来；~~解法 = 编我们自己的 fork 时把该判定改
+  `false`（自定义驱动的真实行为，非欺骗 app）。~~
+  **→ 2026-10-31 已推翻：强制 false 是谎报加载时机（违反真协议），改为真实值 +
+  真走 late 分支，见文末「真协议修复」节。**
 - **集成后退役**：真 ksud+真 store 接管授予链 → libgrant/libkernelsu 补丁/su_profiles 逐步
   下岗；/product/bin overlay+自研 daemon 视真 ksud 的 su 可用性决定去留；permissive 依赖
   消失（真 KSU 全程 Enforcing）。CVE 角色收窄为「boot 后提权 → insmod 引导」，进
@@ -2542,6 +2544,8 @@ poisongod/kernelsu-hotload-init」，源码基础经用户裁定 = **从零写�
   allowlist 未 load、manager observer 未起、无 track_throne（appid 空）、
   `boot_completed=false`。postlock restore 一直用 `ksu_debug_manager_appid`
   参数绕过 appid 空，但 allowlist/observer/boot_completed 仍缺。
+  **→ 2026-10-31 缺口已由内核自己补上（真实 late 分支），本模块默认不再加载
+  （`KS_HOTLOAD_LEGACY=1` 才加载），见文末「真协议修复」节。**
 - **架构（companion 模式）**：
   - BakaSU fork 侧最小 diff：`kernel/runtime/hotload.{c,h}` + Kbuild 一行，
     `ksu_hotload_api_get()` EXPORT_SYMBOL_GPL 返回 vtable
@@ -3983,6 +3987,9 @@ heredoc 注入 `ksud sepolicy apply <file>`（Permissive 期）→ 翻 enforce=1
   全功能 + 无越狱徽章）；`setup_ksu_cred`/`escape_to_root_for_init` 不搬
   （ksud supercall 路径运行时已有触发点）；handle_policy 用局部 policydb
   不碰 backup_policydb，与 apply 兼容。
+  **→ 2026-10-31 该「公共路径 + 强制 false」组合已推翻：改为真实
+  `ksu_late_loaded` 值 + 真走 late 分支，`apply_kernelsu_rules()/cache_sid()`
+  移回 else 分支（late 分支本来就自带），见文末「真协议修复」节。**
 - **判据（dmesg，finitmod 上下文 pid 标识）六行全绿**（boot b1c72ff5 实测）：
   `SELinux permissive or disabled, apply rules!` → `len of ksu_dup_policydb
   (backup_db) output: 1304550` → `backup sepolicy success!` → `len of
@@ -4329,3 +4336,85 @@ no bl force_sig` sites=0。
 - **prctl 兜底路径未实测**（setuid hook 先装 fd，prctl hook 静默）——真实
   红卡场景（app 老进程无 fd + 模块已加载 → app 主动 prctl 查询即装 fd，
   免杀重启）出现时验证 dmesg 特征行 `active driver fd ... manager prctl`。
+
+## 真协议修复：ksu_late_loaded 恢复真实值 + 走 late 分支 + hotload 退役（2026-10-31）
+
+**触发（用户判定）**：此前文档写「强制 `ksu_late_loaded=false` 的动机之一是消掉
+越狱徽章」——为 UI 显示改状态位 = 违反真协议（本项目红线：内核真实行为，不向
+管理器谎报）。
+
+**事实边界先划清**：改的是内核 fork `../BakaSU/kernel/core/init.c`，**不是管理器
+源码**；管理器 APK 当前无任何补丁（`libkernelsu.so` 的 mov+ret 补丁早已退役，
+走真驱动 fd）。但谎报性质不变——`ksu_late_loaded` 同时是**状态报告**
+（`KSU_GET_INFO_FLAG_LATE_LOAD` → 越狱徽章）和**初始化路径开关**，把前者改成
+与事实不符就是谎报。
+
+**为什么 false 是谎报**：上游 `init.c` 用 `ksu_late_loaded = (current->pid != 1)`，
+语义 = 「模块是否在 init 之后加载」。本设备永远是 exploit 提权后 `finitmod` insmod
+→ pid 必 ≠ 1 → **真实值就是 true**。强制 false = 声称「我不是 late load」，而
+管理器读到的 flag 与内核实际加载时机矛盾。
+
+**修法（方案 2，用户裁定）**：
+
+1. `#ifdef MODULE ksu_late_loaded = (current->pid != 1); #else ... = false; #endif`
+   —— 恢复上游表达式。**反汇编铁证**（`llvm-objdump -d kernelsu.ko`，`kernelsu_init`）：
+   `mrs x8, SP_EL0` → `ldr w8, [x8, #0x650]`（task_struct->pid）→ `cmp w8, #1` →
+   `cset w8, ne` → `strb w8, [x23]`（写 `ksu_late_loaded`）。注意 0x650 是**设备
+   内核**（kout-v15）的 pid 偏移，与 `src/targets/*/target.h` 的 CVE 链偏移无关。
+2. **真走 late 分支**（`init.c` 的 `if (ksu_late_loaded)`），它自带
+   `apply_kernelsu_rules()` / `cache_sid()` / `setup_ksu_cred()` /
+   `escape_to_root_for_init()` / `ksu_allowlist_init()` / **`ksu_load_allow_list()`** /
+   `ksu_hook_init()` / `ksu_throne_tracker_init()` / **`ksu_observer_init()`** /
+   `ksu_file_wrapper_init()` / **`ksu_boot_completed = true`** /
+   **`track_throne(TRACK_THRONE_FORCE_SYNCHRONOUS)`** —— 这四项正是
+   `kernelsu_hotload_init.ko` 之前在补的缺口。
+3. `apply_kernelsu_rules(); cache_sid();` 从公共路径**移回 else 分支**（late 分支
+   本来就调，避免跑两遍）。
+4. `module_load_filter` 两条路径都 wire（参数为空时只打一行日志，等价上游）。
+   **`ksu_ksud_init()` 只在 else 分支**——late 模式下 `ksu_is_safe_mode()` 第一行
+   就 `return false`（`ksud_integration.c:934`），音量键探针永不 arm；另一半
+   init.rc read/fstat 注入只服务开机模块自加载（本设备每 boot 重跑链，用不上）；
+   补它等于给**全系统每个进程**装 read+fstat 全局 hook 换零收益。
+5. `setenforce(true)` 参数化：新增 `bool ksu_enforce_on_load = false` +
+   `module_param_named(enforce_on_load, ..., bool, 0644)`（默认 0 = 不动 enforce，
+   `enforce_on_load=1` = 上游行为）。理由：恢复流程要在 **Permissive 期**装
+   overlay/daemon/su，而 restore 尾部自己 flip enforce=1（fix81）——insmod 时
+   提前翻会直接废掉 overlay mount。
+
+**连带收益**：
+
+- **`kernelsu_hotload_init.ko` 退役**（默认不加载）：`tools/postlock.sh` heredoc 与
+  app `assets/postlock/restore.sh` 两处改为 `KS_HOTLOAD_LEGACY=1` 才加载，默认打
+  `hotload-skipped-late-init-selfsufficient`。stage 仍 push 该 ko（兼容旧 ko /
+  诊断用）。
+- **ksud events 重放被内核天然跳过**：`dispatch.c:157/170` 在 `ksu_late_loaded` 时
+  打 `post-fs-data skipped (late load)` / `boot_complete skipped (late load)`，
+  不再调 `on_post_fs_data()` / `on_boot_completed()`——正是 AGENTS 记录的
+  「KS_RUN_KSUD_EVENTS=1 重放把 zygote64+system_server 打死」那条路。
+- 越狱徽章会出现——**这是真实状态**（模块确实 boot 后加载），符合真协议。
+
+**产物**：ko sha1 `01ae74a544eac604e57390a3ae2b24410f634ba0`（前一版 `249b4a69`，
+备份 `/tmp/opencode/kernelsu_old_249b4a69.ko`）；版本串仍 35220（`../BakaSU`
+HEAD 未动、rev-list 4520、init.c 保持 dirty）。主仓 commit `d32d0a2f`、app 仓
+`32a02ad`。
+
+**实机验证判据（设备回网后首轮，未执行）**：
+
+| 判据 | 期望 |
+|---|---|
+| dmesg | `late load mode, skipping kprobe hooks`（旧版打的是 else 分支 `ksu_dbg_stage=6`） |
+| dmesg | `Cached su SID: <n>` + `backup sepolicy success!`（late 分支 apply 生效） |
+| dmesg | **不出现** `Permissive SELinux, enforcing`（enforce_on_load=0） |
+| dmesg | **不出现** `ksud: input_event_kp:`（ksu_ksud_init 未 wire） |
+| dmesg | `install fd for ksu manager(uid=<MUID>)`（observer/throne 自给，不再依赖 `ksu_debug_manager_appid` 参数） |
+| restore.log | `hotload-skipped-late-init-selfsufficient` |
+| restore.log | `SELINUX-STRICT-OK` + `POSTLOCK-RESTORE-OK` 原生（fix81 双 OK） |
+| 状态卡 | 蓝卡「工作中 Built-in」+ **「越狱模式」标签**（真实）+ 无红条 |
+| 120s | boot_id 不变 |
+
+**待观察风险**：① `ksu_load_allow_list()` 走 `ksu_run_in_init_if_possible`（task_work
+投给 pid 1）——init 忙时可能延迟数秒，不阻塞 insmod；② `track_throne(FORCE_SYNCHRONOUS)`
+同步扫进程 + 验 APK 签名，预期数百 ms，若 dmesg 无 appid 行则保留
+`ksu_debug_manager_appid` 参数兜底（restore 仍写）；③ `escape_to_root_for_init()`
+把 **finitmod 进程自己**设成 `u:r:ksu:s0`（链 fork 的独立子进程，退出即消失，
+父/restore 不受影响）。
