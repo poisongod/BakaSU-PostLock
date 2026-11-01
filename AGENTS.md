@@ -4732,67 +4732,55 @@ shell（uid 2000）直接跑 `/data/local/tmp/ksud susfs show version` 会打印
   `susfs_get_enabled_features` 各 `ret: 0`
 - `comm=ksud`（root CLI 复验）：同三条 `ret: 0`
 
-## 驱动版本号对齐管理器（2026-11-01，用户要求「内核驱动版本号必须与管理器完全一致」）
+### 部署前必做：ko 的 UND 符号必须全部在设备 `__ksymtab` 里（2026-11-01）
 
-**问题**：主页两张卡各拼各的串，永远对不齐——
+**症状**：`finitmod` 加载报 `Unknown symbol selinux_state (err -2)`（= `-ENOENT`），
+模块整个不生效、管理器红卡「未检测到驱动」。**与 modversions CRC 不匹配
+（`-ENOEXEC`）是两种不同错误，别混。**
 
-- 内核卡 = `KernelRepository.kt:31` `"$fullVersion (${Natives.version}/$kernelUapi)"`
-  → 我们 fork 编出来是 `v4.2.0-rc3-8450dd28-dirty@BakaSU (35220/6)`
-- 管理器卡 = `HomePage.kt:790` `"${managerVersion.first} (${second}/${third})"`
-  = `BuildConfig.VERSION_NAME (VERSION_CODE/managerUAPI)` → 官方 release 是
-  `v4.2.0-rc3 (35252/6)`
+**本轮根因**：`kernel/feature/selinux_hide.c` 里对 `selinux_state` /
+`security_hook_heads` 是**裸引用**（`&selinux_state`、
+`&security_hook_heads.setprocattr`、`selinux_state.status_page` …），而这两个
+内核数据符号**没有 `EXPORT_SYMBOL`**（离线核验：`kallsyms.txt` 里
+`__ksymtab_selinux_state` / `__ksymtab_security_hook_heads` /
+`__ksymtab_selinux_blob_sizes` **都不存在**；`__ksymtab_vfs_statfs` /
+`__ksymtab_kern_path` / `__ksymtab_register_kprobe` 存在）。于是 ko 里出现三个
+非法 `U` → 加载必失败。
 
-差两个来源：① `KSU_VERSION = 30000 + rev-list --count + 700`，我们本地
-`../BakaSU` HEAD 停在 `8450dd28`（4520 commits → 35220），官方 release 是 4522；
-② `KSU_VERSION_FULL` 由 `ddk_compatible.mk:30` 的
-`CONFIG_KSU_FULL_NAME_FORMAT = "%TAG_NAME%-%COMMIT_SHA%@%REPO_NAME%"` 展开，
-天然带 `-<sha>-dirty@BakaSU` 后缀。
+**修法（设计本来就要求这么做）**：`kernel/compat/unexported_data.h` 注释原文
+「selinux_state / security_hook_heads cannot use the macro trick: their type names
+are identical to the variable names … **Call sites are sed'd to use ksu_g_\*
+directly instead**」——即调用点必须改写成 `ksu_g_selinux_state` /
+`ksu_g_security_hook_heads`（`compat/unexported_shim.c` 的
+`ksu_unres_tbl[]` 用 kallsyms 在 `ksu_resolve_unexported()`
+（`core/init.c:311`）里绑定真地址）。本轮已恢复该改写 + 在
+`feature/selinux_hide.c` 第一行加 `#include "compat/unexported_data.h"`
+（该头要求「MUST be the first #include」）。
 
-**修法 = make 命令行覆盖，不动 `../BakaSU` 的 HEAD/rev-list**（红线：rev-list 一漂
-版本串就从 35220 变 35221，红条判定复杂化）：
+> **注意这个改写曾经丢失过**：`build/dirty-backup/resukisu-dirty-1028_0942.patch`
+> 里明明有这段 sed，但 2026-10-28 重建 `../BakaSU` 后工作树里是裸引用
+> ——即**只按 patch 恢复了一部分**。以后每次重建/升级 `../BakaSU`，都必须
+> 复核这一条（`grep -n '&selinux_state\|security_hook_heads\.' kernel/feature/selinux_hide.c`
+> 必须为空）。
 
+**标准校验（每次重编 ko 后、部署前必跑）**：`tools/check_ko_und.sh`
+（默认查 `../BakaSU/kernel/kernelsu.ko`，导出集缓存
+`build/work/ksymtab_exported.txt`，源自 `build/work/ksymtab_kallsyms.txt`）。
+判据 = 输出 `OK: 全部 UND 符号均由设备内核导出`；非零退出会把非法符号列出来。
+手动等价命令：
 ```bash
-make -C $PWD/work/kout-v15 M=$PWD/../BakaSU/kernel \
-  CONFIG_KSU=m CONFIG_KSU_TRACEPOINT_HOOK=y CONFIG_KSU_DEBUG=y \
-  KSU_VERSION=35252 KSU_VERSION_FULL=v4.2.0-rc3 \
-  ARCH=arm64 CC="clang --target=aarch64-linux-gnu" LD=ld.lld AR=llvm-ar \
-  OBJCOPY=llvm-objcopy modules
+NM=~/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm
+export LC_ALL=C          # comm 不设 C locale 会报 not in sorted order 并给出错误差集
+$NM ../BakaSU/kernel/kernelsu.ko | awk '$1=="U"{print $2}' | sort -u > /tmp/u.txt
+# 设备导出符号集（从离线 kallsyms 提取，一次生成可复用）
+awk '{print $3}' build/work/ksymtab_kallsyms.txt | grep -E '^__ksymtab' \
+  | sed -E 's/^__ksymtab(_gpl)?_//' | sort -u > /tmp/exported.txt
+comm -23 /tmp/u.txt /tmp/exported.txt   # 必须为空
 ```
+2026-11-01 实测：修后 164 个 `U` 全部命中 `__ksymtab`，唯一相对旧 ko 的新增依赖
+是 `vfs_statfs`（SUS_KSTAT statfs 挂点，`EXPORT_SYMBOL` 存在，安全）。
 
-`Kbuild:104-105/115-120` 全是 `:=`，GNU make 命令行变量优先级高于 makefile 里的
-普通赋值 → 两处都直接生效（`$(info -- ... version code/name)` 会打出覆盖后的值）。
-
-**校验（不用装设备就能确认）**：
-
-- `llvm-objdump -d kernelsu.ko` 的 `kernelsu_init` 里应有
-  `mov w1, #0x89b4 // =35252`（0x89b4 = 35252，紧随 `adrp x0` 取格式串之后）
-- `strings -a kernelsu.ko | grep v4.2.0` 只应出现 `v4.2.0-rc3`（不再有
-  `-8450dd28-dirty@BakaSU`）
-- `core/.init.o.cmd` 里 `-DKSU_VERSION=35252` / `-DKSU_VERSION_FULL=\"v4.2.0-rc3\"`
-  （**不需要 `make clean`**：Kbuild 比对 .cmd 命令行变化会自动重编 init.o；
-  顺便记录一个坑——`make ... M=... clean` 在本树会报
-  `Kbuild:278: *** 遗漏"endif"`，是 clean 路径下的解析怪象，别被它带偏）
-
-**为什么抬高版本号无功能风险**（逐处核查过，全部只有两处消费者）：
-
-- 内核侧 `KSU_VERSION` 唯一用途 = `kernel/include/ksu.h:9`
-  `#define KERNEL_SU_VERSION KSU_VERSION` → `supercall/dispatch.c:66,104`
-  （`ksu_get_info_cmd.version`）与 `hook/syscall_event_bridge.c:187`（legacy
-  prctl 应答），纯上报；`core/init.c:244` 只是打日志。
-- 管理器侧 `isFullFeatured` 只看 **UAPI**（`isManager && kernelUAPI==managerUAPI`），
-  `require_manager_version` 红卡只在 `kernelUAPI > managerUAPI` 时出现；
-  `HomePage` 的 `kernelVersion` 指 Linux 内核版本（5.4.254），与 KSU 版本号无关。
-- ksud 侧 `ksucalls::get_version()` 只用于 `<= 0` 判空、`KSU_KERNEL_VER_CODE`
-  环境变量导出、`ksud debug` 打印；`boot_patch::get_kernel_version()` 是 Linux
-  内核版本，两码事。
-
-**代价与记录**：dmesg 的 `full_version:` 从此也是 `v4.2.0-rc3`，fork 指纹
-（`-dirty@BakaSU`）不再出现在版本串里 —— **权威指纹改为 `kernelsu.ko` 的 sha1**
-（本版 `9f1828638bf5ffc19038660cfdbfc1f4acbd5925`），改动记录看本文件与 git log。
-
-**验收判据（`tools/postlock.sh` 已加自动行）**：verify 段新打
-`driver: Initialized with driver version: 35252, full_version: v4.2.0-rc3, ...`
-（`su -c dmesg | grep -m1`，shell 域读 dmesg 被拒）；主页「内核驱动版本」
-= `v4.2.0-rc3 (35252/6)` 与「管理器版本」= `v4.2.0-rc3 (35252/6)` 逐字相同；
-「越狱模式」徽章照旧是**预期**（真 late load），verify 末尾的 manual check 文案
-已同步改正（旧文案写「no 越狱模式 badge」是强制 false 时代的遗留）。
+**「宏改不掉的裸数据符号」清单**（`unexported_data.h` 明确记录）：只有
+`selinux_state`、`security_hook_heads` 两个（类型名与变量名同名，宏会连类型一起
+改写）。其余（`init_mm`/`tasklist_lock`/`mntns_operations`/`selinuxfs_mount`/
+`selinux_blob_sizes`）都走 `#define sym (*ksu_g_sym)` 宏自动改写。
