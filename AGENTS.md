@@ -4745,15 +4745,19 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
-**ko 产物状态（2026-11-02 SUS_MAP 全挂点轮）**：源码/产物 = **`6683047d`**
-（**九个 feature 全部实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0、
-9 个 `CONFIG_KSU_SUSFS_*` 串各恰好一次、7 个新挂点名各 1 次）。三端已同步并
-commit：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
+**ko 产物状态（2026-11-03 SUS_KSTAT 命令名修正轮）**：源码/产物 = **`0c822b7d`**
+（**九个 feature 全部实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0）。
+本轮唯一代码改动：`susfs_add_sus_kstat()` 的结果日志按 `info.is_statically` 区分
+`CMD_SUSFS_ADD_SUS_KSTAT` / `CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY`（上游
+`fs_susfs.c:626-634` 同款；逻辑分支本身两边一致，只是标签）；另给
+`spoofed_mnt_id = 0` 补上是「本内核无消费者」的注释（上游写
+`non_sus_mnt_id`，仅用于 5.10+ `kstat.mnt_id` 与 fdinfo ino 行，本内核两者皆无）。
+三端已同步并 commit：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
 `PostLock-Boot/.../assets/postlock/kernelsu.ko` = 同 sha；
-`PAYLOAD_VERSION` = `v22-susfs-map6-20261102`（不 bump 则设备 staging 不刷新）。
-版本串仍是 `v4.2.0-rc3-5b76b884-dirty@BakaSU` / KSU_VERSION 35222（与 `e1d6d977`
-逐字节相同，无漂移）。
-`../BakaSU` fork main = **`69ad8abf`**（commit-tree 流程推送，本地 HEAD 仍
+`PAYLOAD_VERSION` = `v23-susfs-kstat-cmdlabel-20261103`（不 bump 则设备 staging 不刷新）。
+版本串仍是 `v4.2.0-rc3-5b76b884-dirty@BakaSU` / KSU_VERSION 35222（`../BakaSU`
+HEAD/rev-list 未动，无漂移）。
+`../BakaSU` fork main = **`69ad8abf`**（上一轮 commit-tree 推送；本地 HEAD 仍
 `5b76b884`/rev-list **4522**、status 32 行不变；远端树 615 条 blob 与工作树逐一
 比对一致，两个 `uapi` 符号链接 blob 与 HEAD 同值）。
 **全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩错设备
