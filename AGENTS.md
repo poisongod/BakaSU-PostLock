@@ -4702,21 +4702,52 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
   `context=` 挂载选项（不可行）或加 sepolicy。
 - 设备侧原子替换（避免截断正在执行的文件）：`cp new .ksud_tmp && chmod && mv -f`。
 
-### 后续阶段（未实施，按序推进，每完成一项才定义对应宏）
+### 各 feature 实现状态（2026-11-02 更新）
 
-1. 纯 kprobe 项：SUS_KSTAT（`generic_fillattr` **kretprobe**，void 返回）、
-   SUS_READDIR（`filldir64$51ab165f...`，pre 设 `pc=regs[30]`+`x0=0`）、
-   SUS_KALLSYMS（`s_show$80702cd9...`）、UNAME（`__arm64_sys_newuname`）。
-2. SUS_PATH：采用 master 的 syscall 入口级策略（`__arm64_sys_openat`/`openat2`/
-   `mkdirat`/`unlinkat`/`renameat2`/`linkat`/`symlinkat`/`mknodat` + `vfs_statx`），
-   比 GKI 的 dentry 级内联点对 kprobe 友好；`link_path_walk` 循环中间拦截做不到
-   （kprobe pre_handler 只在入口）→ 靠 `__d_lookup`/`__lookup_slow`/`may_open` 三层挡。
-3. SUS_MOUNT（`show_vfsmnt$55b2...`/`show_mountinfo$55b2...`/`vfs_statfs` +
-   kretprobe `alloc_vfsmnt`）→ SUS_MAP / OPEN_REDIRECT / CMDLINE / AVC_LOG。
-4. GKI `susfs.c` 的 7 个真 extern 需自实现：`susfs_is_current_ksu_domain()`、
-   `susfs_get_non_sus_mnt_id_from_mnt()`、`susfs_get_non_sus_vfsmnt_from_vfsmnt()`、
-   `calculate_f_flags_wrapper`、`statfs_by_dentry_wrapper`（`ksu_cred`/`setup_selinux`
-   BakaSU 已有）。
+> 早期本节写的「纯 kprobe 项：SUS_READDIR/SUS_KALLSYMS 独立 feature」和
+> 「SUS_PATH 走 syscall 入口级字符串匹配」**都已被推翻**，实际 ABI 只有 9 个
+> feature 位，readdir/kallsyms 隐藏内嵌在 `SUS_PATH` / `HIDE_KSU_SUSFS_SYMBOLS`
+> 里，且 `kern_path_at` 不存在、`filename_lookup`/`user_path_at`/`getname`
+> 未导出 → 字符串级方案不可行。细节见 `docs/susfs-lkm-feasibility.md` §5/§6/§11。
+
+单个 ko 内已落地的 feature（宏都在 `kernel/Kbuild` 逐对象 `CFLAGS_*` 里）：
+
+| feature | 文件 | 挂点（真身，非 `.cfi_jt` 桩） |
+|---|---|---|
+| `ENABLE_LOG` | `susfs.c` | `bool` + `READ_ONCE/WRITE_ONCE` |
+| `SUS_KSTAT` | `susfs_kstat.c` | kretprobe `vfs_getattr_nosec`、kprobe `show_vma_header_prefix`、kretprobe `vfs_statfs`、kprobe `seq_printf` |
+| `SPOOF_UNAME` | `susfs_uname.c` | syscall 表钩 `__NR_uname`(160)：先调 orig → `copy_from_user` 回读 → 覆写 `release`/`version` |
+| `HIDE_KSU_SUSFS_SYMBOLS` | `susfs_kallsyms.c` | kprobe `s_show`（裸名 static）：命中前缀 → `x0=0; pc=lr; return 1` |
+| `SPOOF_CMDLINE_OR_BOOTCONFIG` | `susfs_cmdline.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`，`return 1`） |
+| `SUS_PATH` | `susfs_path.c` | inode 位 `AS_FLAGS_SUS_PATH` + 12 钩：`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`do_faccessat`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`(+ 复用 stat 钩) |
+| `OPEN_REDIRECT` | `susfs_open_redirect.c` | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix`（三者全 core） |
+| `SUS_MAP` | `susfs_map.c` | inode 位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma`（整函数跳过）+ kprobe `show_smap`（`x0=0; pc=lr`） |
+| `SUS_MOUNT` | — | **未实现** → 宏不定义、上报里没有、命令回 126 |
+
+**kprobe 上下文的硬约束（曾误判，血泪）**：arm64 `kprobe_handler()` 在 BRK
+异常上下文跑，`DAIF.I` 全程屏蔽 → **pre_handler 绝不能睡眠**
+（`kmalloc(GFP_KERNEL)`/`kern_path()`/`copy_from_user()`/`register_kprobe()`
+一律 BUG）。需要睡眠的操作只能放 syscall 表钩或 `susfs_add_*()` 命令处理里。
+
+**懒注册统一范式**：`xxx_init()` 只解析符号 + 试注册/立即注销判断可用性，
+真正注册推到首次 `add`（`xxx_arm()`），失败翻 `available()=false` 并回滚。
+`susfs_get_enabled_features()` 每一项都由 `susfs_*_available()` 门控
+→ 钩子装不上就不报（真话，不是谎报）。
+
+**kretprobe 坑**：`susfs_register_kretprobe()` 内部会 `memset` 结构体，
+`maxactive` 必须在调用点**注册前**预置（`vfs_getattr_nosec`=128、
+`vfs_statfs`=64、`prepend_path`=64），否则注册成功但 ret handler 永不跑。
+
+**`.cfi_jt` 坑**：`susfs_lookup_symbol()` 走 BakaSU 的 CFI 感知 resolver，
+对带哈希的符号**优先返回桩** → 必须 `susfs_unwrap_jump_table()` 解到真身。
+`static` 函数（`show_map_vma`/`may_open`/`may_delete`/`prepend_path`/
+`cmdline_proc_show`）无 CFI 哈希、裸名即真身；`show_smap`/`filldir64`/
+`vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
+`susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
+
+**ko 产物状态**：`build/embed/kernelsu.ko` = `9f182863`（阶段 1 骨架版，
+设备在用）；`../BakaSU/kernel/kernelsu.ko` = `0f943cc8`（全部 8 个 feature
+代码完成、编译零 warning、UND 167 全导出，**未装机验收**）。
 
 ### 验收判读陷阱：`ksud susfs ...` 必须 root 上下文
 

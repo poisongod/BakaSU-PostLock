@@ -229,78 +229,155 @@ CFLAGS_core/init.o           += -DKSU_SUSFS_LKM
 
 ## 5. 覆盖率矩阵
 
-| SUSFS 功能 | 上游补丁点 | LKM 实现 | 覆盖率 | 语义差异 |
-|---|---|---|---|---|
-| `SUS_PATH` | dcache 2 + namei 13 | **syscall 入口级**（`__arm64_sys_openat`/`openat2`/`mkdirat`/`unlinkat`/`renameat2`/`linkat`/`symlinkat`/`mknodat` + `vfs_statx`）+ `filldir64` | **95%** | 见 §6.1 |
-| `SUS_MOUNT` | namespace 8 + proc 1 | `show_vfsmnt` + `show_mountinfo` + `vfs_statfs` + kretprobe `alloc_vfsmnt` 改 mnt_id | **85%** | `mnt_group_id` 无法伪造（inline） |
-| `SUS_KSTAT` | stat.c 1 | kretprobe `generic_fillattr` 改 `struct kstat` | **100%** | 无 |
-| `SUS_READDIR` | readdir.c 1 | `filldir64` pre 设 `pc=lr` + `x0=0` 跳过条目 | **100%** | 无 |
-| `SUS_KALLSYMS` | kallsyms.c 1 | `s_show` pre 同上跳过 | **100%** | 无 |
-| `SPOOF_UNAME` | sys.c 1 | `__arm64_sys_newuname` kprobe 改用户缓冲区 | **100%** | 需 `copy_to_user` |
-| `OPEN_REDIRECT` | namei 1 | kprobe syscall 入口改路径字符串 | **70%** | 无法在 `open_last_lookups` 内重定向 |
-| `TRY_UMOUNT` | namespace 1 | 用户态实现（`umount2` 调用） | **100%** | 无（susfs 本身就是循环调 `ksys_umount`） |
-| `SUS_SU` | exec.c + devpts | 复用 `kernelsu.ko` 的 execve hook | **100%** | 依赖 `ksu_handle_execveat_sucompat` |
-| `SUS_MAP` | task_mmu.c | `show_map_vma` kprobe 跳过 | **90%** | — |
-| `SPOOF_CMDLINE` | proc/bootconfig | `bootconfig` seq_show kprobe | **100%** | — |
+这一节按**实际 ABI**（`ShirkNeko/susfs4ksu` 分支 `gki-android12-5.10`，SuSFS v2.3.0）
+的 9 个 feature 位来列，而不是初稿里那张按「上游补丁文件」想象的表格
+（初稿把 `SUS_READDIR`/`SUS_KALLSYMS` 当成独立 feature、把 `TRY_UMOUNT`/`SUS_SU`
+当成 SUSFS feature，都不对：本 ABI 里 readdir/kallsyms 隐藏**内嵌在**
+`CONFIG_KSU_SUSFS_SUS_PATH` 与 `HIDE_KSU_SUSFS_SYMBOLS` 里，`SUS_SU` 属于
+BakaSU 的 kernel_umount，`TRY_UMOUNT` 由 userspace 发 `umount2` 完成）。
 
-**综合覆盖率 ~92%**，无「完全做不到」的功能。
+| feature 位 | 上游挂点 | LKM 实现 | 状态 |
+|---|---|---|---|
+| `SUS_PATH` | `fs/namei.c` 13 处 + `fs/readdir.c` 1 处 | inode 标记位 `AS_FLAGS_SUS_PATH` + 12 个 choke-point kprobe（`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`inode_permission`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`/`vfs_getattr_nosec` 系）| **完成**，偏差见 §10.1 |
+| `SUS_MOUNT` | `fs/namespace.c` 8 处 + `fs/proc_namespace.c` 1 处 | 未实现 | **待做** |
+| `SUS_KSTAT` | `fs/stat.c` 1 处（+ `task_mmu.c` 2、`fs/statfs.c` 1、`fs/notify/fdinfo.c` 1） | kretprobe `vfs_getattr_nosec` + kprobe `show_vma_header_prefix` + kretprobe `vfs_statfs` + kprobe `seq_printf` | **完成** |
+| `SPOOF_UNAME` | `fs/utsname.c` 1 处 | syscall 表钩 `__NR_uname`（先调 orig 再 `copy_from_user` 回读覆写） | **完成** |
+| `ENABLE_LOG` | `fs/susfs.c` 自身 | `bool` + `READ_ONCE/WRITE_ONCE` | **完成**（阶段 1 已验） |
+| `HIDE_KSU_SUSFS_SYMBOLS` | `kernel/kallsyms.c` 1 处 | kprobe `s_show` 真身，命中前缀即整行吞掉 | **完成** |
+| `SPOOF_CMDLINE_OR_BOOTCONFIG` | `fs/proc/cmdline.c` + `fs/proc/bootconfig.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`） | **完成**（本内核无 bootconfig，见 §10.3） |
+| `OPEN_REDIRECT` | `fs/namei.c` 1 处 + `task_mmu.c` 1 处 | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix` | **完成**，偏差见 §10.2 |
+| `SUS_MAP` | `fs/proc/task_mmu.c` 3 处 + `fs/proc/base.c` 1 处 + `fs/proc/task_mmu.c`(pagemap) 1 处 | inode 标记位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma` + kprobe `show_smap` | **完成**，偏差见 §10.4 |
+
+**没有任何一项是「只报位不做事」**：`susfs_get_enabled_features()` 的每一项都由
+运行时可用性门控（`susfs_*_available()`）包裹，钩子装不上就不报。
+唯一未做的 `SUS_MOUNT` 连宏都不定义 → 上报里没有它。
 
 ## 6. 关键设计取舍
 
-### 6.1 SUS_PATH：采用 master 的 syscall 入口级策略，而非 GKI 的 dentry 级
+### 6.1 SUS_PATH：inode 标记位 + choke-point kprobe（定案，已与初稿不同）
 
-GKI 补丁在 `fs/namei.c` 的 13 个内联点（`link_path_walk` 循环体内、`lookup_open`、
-`may_o_create` 等）做检查。**kprobe 的 pre_handler 只在函数入口触发**，无法拦截
-`link_path_walk` 的中间迭代，也无法插进 inline 掉的函数。
+初稿设想走 master 分支的「syscall 入口级字符串匹配」（`__arm64_sys_openat` +
+`kern_path_at` 之类）。实测**这条路在本内核走不通**：`kern_path_at` 不存在、
+`filename_lookup` / `user_path_at` / `getname` 都不导出，而 kprobe 只能拿到
+用户态 `const char __user *`，在 kprobe 上下文（见 §6.2）既不能 `copy_from_user`
+也不能 `kern_path()`。
 
-master 分支改走**系统调用入口**：`__arm64_sys_openat` / `openat2` / `mkdirat` /
-`unlinkat` / `renameat2` / `linkat` / `symlinkat` / `mknodat` + `vfs_statx`
-的 `susfs_sus_path_by_filename()`。这条路对 kprobe **天然友好**（每个都是独立
-导出函数、入口即可拿到 `filename` 指针），且语义等价（任何路径操作都经过这些
-syscall 入口）。
+定案改成**上游 v2.3.0 原样的 inode 标记位** + 一批 choke-point：
 
-代价：内核内部路径操作（不经 syscall 的，如模块自己调 `filp_open`）不受保护。
-对本项目用途（对抗检测 app 的用户态扫描）足够。
+* add：`kern_path(LOOKUP_FOLLOW)` 解析一次，`set_bit(AS_FLAGS_SUS_PATH,
+  &inode->i_mapping->flags)`，并把 basename / ino / d_type 存进链表（表项永不 free）；
+* 隐藏判定：`susfs_path_inode_hidden()` = 位测试 + `susfs_is_current_proc_umounted_app()`
+  + `uid != i_uid`（与上游逐字一致）；
+* 拦截：`may_open` / `may_delete` / `vfs_mkdir` / `vfs_mknod` / `vfs_symlink` /
+  `vfs_link` / `notify_change` 返回 `-ENOENT`；`do_faccessat` 的
+  `bl inode_permission` 用 instruction-level kprobe（返回地址必须
+  `kp->addr + 4`，不能 `regs->regs[30]`）；readdir 走 `filldir64`/`filldir`/
+  `compat_filldir` 真身（`.cfi_jt` 先解桩），pre 语义 `x0=0; pc=lr; return 1`。
 
-### 6.2 kprobe 上下文实测
+**门控语义是上游原样**：只有「走过 KSU umount 的进程（`TIF_PROC_UMOUNTED`）
+且 uid 不是文件属主」才看不见——**shell(2000)/root(0) 永远看得见**。验收必须用
+app 进程（uid≥10000，且由其 `Runtime.exec` 出的子进程继承该线程标志）。
 
-`work/kernsrc/sm6375-v15/arch/arm64/kernel/probes/kprobes.c` 的
-`kprobe_handler()` **没有 `preempt_disable()`**，pre_handler 在 `el1_dbg`
-恢复 DAIF 后执行 → **上下文可睡眠**（与 `ksu_install_fd()` 一直可用一致）。
-但仍是 debug-exception 上下文，**避免取锁/打补丁更稳**（§3.3）。
+已接受的偏差（写在 `susfs_path.c` 文件头）：`open(O_CREAT)` 返回 `-ENOENT` 而不是
+创建诱饵 inode；隐藏目录内新建名字会先落地空文件再 `may_open` 失败；已存在子文件
+按精确路径仍可打开；`readlink` 不覆盖。
 
-### 6.3 `generic_fillattr` 返回 void → 必须 kretprobe
+### 6.2 kprobe 上下文：**不能睡眠**（订正初稿的错误结论）
 
-entry_handler 把 `stat` 指针存到 `kretprobe_instance->data`，return_handler 里改
-内容。`filldir64` / `s_show` / `show_vfsmnt` 返回 int → pre_handler 设
-`regs->pc = regs->regs[30]` + `x0 = 0` 跳过条目。
+初稿写「`kprobe_handler()` 没有 `preempt_disable()`，pre_handler 可睡眠」——**错**。
+`arch/arm64/kernel/probes/kprobes.c` 的 `kprobe_handler()` 在 BRK 异常上下文执行，
+`kcb->kprobe_saved_dbg_ctl`/`kprobes_restore_local_irqflag()` 成对恢复 **DAIF.I**，
+也就是说 pre_handler 全程**关中断**：
+
+```c
+	} else {
+		/* Probe hit */
+		set_current_kprobe(p);
+		kcb->kprobe_status = KPROBE_HIT_ACTIVE;
+		if (!p->pre_handler || !p->pre_handler(p, regs)) {
+			setup_singlestep(p, regs, kcb, 0);
+		} else
+			reset_current_kprobe();
+	}
+```
+
+所以 pre_handler 里只能做纯整数/字符串比较、`test_bit()`、`atomic_read()`。
+`kmalloc(GFP_KERNEL)`、`kern_path()`、`copy_from_user()`、`register_kprobe()`
+**一律非法**（会 BUG）。
+
+这条约束直接决定了架构分工：
+
+* **需要睡眠的事**（解析路径、分配表项、注册探针）→ 放在 syscall 表钩
+  （`ksu_syscall_table_hook`）或 `susfs_add_*()` 命令处理里，它们跑在正常的
+  系统调用上下文；
+* **热路径判定**（maps 打印、readdir、open 拦截）→ 只做位测试/整数字符串比较。
+
+`show_map_vma`/`show_smap`/`filldir64`/`prepend_path` 之所以能整函数跳过或改
+`regs->pc`，也是因为 pre_handler 只需要读 `regs`，不需要任何分配。
+
+### 6.3 返回 void / 需要回填的函数 → kretprobe
+
+`generic_fillattr()` 返回 void，无法用「改返回值」的办法拦截，且本内核
+`vfs_getattr_nosec()` 是 `struct kstat` 的汇聚点 —— 因此 SUS_KSTAT 用
+**kretprobe `vfs_getattr_nosec`**：entry_handler 把 `struct kstat *` 存进
+`ri->data`，ret_handler 里改内容。
+
+`filldir64` / `s_show` / `show_map_vma` / `show_smap` / `cmdline_proc_show`
+返回 int 或 void 但语义是「整函数跳过」→ pre_handler 直接
+`regs->pc = regs->regs[30]`（void 的不设 `x0`，int 的设 `x0 = 0`），
+`return 1` 抑制单步。**不能返回 `-EINVAL`**：那会让 kprobe 报错并放行原函数。
+
+**kretprobe 的 `maxactive` 必须显式保留**：`susfs_register_kretprobe()` 内部会
+`memset` 结构体，调用点必须在**注册前**把 `krp->maxactive` 预置好
+（`vfs_getattr_nosec`=128、`vfs_statfs`=64、`prepend_path`=64），否则 `maxactive`
+= 0 → 注册成功但每次命中都不会调 ret handler（静默失效）。
 
 `__d_lookup` / `__d_lookup_rcu` 的 kprobe 只能整函数返回 NULL → 走慢路径 →
 语义安全、性能略损。
+
+### 6.4 一个容易反复踩的坑：`static` 函数没有 `.cfi_jt`
+
+本内核开了 kCFI，带 CFI 哈希的全局函数在 `kallsyms` 里是
+`name$<32 hex>`，并且会有一个 `.cfi_jt` 跳转桩。`susfs_lookup_symbol()` 走
+BakaSU 的 `ksu_resolve_symbol_for_functable_hook()`，它**优先返回桩**，所以
+挂探针前必须 `susfs_unwrap_jump_table()` 解到真身——否则 kprobe 打在 4 条
+指令的桩上，`regs->regs[30]` / 参数寄存器全是桩的语义，行为必然错。
+
+反过来，`static` 函数（`show_map_vma`/`may_open`/`may_delete`/`prepend_path`/
+`cmdline_proc_show`）**没有 CFI 哈希也没有桩**，裸名直接就是真身，unwrap 是 no-op。
+`show_smap`/`filldir64`/`vfs_getattr_nosec`/`vfs_mkdir` **有**桩，必须解。
+这条已经收拢成共享 helper `susfs_register_kprobe_at()`（`susfs_probe.c`），
+新挂点一律走它，不要各写一份。
 
 ## 7. 分阶段实施计划与进度
 
 | 阶段 | 内容 | 验证判据 | 状态 |
 |---|---|---|---|
-| **1** | ABI 骨架：`susfs_show_version` / `show_variant` / `show_enabled_features` / `enable_log` / `set_avc_log_spoofing`（诚实回 126）/ `start_sdcard_monitor_fn`（空）/ `init` | `ksud susfs show version` → `v2.3.0`；`show variant` → `GKI`；`show enabled_features` 仅 `CONFIG_KSU_SUSFS_ENABLE_LOG`；管理器 SuSFS 状态页由「未启用」→「已启用」 | **已完成，待装机验收** |
-| **2** | 纯 kprobe 项：`SUS_KSTAT`（kretprobe `generic_fillattr`）/ `SUS_READDIR`（`filldir64$51ab…`）/ `SUS_KALLSYMS`（`s_show$8070…`）/ `SPOOF_UNAME`（`__arm64_sys_newuname`） | 每完成一项才定义对应 `CONFIG_KSU_SUSFS_*` 宏；`ksud susfs add-sus-kstat` 生效 | 待做 |
-| **3** | `SUS_PATH`（§6.1 syscall 入口级 + `filldir64`） | 加入 sus_path 后目标路径 `open`/`stat`/`unlink` 全失败、`ls` 不可见 | 待做 |
-| **4** | `SUS_MOUNT`（`show_vfsmnt$55b2…` / `show_mountinfo$55b2…` / `vfs_statfs` + kretprobe `alloc_vfsmnt`）+ 哈希表 `mnt_id_backup` | `/proc/self/mounts` 无目标条目；`mountinfo` mnt_id 为伪值 | 待做 |
-| **5** | `SUS_MAP` / `OPEN_REDIRECT` / `SPOOF_CMDLINE` / `AVC_LOG` | 各命令生效 | 待做 |
+| **1** | ABI 骨架：`show_version` / `show_variant` / `show_enabled_features` / `enable_log` / `set_avc_log_spoofing`（诚实 126）/ `start_sdcard_monitor_fn`（空）/ `init`；supercall 从 kprobe 改 syscall 表钩 | `ksud susfs show version` → `v2.3.0`；`show variant` → `GKI`；管理器 SuSFS 页显示已启用 | **已完成并验收**（boot `5394a404`） |
+| **2** | `SUS_KSTAT` / `SPOOF_UNAME` / `HIDE_KSU_SUSFS_SYMBOLS` / `SPOOF_CMDLINE` | 各命令 `ret: 0` + 效果可见 | **代码完成**，待装机验收 |
+| **3** | `SUS_PATH`（inode 位 + 12 choke point + 懒注册 + `susfs_extra_works` 循环解析） | app 进程 `ls`/`stat`/`open` 目标路径 → `ENOENT`，shell 仍可见 | **代码完成**，待装机验收 |
+| **4** | `OPEN_REDIRECT`（syscall 表钩 openat + kretprobe `prepend_path` + `show_vma_header_prefix`） | app 打开 target 拿到 redirected 内容；`maps`/`smaps` 显示 target 路径 | **代码完成**，待装机验收 |
+| **5** | `SUS_MAP`（inode 位 + `show_map_vma` + `show_smap`） | app 的 `maps`/`smaps` 里无该 so 路径 | **代码完成**，待装机验收 |
+| **6** | `SUS_MOUNT`（`show_vfsmnt`/`show_mountinfo`/`vfs_statfs` + kretprobe `alloc_vfsmnt` 改mnt_id） | `/proc/self/mounts`/`mountinfo` 无目标条目、mnt_id 连续 | **待做**（最复杂，见 §10.5） |
 
 **阶段 1 是唯一必须先做的**：验证分发链路（`SUSFS_MAGIC` →
 `ksu_handle_susfs_cmd` → `susfs_*`）是否贯通。若这一环不通，后续全部无意义。
+
+宏的纪律（§3.6）：**feature 串里出现的每一项都必须有实际实现**；未实现的
+`SUS_MOUNT` 连宏都不定义，userspace 打 `susfs add_sus_mount` 会自然拿到
+`ERR_CMD_NOT_SUPPORTED`(126)，这是真话而不是谎报。
 
 ## 8. 风险与限制
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
-| CFI 哈希后缀随内核升级变化 | kprobe 挂点解析失败 | 编译期硬编码 + 运行时 `/proc/kallsyms` 前缀匹配双路 |
-| kprobe 热路径开销 | `__d_lookup` 等每次 lookup 都触发 | 用 `bool` 开关做早期返回；kprobe 本身固定开销需实测 |
-| `task_struct` 哈希表泄漏 | task 退出未清理 | `release_task` kprobe 清理 + 惰性过期双保险 |
-| 上游版本漂移 | 命令码/结构体不匹配 | 锁定 v2.3.0（GKI 分支），管理器侧已有对应 UI |
-| `susfs_start_sdcard_monitor_fn` 在 late 模式下被跳过 | sdcard 监控不启动 | 阶段 3 起由 `susfs_init()` 自行启动 |
-| 未实现功能被误报为可用 | 违反真协议红线 | `get_enabled_features()` 纯 `#ifdef` 驱动 + 未实现命令回 126 |
+| CFI 哈希后缀随内核升级变化 | kprobe 挂点解析失败 | `susfs_lookup_symbol()` 前缀匹配 + `susfs_unwrap_jump_table()` 解桩；失败即 `available()=false`，不报该 feature |
+| kprobe 热路径开销 | `may_open`/`filldir64`/`show_map_vma` 每次调用都触发 | 每个 pre_handler 首行是 `atomic_read()` / `test_bit()` 早退；kprobe 自身固定开销需实测 |
+| 表项永不 free | 反复 add 会累积内存 | 与上游一致（上游也不释放）；add 重复路径则原地刷新 |
+| 上游版本漂移 | 命令码/结构体不匹配 | 锁定 v2.3.0（`gki-android12-5.10` 分支），管理器侧已有对应 UI |
+| `susfs_start_sdcard_monitor_fn` 在 late 模式下被跳过 | sdcard 监控不启动 | SUS_PATH 的 loop 项改由 `susfs_extra_works`（`TIF_PROC_UMOUNTED` 触发）周期重解析 |
+| 未实现功能被误报为可用 | 违反真协议红线 | `get_enabled_features()` 逐项 `available()` 门控 + 未实现命令回 126 |
+| kprobe 挂点上下文不能睡眠（§6.2） | 误用即 BUG | 需要睡眠的操作全部放 syscall 表钩 / `susfs_add_*`；详见 §6.2 |
 
 ## 9. 附：验证脚本
 
@@ -339,3 +416,82 @@ python3 build/work/harvest_ocs.py build/work/bootdump.img out.txt
 - `ksu_handle_susfs_cmd` 的 reloc 全指向 `susfs_*.cfi_jt`（CFI 正常）
 
 ko sha1：见 `build/embed/kernelsu.ko`。
+
+## 11. 各 feature 实现清单与已知偏差
+
+每个文件开头的注释都写了「上游怎么做的 / 我们为什么只能这么做 / 哪些做不到」。
+这里只做索引 + 偏差汇总，细节以源文件头注释为准。
+
+### 11.1 `SUS_PATH` —— `susfs_path.c`
+
+| 挂点 | 类型 | 语义 |
+|---|---|---|
+| `may_open` | kprobe（裸名 static） | 隐藏路径 open → `-ENOENT` |
+| `may_delete` | kprobe（裸名 static） | 隐藏路径 unlink/rmdir/rename 源 → `-ENOENT` |
+| `vfs_mkdir` / `vfs_mknod` / `vfs_symlink` / `vfs_link` | kprobe（有 `.cfi_jt`） | 在隐藏目录内创建 → `-ENOENT` |
+| `notify_change` | kprobe | chmod/chown/truncate 隐藏路径 → `-ENOENT` |
+| `do_faccessat` + `bl inode_permission` | **instruction-level** kprobe | `access()`/`faccessat()` → `-ENOENT` |
+| `filldir64` / `filldir` / `compat_filldir` | kprobe（真身） | readdir 条目隐藏，匹配 `ino + basename + d_type` |
+| `vfs_getattr_nosec` 等 | 复用 SUS_KSTAT 的 stat 钩 | `stat` 隐藏路径 → `-ENOENT` |
+
+注册模型：**懒注册**。`susfs_path_init()` 只解析符号并试注册/立即注销判断可用性；
+首次真正 `add` 时 `susfs_path_arm()` 才注册全部 12 个钩子，任一失败则整体回滚 +
+`available()=false`。
+
+已接受偏差：`open(O_CREAT)` 不创建诱饵 inode；隐藏目录内新建名字会先落地空文件；
+已存在子文件按精确路径仍可打开；`readlink` 不覆盖。
+
+### 11.2 `OPEN_REDIRECT` —— `susfs_open_redirect.c`
+
+三个钩子**全部视为 core**（缺一个就整体 `available()=false`）：
+
+1. syscall 表钩 `__NR_openat`：`strncpy_from_user` 256B 快路径 strcmp，命中后
+   `kern_path()` 解析比对 inode，再 `filp_open` 真文件并用 `fd_install` 换掉；
+2. kretprobe `prepend_path`：改写 `d_path` 输出的路径字符串（覆盖
+   `maps`/`smaps`/`fdinfo`/`cwd` 全部路径显示）；
+3. kprobe `show_vma_header_prefix`：`maps` 每行的 `dev:inode` 字段伪装。
+
+已接受偏差（文件头逐条写明）：调用者必须逐字拼出注册时的 target 路径；
+32 位进程走 `compat_sys_call_table` 不重定向；`fsnotify_open` 未导出 →
+重定向 open 不发 `IN_OPEN`/`IN_ACCESS`；bind mount/第二硬链接受①限制；
+表项与 `AS_FLAGS_OPEN_REDIRECT` 位永不释放（这也是能用 spinlock 而非 SRCU 的前提）；
+目标不存在时回落 orig；**本内核无 `openat2`**（`__NR_openat2` 不存在）；
+相对 dirfd 的名字不重定向；`O_NOFOLLOW` 被尊重。
+
+### 11.3 `SPOOF_CMDLINE_OR_BOOTCONFIG` —— `susfs_cmdline.c`
+
+kprobe `cmdline_proc_show`（裸名 static）**函数替换**：`regs->pc = 替换函数`、
+`return 1`（不单步）。替换函数只用 `seq_puts` 写假串。
+
+**为什么不改 `saved_command_line` 指针**：OPPO 的 `qti_gadget` /
+`oplus_secure_common` 在运行时解析它，改了会连带影响它们。
+
+偏差：本内核 `CONFIG_BOOT_CONFIG=n`，没有 `/proc/bootconfig`，所以只覆盖
+`/proc/cmdline`。这是真实的（上游也是「两个面按配置各自覆盖」）。
+
+### 11.4 `SUS_MAP` —— `susfs_map.c`
+
+inode 标记位 `AS_FLAGS_SUS_MAP` + 两个 kprobe（`show_map_vma` 整函数跳过、
+`show_smap` 返回 0）。上游一共 5 个挂点，另外 3 个在本内核**无法按 VMA 过滤**
+（详见文件头）：`show_smaps_rollup`（`smap_gather_stats` 已内联，无符号）、
+`/proc/<pid>/map_files`（两趟循环先收进 genradix，丢弃单条只能整目录截断）、
+`/proc/<pid>/pagemap`（按页区间遍历，非 VMA）。
+
+结论：**所有会「指名」隐藏映射的面都已覆盖**（maps / smaps 每行）；
+只做「计数」的面没覆盖（rollup 合计、pagemap present 位、numa_maps）。
+这是 kprobe-only 在这个内核上的诚实边界。
+
+### 11.5 `SUS_MOUNT` —— 待做
+
+上游做法：`fs/namespace.c` 里 8 个位置 + `fs/proc_namespace.c` 1 个位置，
+核心是「KSU umount 之后把剩下的条目 `mnt_id` 重排成连续值」，让检测方看不出
+「中间少了一条」。这需要：
+
+* kprobe `show_vfsmnt` / `show_mountinfo`（真身，`.cfi_jt` 需解）跳过目标条目；
+* kretprobe `alloc_vfsmnt` 给新建 mount 分配伪造 id；
+* kretprobe `vfs_statfs` 兜 `f_type`/`f_fsid`；
+* 一张 `(dev, ino)` → 伪 id 的表 + 与 `TIF_PROC_UMOUNTED` 联动的门控。
+
+风险点：`mnt_group_id` 被 inline 无法伪造（文档化偏差）；`mnt_id` 从
+`idr_alloc` 分配，伪 id 与实际 id 必须全局一致，否则同一个 mount 在两次读取里
+id 不同 = 更明显的破绽。这条要在实现时先写清不变量再动手。
