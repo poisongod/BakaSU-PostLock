@@ -4745,9 +4745,21 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
-**ko 产物状态**：`build/embed/kernelsu.ko` = `9f182863`（阶段 1 骨架版，
-设备在用）；`../BakaSU/kernel/kernelsu.ko` = `7040c995`（**九个 feature 全部
-实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0，**未装机验收**）。
+**ko 产物状态（2026-11-02 收尾）**：源码/产物 = `e1d6d977`（**九个 feature 全部
+实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0、9 个
+`CONFIG_KSU_SUSFS_*` 串各恰好一次）。三端已同步并 commit：
+`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
+`PostLock-Boot/.../assets/postlock/kernelsu.ko` = 同 sha；
+`PAYLOAD_VERSION` = `v20-susmount-20261102`（不 bump 则设备 staging 不刷新）。
+`../BakaSU` fork main = **`a71a957e`**（commit-tree 流程推送，本地 HEAD 仍
+`5b76b884`/rev-list 4520+2=**4522**、status 32 行不变；远端树与工作树 blob 逐一
+比对一致）。**全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩
+错设备 `401e909a`（红线勿动）。
+
+**SUS_MOUNT 门控原子性（本轮修）**：`hide_ok` 原在打标钩子注册**之前**置 true，
+存在「`available()` 已真但 `alloc_vfsmnt`/`clone_mnt` 还没装」的窗口（此时
+`set_hide_sus_mnts_for_non_su_procs` 能成功 arm，但没有任何 mount 带伪 id → 隐藏
+静默无效）。改为两组钩子都注册成功后一起放开，失败分支的回滚置 false 随之删除。
 
 **SUS_MOUNT 特有约束（2026-11-02）**：
 
