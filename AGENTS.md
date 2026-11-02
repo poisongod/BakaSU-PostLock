@@ -4722,7 +4722,7 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 | `SUS_PATH` | `susfs_path.c` | inode 位 `AS_FLAGS_SUS_PATH` + 12 钩：`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`do_faccessat`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`(+ 复用 stat 钩) |
 | `OPEN_REDIRECT` | `susfs_open_redirect.c` | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix`（三者全 core） |
 | `SUS_MAP` | `susfs_map.c` | inode 位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma`（整函数跳过）+ kprobe `show_smap`（`x0=0; pc=lr`） |
-| `SUS_MOUNT` | — | **未实现** → 宏不定义、上报里没有、命令回 126 |
+| `SUS_MOUNT` | `susfs_mount.c` | kretprobe `alloc_vfsmnt`/`clone_mnt`（ksu 域建 mount → 真 id 换伪 id）+ kprobe `show_vfsmnt`/`show_mountinfo`/`show_vfsstat`（三者带 `$55b2…` kCFI 哈希，需 unwrap）+ kretprobe `__lookup_mnt`（按 `TIF_PROC_UMOUNTED` 拦，模块参数 `lookup_hook` 可关） |
 
 **kprobe 上下文的硬约束（曾误判，血泪）**：arm64 `kprobe_handler()` 在 BRK
 异常上下文跑，`DAIF.I` 全程屏蔽 → **pre_handler 绝不能睡眠**
@@ -4746,8 +4746,34 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
 **ko 产物状态**：`build/embed/kernelsu.ko` = `9f182863`（阶段 1 骨架版，
-设备在用）；`../BakaSU/kernel/kernelsu.ko` = `0f943cc8`（全部 8 个 feature
-代码完成、编译零 warning、UND 167 全导出，**未装机验收**）。
+设备在用）；`../BakaSU/kernel/kernelsu.ko` = `7040c995`（**九个 feature 全部
+实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0，**未装机验收**）。
+
+**SUS_MOUNT 特有约束（2026-11-02）**：
+
+- **打标钩子必须在模块加载期装上**（`alloc_vfsmnt`/`clone_mnt`），所以它不能像
+  其它 feature 那样懒 arm → `susfs_mount_available() = mark_ok && hide_ok`，
+  init 期对四个隐藏探针做「试注册 + 立即注销」得 `hide_ok`。装不上就整体不报。
+- **伪 id 走内核自己的 IDA**（`ida_alloc_range(&mnt_id_ida, DEFAULT_KSU_MNT_ID,
+  0x7fffffff, GFP_ATOMIC)` → `WRITE_ONCE(m->mnt_id, fake)` →
+  `ida_free(&mnt_id_ida, real)`）——真 id 必须当场还给 ida，否则永久泄漏；
+  伪 id ≥ 2e9 永不与内核 `ida_alloc()`（从低位取）冲突。
+- **`alloc_vfsmnt` 失败返回 NULL、`clone_mnt` 失败返回 ERR_PTR**，handler 已分别处理。
+- **`__lookup_mnt` 是唯一落在「每次跨挂载点路径解析」上的陷阱**，故留模块参数
+  `lookup_hook`（默认 1）；关掉只丢「被 umount 的 app 走不进 sus mount」，
+  `/proc` 三个面的隐藏保留。8 个调用点（`namei.c`×2、`namespace.c`×2、
+  `pnode.c`×4）逐个核对全部 NULL-safe。
+- **域判定只用 `security_task_getsecid()` vs init 期
+  `security_secctx_to_secid("u:r:ksu:s0")`**（纯字段读，零睡眠）。禁用
+  `ksu_is_sid_equal()`（无实现 → UND）。也不能用 `is_ksu_domain()` 回退路径
+  （会拼 secctx 字符串，探针上下文不可）。
+- **`kernel:s0` 建的 mount 不打标**（`current` 不是 ksu 域）→ restore 建的
+  `/product/bin` overlay 正常可见，shell 域 `su` 不会被隐藏。
+- **设备符号核对（离线 kallsyms 已完成）**：`show_vfsmnt`/`show_mountinfo`/
+  `show_vfsstat` = `show_*$55b24370bfac44f0022045815b5292f1` + `.cfi_jt` 桩；
+  `alloc_vfsmnt`/`clone_mnt`/`__lookup_mnt`/`mnt_id_ida` 全是裸名。
+  `resolve_symbol_variant()` 按 kallsyms 地址升序遍历，先命中 body 再命中桩
+  → `susfs_register_kprobe_at()` 的 unwrap 后落点是**真身**，能看到全部调用者。
 
 ### 验收判读陷阱：`ksud susfs ...` 必须 root 上下文
 

@@ -238,19 +238,20 @@ BakaSU 的 kernel_umount，`TRY_UMOUNT` 由 userspace 发 `umount2` 完成）。
 
 | feature 位 | 上游挂点 | LKM 实现 | 状态 |
 |---|---|---|---|
-| `SUS_PATH` | `fs/namei.c` 13 处 + `fs/readdir.c` 1 处 | inode 标记位 `AS_FLAGS_SUS_PATH` + 12 个 choke-point kprobe（`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`inode_permission`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`/`vfs_getattr_nosec` 系）| **完成**，偏差见 §10.1 |
-| `SUS_MOUNT` | `fs/namespace.c` 8 处 + `fs/proc_namespace.c` 1 处 | 未实现 | **待做** |
+| `SUS_PATH` | `fs/namei.c` 13 处 + `fs/readdir.c` 1 处 | inode 标记位 `AS_FLAGS_SUS_PATH` + 12 个 choke-point kprobe（`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`inode_permission`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`/`vfs_getattr_nosec` 系）| **完成**，偏差见 §11.1 |
+| `SUS_MOUNT` | `fs/namespace.c` 8 处 + `fs/proc_namespace.c` 1 处 | 真 IDA 伪 id（kretprobe `alloc_vfsmnt`/`clone_mnt` 打标）+ 三个 `show_*` 整行跳过 + `__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦 | **完成**，偏差见 §11.5 |
 | `SUS_KSTAT` | `fs/stat.c` 1 处（+ `task_mmu.c` 2、`fs/statfs.c` 1、`fs/notify/fdinfo.c` 1） | kretprobe `vfs_getattr_nosec` + kprobe `show_vma_header_prefix` + kretprobe `vfs_statfs` + kprobe `seq_printf` | **完成** |
 | `SPOOF_UNAME` | `fs/utsname.c` 1 处 | syscall 表钩 `__NR_uname`（先调 orig 再 `copy_from_user` 回读覆写） | **完成** |
 | `ENABLE_LOG` | `fs/susfs.c` 自身 | `bool` + `READ_ONCE/WRITE_ONCE` | **完成**（阶段 1 已验） |
 | `HIDE_KSU_SUSFS_SYMBOLS` | `kernel/kallsyms.c` 1 处 | kprobe `s_show` 真身，命中前缀即整行吞掉 | **完成** |
-| `SPOOF_CMDLINE_OR_BOOTCONFIG` | `fs/proc/cmdline.c` + `fs/proc/bootconfig.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`） | **完成**（本内核无 bootconfig，见 §10.3） |
-| `OPEN_REDIRECT` | `fs/namei.c` 1 处 + `task_mmu.c` 1 处 | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix` | **完成**，偏差见 §10.2 |
-| `SUS_MAP` | `fs/proc/task_mmu.c` 3 处 + `fs/proc/base.c` 1 处 + `fs/proc/task_mmu.c`(pagemap) 1 处 | inode 标记位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma` + kprobe `show_smap` | **完成**，偏差见 §10.4 |
+| `SPOOF_CMDLINE_OR_BOOTCONFIG` | `fs/proc/cmdline.c` + `fs/proc/bootconfig.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`） | **完成**（本内核无 bootconfig，见 §11.3） |
+| `OPEN_REDIRECT` | `fs/namei.c` 1 处 + `task_mmu.c` 1 处 | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix` | **完成**，偏差见 §11.2 |
+| `SUS_MAP` | `fs/proc/task_mmu.c` 3 处 + `fs/proc/base.c` 1 处 + `fs/proc/task_mmu.c`(pagemap) 1 处 | inode 标记位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma` + kprobe `show_smap` | **完成**，偏差见 §11.4 |
 
 **没有任何一项是「只报位不做事」**：`susfs_get_enabled_features()` 的每一项都由
-运行时可用性门控（`susfs_*_available()`）包裹，钩子装不上就不报。
-唯一未做的 `SUS_MOUNT` 连宏都不定义 → 上报里没有它。
+运行时可用性门控（`susfs_*_available()`）包裹，钩子装不上就不报。九个 feature 位
+全部有实现，`SUS_MOUNT` 因为打标钩子必须在模块加载期装上，额外用
+`mark_ok && hide_ok` 双门控（§11.5）。
 
 ## 6. 关键设计取舍
 
@@ -358,14 +359,14 @@ BakaSU 的 `ksu_resolve_symbol_for_functable_hook()`，它**优先返回桩**，
 | **3** | `SUS_PATH`（inode 位 + 12 choke point + 懒注册 + `susfs_extra_works` 循环解析） | app 进程 `ls`/`stat`/`open` 目标路径 → `ENOENT`，shell 仍可见 | **代码完成**，待装机验收 |
 | **4** | `OPEN_REDIRECT`（syscall 表钩 openat + kretprobe `prepend_path` + `show_vma_header_prefix`） | app 打开 target 拿到 redirected 内容；`maps`/`smaps` 显示 target 路径 | **代码完成**，待装机验收 |
 | **5** | `SUS_MAP`（inode 位 + `show_map_vma` + `show_smap`） | app 的 `maps`/`smaps` 里无该 so 路径 | **代码完成**，待装机验收 |
-| **6** | `SUS_MOUNT`（`show_vfsmnt`/`show_mountinfo`/`vfs_statfs` + kretprobe `alloc_vfsmnt` 改mnt_id） | `/proc/self/mounts`/`mountinfo` 无目标条目、mnt_id 连续 | **待做**（最复杂，见 §10.5） |
+| **6** | `SUS_MOUNT`（真 IDA 伪 id：kretprobe `alloc_vfsmnt`/`clone_mnt` 打标；`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 整行跳过；`__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦） | `/proc/self/mounts`/`mountinfo` 无目标条目、mnt_id 为伪 id 区间 | **代码完成**，待装机验收（见 §11.5） |
 
 **阶段 1 是唯一必须先做的**：验证分发链路（`SUSFS_MAGIC` →
 `ksu_handle_susfs_cmd` → `susfs_*`）是否贯通。若这一环不通，后续全部无意义。
 
-宏的纪律（§3.6）：**feature 串里出现的每一项都必须有实际实现**；未实现的
-`SUS_MOUNT` 连宏都不定义，userspace 打 `susfs add_sus_mount` 会自然拿到
-`ERR_CMD_NOT_SUPPORTED`(126)，这是真话而不是谎报。
+宏的纪律（§3.6）：**feature 串里出现的每一项都必须有实际实现**。九个 feature 位
+全部已实现；未实现的命令（`ENABLE_AVC_LOG_SPOOFING` 等本 ABI 之外的旧命令）
+userspace 打过去会自然拿到 `ERR_CMD_NOT_SUPPORTED`(126)，这是真话而不是谎报。
 
 ## 8. 风险与限制
 
@@ -481,17 +482,71 @@ inode 标记位 `AS_FLAGS_SUS_MAP` + 两个 kprobe（`show_map_vma` 整函数跳
 只做「计数」的面没覆盖（rollup 合计、pagemap present 位、numa_maps）。
 这是 kprobe-only 在这个内核上的诚实边界。
 
-### 11.5 `SUS_MOUNT` —— 待做
+### 11.5 `SUS_MOUNT` —— `susfs_mount.c`
 
-上游做法：`fs/namespace.c` 里 8 个位置 + `fs/proc_namespace.c` 1 个位置，
-核心是「KSU umount 之后把剩下的条目 `mnt_id` 重排成连续值」，让检测方看不出
-「中间少了一条」。这需要：
+上游是源码 patch，改 `fs/namespace.c`（`mnt_alloc_id()` 给 ksu 进程建的 mount
+发伪 id、`copy_mnt_ns()` 给克隆续 id）和 `fs/proc_namespace.c`（三个 `show_*`
+在非 ksu 域跳过伪 id 条目）+ `__lookup_mnt()`（带 `TIF_PROC_UMOUNTED` 的任务
+查不到伪 id 的 mount）。我们是模块，所以全部改成探针。
 
-* kprobe `show_vfsmnt` / `show_mountinfo`（真身，`.cfi_jt` 需解）跳过目标条目；
-* kretprobe `alloc_vfsmnt` 给新建 mount 分配伪造 id；
-* kretprobe `vfs_statfs` 兜 `f_type`/`f_fsid`；
-* 一张 `(dev, ino)` → 伪 id 的表 + 与 `TIF_PROC_UMOUNTED` 联动的门控。
+**打标（常驻，模块加载即生效，不可事后补标）**
 
-风险点：`mnt_group_id` 被 inline 无法伪造（文档化偏差）；`mnt_id` 从
-`idr_alloc` 分配，伪 id 与实际 id 必须全局一致，否则同一个 mount 在两次读取里
-id 不同 = 更明显的破绽。这条要在实现时先写清不变量再动手。
+| 探针 | 位置 | 作用 |
+|---|---|---|
+| kretprobe | `alloc_vfsmnt`（static，裸名即真身） | 唯一 `struct mount` 来源；`current` 为 ksu 域时把真 id 换成伪 id |
+| kretprobe | `clone_mnt`（static） | entry 记源 mount 的 id；源是伪 id 则克隆体也打标（app `unshare(CLONE_NEWNS)` 克隆隐藏 mount 时也要跟着隐藏） |
+
+伪 id 分配走内核对同一个 ida 的公开 API：
+
+```c
+fake = ida_alloc_range(&mnt_id_ida, DEFAULT_KSU_MNT_ID, 0x7fffffff, GFP_ATOMIC);
+WRITE_ONCE(mnt->mnt_id, fake);
+ida_free(&mnt_id_ida, real);
+```
+
+这样与内核的 `mnt_free_id()` 天然配平（卸载时释放的是伪 id），也不需要改
+`free_vfsmnt()`。`mnt_id_ida` 未导出 → `kallsyms_lookup_name` 解析（`d` 符号）。
+
+**为什么真 id 必须当场还给 ida**：不还，真 id 就永久泄漏（`mnt_free_id` 只释放
+mount 当前携带的那一个 id）；还了之后内核 `ida_alloc()` 从最低位重新分配，20 亿
+以下的空间永远取不到伪 id 区间，所以伪 id 释放后不会被当成真 id 用掉。
+
+**隐藏（`CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS` 打开后才装，关闭即卸）**
+
+| 探针 | 语义 |
+|---|---|
+| kprobe `show_vfsmnt` / `show_mountinfo` / `show_vfsstat`（三者都带 `$55b2…` kCFI 哈希，`susfs_unwrap_jump_table()` 解到真身） | `x0=0; pc=lr; return 1` —— 整行跳过，等价上游回调里的 `return 0` |
+| kretprobe `__lookup_mnt`（`T` 符号） | 任务带 `TIF_PROC_UMOUNTED` 且结果是伪 id mount 时把返回值置 NULL |
+
+`__lookup_mnt` 这一半是可选模块参数 `lookup_hook`（默认 1）。它是本 feature
+唯一落在**每次跨挂载点路径解析**上的陷阱，所以留了免重编的逃生阀；关掉只丢
+「被 umount 的 app 走不进 sus mount」，`/proc` 三个面的隐藏保留。
+
+**域判定**只用 `security_task_getsecid(current,&sid)` 与 init 期
+`security_secctx_to_secid("u:r:ksu:s0")` 缓存的 sid 比较（纯字段读，零睡眠；
+BakaSU 的 `is_ksu_domain()` 回退路径会拼 secctx 字符串，不能在探针上下文用）。
+
+**`struct mount` 布局**直接编译内核自己的 `<fs/mount.h>`（`real_mount()` +
+`mnt_id`），并在 init 期双字段校验：`real_mount(current->fs->root.mnt)->mnt_ns
+== current->nsproxy->mnt_ns` 且 `mnt_id` 落在真 id 区间（`fs->pwd.mnt` 兜底）。
+不符则整个 feature 关闭（`available()=false`，不上报）。
+
+**可用性门控**：`susfs_mount_available() = mark_ok && hide_ok`，其中 `hide_ok`
+在 init 期对四个隐藏探针做「试注册 + 立即注销」得出（装不上就整体关，绝不
+上报一个按了没反应的开关）；打标两个探针是真注册，失败即回滚并整体关闭。
+
+**已知偏差**（相对上游，均不弱化隐藏强度）
+
+1. `mnt_group_id` 不虚拟化（`group_ida` 是另一套 ida，伪化会牵连
+   `propagate_mount_*` 的 peer group 语义）→ peer group 关系仍可见；
+2. `__lookup_mnt` 返回 NULL 而不是「下一个合法 mount」——8 个调用点
+   （`fs/namei.c`×2、`fs/namespace.c`×2、`fs/pnode.c`×4）逐个核对全部 NULL-safe；
+3. `copy_mnt_ns()` 不复用旧 id，每个克隆都新取伪 id（上游会续用同一个）；
+   效果等价（都是伪 id 区间），只是浪费 id；
+4. 打标永不停止（上游在 `/sdcard/Android/data` 解密后会停）——我们的行为是
+   「更久地隐藏」，不是更少；
+5. **`kernel:s0` 建的 mount 不打标**：restore 脚本从该域建 `/product/bin`
+   overlay，打标会让 shell 域里的 `su` 解析回原厂只读目录。这是「只对 ksu 域
+   产生的 mount 打标」的直接结果，不是特例代码；
+6. 伪 id 从区间底部顺序分配（`ida_alloc_range`），上游是 `ida_alloc_min` 从
+   低位先取——两者都在同一区间内唯一，不产生可观测差异。
