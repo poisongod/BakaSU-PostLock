@@ -4715,13 +4715,13 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 | feature | 文件 | 挂点（真身，非 `.cfi_jt` 桩） |
 |---|---|---|
 | `ENABLE_LOG` | `susfs.c` | `bool` + `READ_ONCE/WRITE_ONCE` |
-| `SUS_KSTAT` | `susfs_kstat.c` | kretprobe `vfs_getattr_nosec`、kprobe `show_vma_header_prefix`、kretprobe `vfs_statfs`、kprobe `seq_printf` |
+| `SUS_KSTAT` | `susfs_kstat.c` | kretprobe `vfs_getattr_nosec`、kprobe `show_vma_header_prefix`、kretprobe `vfs_statfs`、kprobe `seq_printf`（**本内核 `fs/proc/fd.c` 无 `ino:` 行**，mnt_id 由 SUS_MOUNT 伪 id 覆盖，故无 fdinfo 挂点） |
 | `SPOOF_UNAME` | `susfs_uname.c` | syscall 表钩 `__NR_uname`(160)：先调 orig → `copy_from_user` 回读 → 覆写 `release`/`version` |
 | `HIDE_KSU_SUSFS_SYMBOLS` | `susfs_kallsyms.c` | kprobe `s_show`（裸名 static）：命中前缀 → `x0=0; pc=lr; return 1` |
 | `SPOOF_CMDLINE_OR_BOOTCONFIG` | `susfs_cmdline.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`，`return 1`） |
 | `SUS_PATH` | `susfs_path.c` | inode 位 `AS_FLAGS_SUS_PATH` + 12 钩：`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`do_faccessat`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`(+ 复用 stat 钩) |
 | `OPEN_REDIRECT` | `susfs_open_redirect.c` | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix`（三者全 core） |
-| `SUS_MAP` | `susfs_map.c` | inode 位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma`（整函数跳过）+ kprobe `show_smap`（`x0=0; pc=lr`） |
+| `SUS_MAP` | `susfs_map.c` | inode 位 `AS_FLAGS_SUS_MAP` + **6 挂点**：kprobe `show_map_vma`（整函数跳过）/ `show_smap`（`x0=0; pc=lr`）/ `walk_page_vma`（`smaps_walk_ops`·`smaps_shmem_walk_ops` → smaps_rollup）/ `walk_page_range`（`pagemap_ops` → pagemap）/ `__access_remote_vm`（`/proc/pid/mem`、ptrace）+ kretprobe `shmem_swap_usage`（rollup 的 Swap）。刻意缺口 = `map_files` 与 `numa_maps`（详见 `docs/susfs-lkm-feasibility.md` §11.4） |
 | `SUS_MOUNT` | `susfs_mount.c` | kretprobe `alloc_vfsmnt`/`clone_mnt`（ksu 域建 mount → 真 id 换伪 id）+ kprobe `show_vfsmnt`/`show_mountinfo`/`show_vfsstat`（三者带 `$55b2…` kCFI 哈希，需 unwrap）+ kretprobe `__lookup_mnt`（按 `TIF_PROC_UMOUNTED` 拦，模块参数 `lookup_hook` 可关） |
 
 **kprobe 上下文的硬约束（曾误判，血泪）**：arm64 `kprobe_handler()` 在 BRK
@@ -4745,16 +4745,46 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
-**ko 产物状态（2026-11-02 收尾）**：源码/产物 = `e1d6d977`（**九个 feature 全部
-实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0、9 个
-`CONFIG_KSU_SUSFS_*` 串各恰好一次）。三端已同步并 commit：
-`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
+**ko 产物状态（2026-11-02 SUS_MAP 全挂点轮）**：源码/产物 = **`6683047d`**
+（**九个 feature 全部实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0、
+9 个 `CONFIG_KSU_SUSFS_*` 串各恰好一次、7 个新挂点名各 1 次）。三端已同步并
+commit：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
 `PostLock-Boot/.../assets/postlock/kernelsu.ko` = 同 sha；
-`PAYLOAD_VERSION` = `v20-susmount-20261102`（不 bump 则设备 staging 不刷新）。
-`../BakaSU` fork main = **`a71a957e`**（commit-tree 流程推送，本地 HEAD 仍
-`5b76b884`/rev-list 4520+2=**4522**、status 32 行不变；远端树与工作树 blob 逐一
-比对一致）。**全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩
-错设备 `401e909a`（红线勿动）。
+`PAYLOAD_VERSION` = `v22-susfs-map6-20261102`（不 bump 则设备 staging 不刷新）。
+版本串仍是 `v4.2.0-rc3-5b76b884-dirty@BakaSU` / KSU_VERSION 35222（与 `e1d6d977`
+逐字节相同，无漂移）。
+`../BakaSU` fork main = **`69ad8abf`**（commit-tree 流程推送，本地 HEAD 仍
+`5b76b884`/rev-list **4522**、status 32 行不变；远端树 615 条 blob 与工作树逐一
+比对一致，两个 `uapi` 符号链接 blob 与 HEAD 同值）。
+**全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩错设备
+`401e909a`（红线勿动）。
+
+> **只改注释也会换 sha**：本轮唯一代码改动是 `susfs_map.c`，之后仅编辑了
+> `susfs.c`/`susfs_map.c` 的注释，重编仍得新 sha（`ab5e0e06` → `6683047d`）
+> ——`__LINE__` 与内联行号类信息会进二进制，别拿「只改注释」推断产物不变，
+> 一律重编 + 重跑 `tools/check_ko_und.sh` + 三端 sha1 比对。
+
+**审计轮修复（5a579fc6 vs e1d6d977，全为语义/一致性缺陷，无新增 feature）**：
+
+1. **`susfs_path.c` 删除「inode 属主 == 当前 uid 就不隐藏」**。上游
+   `susfs_is_inode_sus_path()` 无条件按 bit 判定，且本文件 readdir 侧的
+   `susfs_path_match_dirent()`（按 ino/name/d_type 匹配）本来就没有该检查 →
+   原逻辑会让「`ls` 看不到（readdir 隐藏）但 `cat` 打得开（open 不隐藏）」，
+   并直接废掉最常见用法（藏 app 自己在 `/sdcard/Android/data/<pkg>` 下建的
+   文件）。**真 bug，已删**。
+2. **`susfs_kstat.c` add 侧重复检测改全表查找**：原
+   `hash_for_each_possible(..., new_entry->target_ino)` 只在「新 ino 所在桶」
+   里找同名 → 文件被「重写+rename」替换过（ino 变化）时旧节点永远留在旧桶，
+   再也找不到（既不替换也不释放）。改 `hash_for_each` 按 `target_pathname`
+   全表匹配，与 `susfs_update_sus_kstat` 一致。
+3. **`susfs.c` 头注释状态表**从「全部 TODO」改为真实状态（九项 DONE +
+   `avc_log_spoofing` NOT IMPLEMENTED），与 `susfs_get_enabled_features()`
+   实际输出逐项对应。
+4. **`susfs_probe.c` / `susfs_path.c` 注释订正**：原文称「resolver 优先返回
+   `.cfi_jt` 桩」，与实现不符（USE_KCFI=1 时变体解析按地址升序取第一个 =
+   函数体，桩永远更高）→ 改为「两种构建下都不允许拿到桩，故一律 unwrap」。
+   `susfs_path_hooks[]` 的「the two `core` entries」也改为明确的
+   「`may_open` + `vfs_getattr_nosec` kretprobe」。
 
 **SUS_MOUNT 门控原子性（本轮修）**：`hide_ok` 原在打标钩子注册**之前**置 true，
 存在「`available()` 已真但 `alloc_vfsmnt`/`clone_mnt` 还没装」的窗口（此时

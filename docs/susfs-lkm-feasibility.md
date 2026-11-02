@@ -240,13 +240,13 @@ BakaSU 的 kernel_umount，`TRY_UMOUNT` 由 userspace 发 `umount2` 完成）。
 |---|---|---|---|
 | `SUS_PATH` | `fs/namei.c` 13 处 + `fs/readdir.c` 1 处 | inode 标记位 `AS_FLAGS_SUS_PATH` + 12 个 choke-point kprobe（`may_open`/`may_delete`/`vfs_mkdir`/`vfs_mknod`/`vfs_symlink`/`vfs_link`/`notify_change`/`inode_permission`(instruction-level)/`filldir64`/`filldir`/`compat_filldir`/`vfs_getattr_nosec` 系）| **完成**，偏差见 §11.1 |
 | `SUS_MOUNT` | `fs/namespace.c` 8 处 + `fs/proc_namespace.c` 1 处 | 真 IDA 伪 id（kretprobe `alloc_vfsmnt`/`clone_mnt` 打标）+ 三个 `show_*` 整行跳过 + `__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦 | **完成**，偏差见 §11.5 |
-| `SUS_KSTAT` | `fs/stat.c` 1 处（+ `task_mmu.c` 2、`fs/statfs.c` 1、`fs/notify/fdinfo.c` 1） | kretprobe `vfs_getattr_nosec` + kprobe `show_vma_header_prefix` + kretprobe `vfs_statfs` + kprobe `seq_printf` | **完成** |
+| `SUS_KSTAT` | `fs/stat.c` 1 处（+ `task_mmu.c` 2、`fs/statfs.c` 1、`fs/notify/fdinfo.c` 1） | kretprobe `vfs_getattr_nosec` + kprobe `show_vma_header_prefix` + kretprobe `vfs_statfs` + kprobe `seq_printf`（`fs/proc/fd.c` 无 `ino:` 行，mnt_id 由 SUS_MOUNT 伪 id 覆盖，见 §11.6） | **完成** |
 | `SPOOF_UNAME` | `fs/utsname.c` 1 处 | syscall 表钩 `__NR_uname`（先调 orig 再 `copy_from_user` 回读覆写） | **完成** |
 | `ENABLE_LOG` | `fs/susfs.c` 自身 | `bool` + `READ_ONCE/WRITE_ONCE` | **完成**（阶段 1 已验） |
 | `HIDE_KSU_SUSFS_SYMBOLS` | `kernel/kallsyms.c` 1 处 | kprobe `s_show` 真身，命中前缀即整行吞掉 | **完成** |
 | `SPOOF_CMDLINE_OR_BOOTCONFIG` | `fs/proc/cmdline.c` + `fs/proc/bootconfig.c` | kprobe `cmdline_proc_show` 函数替换（`regs->pc`） | **完成**（本内核无 bootconfig，见 §11.3） |
 | `OPEN_REDIRECT` | `fs/namei.c` 1 处 + `task_mmu.c` 1 处 | syscall 表钩 `__NR_openat` + kretprobe `prepend_path` + kprobe `show_vma_header_prefix` | **完成**，偏差见 §11.2 |
-| `SUS_MAP` | `fs/proc/task_mmu.c` 3 处 + `fs/proc/base.c` 1 处 + `fs/proc/task_mmu.c`(pagemap) 1 处 | inode 标记位 `AS_FLAGS_SUS_MAP` + kprobe `show_map_vma` + kprobe `show_smap` | **完成**，偏差见 §11.4 |
+| `SUS_MAP` | `fs/proc/task_mmu.c` 3 处 + `fs/proc/base.c` 1 处 + `fs/proc/task_mmu.c`(pagemap) 1 处 | inode 标记位 `AS_FLAGS_SUS_MAP` + 6 个挂点：kprobe `show_map_vma`（整函数跳过）/ `show_smap`（返回 0）/ `walk_page_vma`（`smaps_walk_ops`·`smaps_shmem_walk_ops`，覆盖 smaps_rollup）/ `walk_page_range`（`pagemap_ops`，覆盖 pagemap）/ `__access_remote_vm`（`/proc/pid/mem`、ptrace）+ kretprobe `shmem_swap_usage`（rollup 的 Swap） | **完成**，偏差见 §11.4 |
 
 **没有任何一项是「只报位不做事」**：`susfs_get_enabled_features()` 的每一项都由
 运行时可用性门控（`susfs_*_available()`）包裹，钩子装不上就不报。九个 feature 位
@@ -358,7 +358,7 @@ BakaSU 的 `ksu_resolve_symbol_for_functable_hook()`，它**优先返回桩**，
 | **2** | `SUS_KSTAT` / `SPOOF_UNAME` / `HIDE_KSU_SUSFS_SYMBOLS` / `SPOOF_CMDLINE` | 各命令 `ret: 0` + 效果可见 | **代码完成**，待装机验收 |
 | **3** | `SUS_PATH`（inode 位 + 12 choke point + 懒注册 + `susfs_extra_works` 循环解析） | app 进程 `ls`/`stat`/`open` 目标路径 → `ENOENT`，shell 仍可见 | **代码完成**，待装机验收 |
 | **4** | `OPEN_REDIRECT`（syscall 表钩 openat + kretprobe `prepend_path` + `show_vma_header_prefix`） | app 打开 target 拿到 redirected 内容；`maps`/`smaps` 显示 target 路径 | **代码完成**，待装机验收 |
-| **5** | `SUS_MAP`（inode 位 + `show_map_vma` + `show_smap`） | app 的 `maps`/`smaps` 里无该 so 路径 | **代码完成**，待装机验收 |
+| **5** | `SUS_MAP`（inode 位 + 6 挂点：`show_map_vma`/`show_smap`/`walk_page_vma`(rollup)/`walk_page_range`(pagemap)/`__access_remote_vm`(/proc/pid/mem) + kretprobe `shmem_swap_usage`） | app 的 `maps`/`smaps`/`smaps_rollup` 里无该 so 路径、rollup 计数与 Swap 不涨、`pagemap` 无 present 位、`/proc/pid/mem` 读 0 字节 | **代码完成**，待装机验收（缺口见 §11.4） |
 | **6** | `SUS_MOUNT`（真 IDA 伪 id：kretprobe `alloc_vfsmnt`/`clone_mnt` 打标；`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 整行跳过；`__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦） | `/proc/self/mounts`/`mountinfo` 无目标条目、mnt_id 为伪 id 区间 | **代码完成**，待装机验收（见 §11.5） |
 
 **阶段 1 是唯一必须先做的**：验证分发链路（`SUSFS_MAGIC` →
@@ -373,7 +373,7 @@ userspace 打过去会自然拿到 `ERR_CMD_NOT_SUPPORTED`(126)，这是真话�
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | CFI 哈希后缀随内核升级变化 | kprobe 挂点解析失败 | `susfs_lookup_symbol()` 前缀匹配 + `susfs_unwrap_jump_table()` 解桩；失败即 `available()=false`，不报该 feature |
-| kprobe 热路径开销 | `may_open`/`filldir64`/`show_map_vma` 每次调用都触发 | 每个 pre_handler 首行是 `atomic_read()` / `test_bit()` 早退；kprobe 自身固定开销需实测 |
+| kprobe 热路径开销 | `may_open`/`filldir64`/`show_map_vma` 每次调用都触发；`walk_page_range` 还会被 `madvise`/`mprotect`/`memcg` 调用 | 每个 pre_handler 首行是 `atomic_read()` / `test_bit()` / ops 指针比较，非目标立即返回 0；kprobe 自身固定开销需实测 |
 | 表项永不 free | 反复 add 会累积内存 | 与上游一致（上游也不释放）；add 重复路径则原地刷新 |
 | 上游版本漂移 | 命令码/结构体不匹配 | 锁定 v2.3.0（`gki-android12-5.10` 分支），管理器侧已有对应 UI |
 | `susfs_start_sdcard_monitor_fn` 在 late 模式下被跳过 | sdcard 监控不启动 | SUS_PATH 的 loop 项改由 `susfs_extra_works`（`TIF_PROC_UMOUNTED` 触发）周期重解析 |
@@ -472,15 +472,63 @@ kprobe `cmdline_proc_show`（裸名 static）**函数替换**：`regs->pc = 替�
 
 ### 11.4 `SUS_MAP` —— `susfs_map.c`
 
-inode 标记位 `AS_FLAGS_SUS_MAP` + 两个 kprobe（`show_map_vma` 整函数跳过、
-`show_smap` 返回 0）。上游一共 5 个挂点，另外 3 个在本内核**无法按 VMA 过滤**
-（详见文件头）：`show_smaps_rollup`（`smap_gather_stats` 已内联，无符号）、
-`/proc/<pid>/map_files`（两趟循环先收进 genradix，丢弃单条只能整目录截断）、
-`/proc/<pid>/pagemap`（按页区间遍历，非 VMA）。
+inode 标记位 `AS_FLAGS_SUS_MAP` + 6 个挂点。上游 5 处源码站点全部有对应实现：
 
-结论：**所有会「指名」隐藏映射的面都已覆盖**（maps / smaps 每行）；
-只做「计数」的面没覆盖（rollup 合计、pagemap present 位、numa_maps）。
-这是 kprobe-only 在这个内核上的诚实边界。
+| 上游站点 | 我们的挂点 | 语义 |
+|---|---|---|
+| `show_map_vma()` 顶部 `return` | kprobe `show_map_vma` | `pc=lr; return 1`，整行（含 smaps 的头行）消失 |
+| `show_smap()` 顶部 `return 0` | kprobe `show_smap`（带 `$` 哈希，已解桩） | `x0=0; pc=lr` |
+| `show_smaps_rollup()` 里两处跳过 `smap_gather_stats()` | kprobe `walk_page_vma`，按 `ops == smaps_walk_ops \|\| smaps_shmem_walk_ops` 过滤 | 返回 0，`mss` 一分不加；`show_numa_ops` 等其它 walk 表不受影响 |
+| `pagemap_read()` 的 `goto bypass_orig_flow` | kprobe `walk_page_range`，按 `ops == pagemap_ops` 过滤 + `susfs_map_vma_at(mm,start)` | 返回 0 ⇒ `pm.pos` 保持 0 ⇒ `pagemap_read()` 拷出 `PM_ENTRY_BYTES*pm.pos == 0` 字节，与上游 skip 该 chunk 逐字节等价 |
+| `__access_remote_vm()` 循环内 `break` | kprobe `__access_remote_vm`（`x1=mm`、`x2=addr`） | 返回 0 = 「一个字节都没搬」，等价上游 break 后 `return buf-old_buf` |
+
+另外补一个 **kretprobe `shmem_swap_usage`**：`smap_gather_stats()` 对 shmem 映射
+先取 `shmem_swap_usage(vma)` 累加进 `mss->swap`，再（可能）走
+`smaps_shmem_walk_ops` 那条分支。跳过 walk 只挡掉第二条分支的 swap 计入，第一条
+的 `mss->swap +=` 仍会发生，所以 hidden VMA 的返回值在这里被清零。
+
+**为什么 `smap_gather_stats` 没有直接挂点**：本内核里它被 inline 掉、kallsyms 无
+该符号；但它对外的两个副作用（`walk_page_vma`、`shmem_swap_usage`）都是真符号，
+两个都拦掉后 `mss` 一分不加，与「整段不调用」等价。
+
+**`__access_remote_vm` 每调用只判一次 vma**（上游是在每页循环里再判）：所有调用方
+（`mem_rw()` 的 `/proc/pid/mem`、`access_process_vm()` 的 ptrace、coredump 读取、
+`/proc/pid/cmdline|environ`）单次最多传一页，而一页不会跨两个 VMA，故两者等价。
+
+**all-or-nothing**：`susfs_map_core_ok` 只在 init 期 6 个挂点全部 trial-register
+成功、且 3 个 walk 表数据符号（`smaps_walk_ops`/`smaps_shmem_walk_ops`/
+`pagemap_ops`）全部解析成功时置真；首次 `ADD_SUS_MAP` 才真正 arm，任一步失败即
+逆序回滚并 `available()=false` + `err=-EOPNOTSUPP`，绝不「按了一半的开关」。
+
+**刻意缺口（2 处，均有理由，不是遗漏）**
+
+1. `/proc/<pid>/map_files`：`proc_map_files_readdir()` 两趟 —— 先把候选收进
+   genradix，再遍历输出。单条丢弃只能靠 `genradix_ptr_alloc`/`map_files_get_link`
+   （二者在本内核都不在 kallsyms、也不导出）或者把整个目录截断；而该目录的条目名
+   只是 `start-end` 十六进制串（无 inode/路径），跳过反而引入「目录里有空洞」这种
+   更响的异常。上游在这里跳过的也只是这些地址串。
+2. `/proc/<pid>/numa_maps`：走 `walk_page_vma(vma, &show_numa_ops, ...)`，已被
+   ops 过滤排除。它只报 NUMA 统计，不报路径/PFN。
+
+`/proc/pid/maps`、`/proc/pid/smaps`、`smaps_rollup`、`pagemap`、`/proc/pid/mem`、
+ptrace 六个面全部覆盖 —— 凡能「指名」或「按页反查」隐藏映射的路径都已拦住。
+
+### 11.6 `SUS_KSTAT` —— `susfs_kstat.c`
+
+上游 4 个站点全部有对应探针：`vfs_getattr_nosec`（kretprobe，覆盖
+`generic_fillattr` → `stat`/`fstatat`/`fstat`）、`show_vma_header_prefix`
+（maps/smaps 行首的 inode 号）、`vfs_statfs`（`statfs`/`fstatfs`）、
+`seq_printf`（`inotify_fdinfo` 里的 `ino:` 行，按 `inotify_fdinfo` 内首条
+`bl seq_printf` 的返回地址精确过滤）。
+
+**本内核没有 `/proc/pid/fdinfo` 的 ino 面**：`fs/proc/fd.c:seq_show()` 只打印
+`pos / flags / mnt_id`，没有 `ino:` 行（`5.10` 才有）。所以上游那份
+`fs/proc/fd.c` 补丁在这里无对应物；而 `mnt_id` 已经由 SUS_MOUNT 的伪 id 天然
+覆盖，不需要 SUS_KSTAT 再插手。这条差异已写进 `susfs_kstat.c` 头注释。
+
+`inotify_fdinfo` 属可选增强：`seq_printf`/`inotify_fdinfo` 任一解析失败只关掉
+这一项（`SUS_KSTAT hooks registered` 之前会打 `inotify spoof disabled`），
+其余三个站点照常工作 —— 与上游「四个站点互相独立」的语义一致。
 
 ### 11.5 `SUS_MOUNT` —— `susfs_mount.c`
 
