@@ -4745,21 +4745,24 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
-**ko 产物状态（2026-11-03 SUS_KSTAT 诚实上报轮）**：产物 sha1 =
-**`02fba6b036fef9da7e28e92016e56148e478c174`**（**九个 feature 全部实现**、编译零
-warning、`tools/check_ko_und.sh` → `OK`（170 UND 全在设备 `__ksymtab`）、
+**ko 产物状态（2026-11-03 静态审计收尾轮）**：产物 sha1 =
+**`185e7dfb4caf2888af5eb7f64bb7d113bc91589e`**（**九个 feature 全部实现**、编译零
+warning、`tools/check_ko_und.sh` → `OK`（171 UND 全在设备 `__ksymtab`）、
 `U .*susfs_` = 0、确定性构建可复现同 sha）。
 
-本轮改动（只关诚实上报，不加 feature）：`susfs_kstat` 原来「钩子装不上也照样
-`available()=true`」，等于向管理器谎报。现改为三层：`susfs_kstat_core_ok`（符号
-解析）+ `susfs_kstat_available()`（core + 已注册）+ `susfs_kstat_trial()`
-（`maxactive=8` 试注册 `vfs_getattr_nosec` 成功才置 true，随即注销）——注册失败
-即降级、`susfs_get_enabled_features()` 不再上报 `CONFIG_KSU_SUSFS_SUS_KSTAT`。
-至此 **9 项全部有 `available()` 门控**，与「未实现/装不上就不上报」的真协议一致。
+相对上一版 `02fba6b0` 的**唯一行为改动 = SUS_MAP 的 `__access_remote_vm` 挂点补
+非阻塞持锁**：该探针在函数入口（`down_read_killable(&mm->mmap_sem)` 之前几个
+指令），上游是在拷贝循环里持锁隐藏；直接遍历 `mm->mmap` 会撞并发 `munmap` 释放
+中的 VMA → 改为 `down_read_trylock(&mm->mmap_sem)` / `up_read()`（kprobe 上下文
+不允许睡眠，必须 trylock 形式），抢不到锁就这一次不隐藏（如实不隐藏，不谎报）。
+其余五个挂点（`show_map_vma`/`show_smap`/`walk_page_vma`/`walk_page_range`/
+`shmem_swap_usage`）已逐个确认调用方持 `mmap_sem` 才进入，不需要自锁。另外新增
+`susfs_map_rules_active()`（`core_ok && atomic_read(flagged)>0`）供三个"入口即
+跳过"的挂点做早退，避免无规则时白跑。
 
 三端同 sha 已同步：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
 `PostLock-Boot/.../assets/postlock/kernelsu.ko`；
-`PAYLOAD_VERSION` = `v24-susfs-kstat-honest-20261103`（不 bump 则设备 staging 不刷新）。
+`PAYLOAD_VERSION` = `v25-susfs-map-lock-20261103`（不 bump 则设备 staging 不刷新）。
 版本串仍是 `v4.2.0-rc3-5b76b884-dirty@BakaSU` / KSU_VERSION 35222（`../BakaSU`
 HEAD/rev-list 未动，无漂移）。
 **全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩错设备
