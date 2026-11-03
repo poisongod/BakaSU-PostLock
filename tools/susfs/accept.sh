@@ -12,10 +12,12 @@
 # 看到的永远是未隐藏的世界（见 platform/SusfsSelfTest.kt 头注释）。
 #
 # 两个刻意的设计选择（踩过的坑）：
-#   1. SUS_PATH 的标记目标是 /system/bin/toybox，标记生效后 **shell(2000) 域
-#      的所有 toybox 命令都会消失**。因此本脚本对设备的一切读写一律走 root
-#      （root 是 toybox 的属主，SUS_PATH 的 is_i_uid_not_allowed() 不隐藏给属主），
-#      shell 域只用来发广播 / am start。
+#   1. 隐藏只对「app 进程」生效：所有路径/映射/挂载隐藏都门控在
+#      susfs_is_current_proc_umounted_app() = TIF_PROC_UMOUNTED && uid>=10000，
+#      而 susfs_path_inode_hidden() 对属主另有一条豁免（current_uid == i_uid）。
+#      所以标记 /system/bin/toybox 之后，shell(2000) 与 root(0) 都不受影响，
+#      本脚本仍然一律走 root（RR）读设备——不是因为 shell 会被隐藏，而是因为
+#      root 上下文才能跑 ksud susfs 命令（非 root 上下文根本进不到内核）。
 #   2. dmesg 判据按「标记前后计数增量」比对，不用「出现即通过」——重复命令
 #      （add_sus_kstat 与 statically 共用标签）也能分辨。
 #
@@ -295,17 +297,37 @@ printf 'boot: %s\n' "$BOOT"
 # app 进程若早于模块加载就已存在，就永远没有这个标记 —— 验收会假失败。
 # 所以先把旧进程杀掉，让下面第一次广播冷启动出一个带标记的新进程。
 # 注意用 kill -9 而不是 am force-stop：后者会把包置 stopped，害死 BOOT_COMPLETED。
-OLD_PID=$(RR "pidof $PKG" | tr -d ' \r\n')
+# 进程名要按 comm 的 15 字符上限截断：com.postlock.boot(17) 在 /proc/pid/stat 里
+# 是 com.postlock.bo，用全名 pidof 永远查不到（toybox pidof 比的是 comm）。
+APP_COMM=${PKG:0:15}
+# pidof 输出可能是多行（多进程）：把换行换成空格，交给 kill 一次性处理；
+# 全用 -d 会把两个 pid 粘成一个不存在的数字。
+OLD_PID=$(RR "pidof $PKG" | tr '\n' ' ')
+OLD_PID=$(printf '%s' "$OLD_PID" | tr -s ' ')
+[ -n "${OLD_PID// /}" ] || OLD_PID=$(RR "pidof $APP_COMM" | tr '\n' ' ')
+OLD_PID=$(printf '%s' "$OLD_PID" | tr -s ' ' | sed 's/^ *//;s/ *$//')
 if [ -n "$OLD_PID" ]; then
 	RR "kill -9 $OLD_PID" >/dev/null 2>&1
 	sleep 1
 	printf 'killed stale app pid=%s（等广播冷启动带标记的新进程）\n' "$OLD_PID"
+else
+	printf 'no stale app process（首次广播将冷启动一个新进程）\n'
 fi
 
 # ---- 0. 目标确认（找不到就早退，别在设备上留半套标记） ----
 for p in "$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_REDIR" "$T_REDIR_SRC" "$C_PATH"; do
 	file_exists "$p" || die "目标不存在：$p"
 done
+
+# 对照项必须与被标记目标不是同一个 inode：/system/bin 下一大批文件名都是
+# toybox 的符号链接，一旦 sh 也是它的链接，标记 toybox 会连带隐藏对照，
+# 判据就自相矛盾（会假 FAIL）。宁可在打标之前 die，也不要在设备上留半套标记。
+T_PATH_INO=$(RR "stat -c %i $T_PATH" | tr -d ' \r\n')
+C_PATH_INO=$(RR "stat -c %i $C_PATH" | tr -d ' \r\n')
+if [ -z "$T_PATH_INO" ] || [ "$T_PATH_INO" = "$C_PATH_INO" ]; then
+	die "对照 $C_PATH 与目标 $T_PATH 同 inode（$T_PATH_INO）：对照无效，先换一个非 toybox 的普通文件"
+fi
+printf 'control inode: %s=%s  %s=%s\n' "$T_PATH" "$T_PATH_INO" "$C_PATH" "$C_PATH_INO"
 
 T_MAP=""
 for p in $MAP_CANDIDATES; do
@@ -335,7 +357,7 @@ mounted "$SUS_DST" || die "bind mount 失败：$SUS_SRC -> $SUS_DST"
 # 都由 ksu 域发起，同样会被 alloc_vfsmnt 钩子打上伪 id。
 NS_PIDS=""
 for n in zygote64 zygote usap64 usap32; do
-	for pid in $(RR "pidof $n" | tr -d ' \r\n'); do
+	for pid in $(RR "pidof $n" | tr '\n' ' '); do
 		RR "nsenter -t $pid -m mount --bind $SUS_SRC $SUS_DST" >/dev/null 2>&1
 		v=$(RR "nsenter -t $pid -m grep -c $SUS_DST /proc/self/mounts" |
 			tr -d ' \r\n')
@@ -497,7 +519,8 @@ if [ "$SELFTEST_OK" = 1 ]; then
 		"$(kv cmdline "$OUT/selftest_before.txt")" "$FAKE_CMDLINE_TXT"
 	# 本内核 CONFIG_BOOT_CONFIG 未开、没有 /proc/bootconfig，所以
 	# SPOOF_CMDLINE_OR_BOOTCONFIG 只对 /proc/cmdline 可观测（已文档化）。
-	cmp_eq "SPOOF bootconfig(本内核无此项)" bootconfig 0 0
+	# 这一半是「本环境无法观测」，不是通过也不是失败 —— 记 INFO。
+	info "SPOOF bootconfig" "本内核无 /proc/bootconfig（CONFIG_BOOT_CONFIG=n），该半边不可观测"
 
 	if [ "$(kv kallsyms.ok "$OUT/selftest_after.txt")" != "1" ]; then
 		res FAIL "HIDE_KSU_SUSFS_SYMBOLS" \
@@ -547,9 +570,20 @@ printf '%s\n' "$BOOT" >"$MARKED_FILE"
 	printf 'device : %s\n' "$(RR 'getprop ro.product.model')"
 	printf 'kernel : %s\n' "$(RR 'uname -r')"
 	printf 'driver : %s\n' "$(RR 'cat /sys/module/kernelsu/version 2>/dev/null')"
+	printf 'app    : uid=%s ctx=%s\n' \
+		"$(kv uid "$OUT/selftest_after.txt")" \
+		"$(kv context "$OUT/selftest_after.txt")"
 	printf 'PASS=%d FAIL=%d\n' "$PASS" "$FAIL"
 	printf '注意：SUS_PATH / SUS_MAP / SUS_KSTAT / OPEN_REDIRECT / CMDLINE 的标记\n'
 	printf '      无法撤销，必须重启设备才能回到干净状态。\n'
+	if [ "$FAIL" != 0 ]; then
+		printf '\n— 诊断提示（全部隐藏项都失败时先看这里）—\n'
+		printf '隐藏只对带 TIF_PROC_UMOUNTED 的 app 进程生效，它要求：\n'
+		printf '  1) 进程是模块加载之后由 zygote fork 的（脚本已 kill 旧进程重来）；\n'
+		printf '  2) 该 uid 没有 su 授权（allow_su=1 的 profile 会让\n'
+		printf '     ksu_uid_should_umount() 返回 false，标志就不打）。\n'
+		printf '管理器「超级用户」里若能看到 %s，先撤销授权再重跑。\n' "$PKG"
+	fi
 } | tee -a "$OUT/summary.txt"
 
 [ "$FAIL" = 0 ] || exit 1
