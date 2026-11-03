@@ -1,0 +1,556 @@
+#!/bin/bash
+# SuSFS v2.3.0 (LKM edition) 九项功能验收
+#
+# 两级判据
+#   Level 1 = 命令受理：内核侧 dmesg 出现 "CMD_SUSFS_xxx -> ret: 0"
+#             （dmesg 是唯一权威：shell 域直接跑 ksud 根本进不到内核）
+#   Level 2 = 语义生效：真实 app 进程里「标记前 / 标记后」自检对照，
+#             唯一变量是内核标记命令，不靠任何猜测
+#
+# 为什么语义验收只能在 app 进程里做：SUSFS 的隐藏判定要求进程带
+# TIF_PROC_UMOUNTED（只有 zygote fork 出来的 app 才有）。shell / run-as / su
+# 看到的永远是未隐藏的世界（见 platform/SusfsSelfTest.kt 头注释）。
+#
+# 两个刻意的设计选择（踩过的坑）：
+#   1. SUS_PATH 的标记目标是 /system/bin/toybox，标记生效后 **shell(2000) 域
+#      的所有 toybox 命令都会消失**。因此本脚本对设备的一切读写一律走 root
+#      （root 是 toybox 的属主，SUS_PATH 的 is_i_uid_not_allowed() 不隐藏给属主），
+#      shell 域只用来发广播 / am start。
+#   2. dmesg 判据按「标记前后计数增量」比对，不用「出现即通过」——重复命令
+#      （add_sus_kstat 与 statically 共用标签）也能分辨。
+#
+# 本 ABI 没有 DEL_* 命令：SUS_PATH / SUS_MAP / SUS_KSTAT / OPEN_REDIRECT /
+# CMDLINE 的标记只能靠重启清除。脚本末尾只复原 uname、mount 隐藏开关与挂载。
+#
+# 用法：./accept.sh</dev/null   （验收完必须重启；同 boot 不允许重跑）
+
+set -u
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+AB="${AB:-$HERE/adb1.sh}"
+OUT="${OUT:-/tmp/opencode/susfs/out}"
+PKG="${PKG:-com.postlock.boot}"
+
+SUS_SRC=/data/local/tmp/sus_src
+SUS_DST=/data/local/tmp/sus_dst
+FAKE_CMDLINE=/data/local/tmp/sus_fake_cmdline
+
+T_PATH=/system/bin/toybox                  # SUS_PATH
+T_PATH_LOOP=/system/etc/prop.default       # SUS_PATH_LOOP
+T_KSTAT=/system/etc/hosts                  # SUS_KSTAT（普通文件，非符号链接）
+T_REDIR=/system/etc/security/otacerts.zip  # OPEN_REDIRECT target
+T_REDIR_SRC=/system/etc/hosts              # OPEN_REDIRECT redirected
+C_PATH=/system/bin/sh                      # 对照（不标记）
+# SUS_MAP 目标：必须是进程真的已映射的实际路径（/system/lib64/libc.so 是符号
+# 链接，kern_path 解析到 apex，用 apex 实路径更直观）。按序取第一个存在的。
+MAP_CANDIDATES="/apex/com.android.runtime/lib64/bionic/libc.so \
+/apex/com.android.art/lib64/libc++.so"
+
+K_INO=777001
+K_SIZE=4096
+# 伪造串不能以 '#' 或 '-' 开头：经 su -c '...' 传给设备 sh 时会被当注释/选项。
+FAKE_RELEASE=6.1.99-android13-8-gdeadbeef001
+FAKE_VERSION=TestBuild-SMP-PREEMPT-aarch64
+FAKE_CMDLINE_TXT="console=ttyMSM0,115200n8 androidboot.susfs=lkm-test"
+
+PASS=0
+FAIL=0
+mkdir -p "$OUT"
+: >"$OUT/summary.txt"
+: >"$OUT/cli.txt"
+
+res() {
+	case "$1" in
+	PASS) PASS=$((PASS + 1)) ;;
+	FAIL) FAIL=$((FAIL + 1)) ;;
+	esac
+	printf '%-4s %-30s %s\n' "$1" "$2" "${3:-}" | tee -a "$OUT/summary.txt"
+}
+
+# 信息项：不参与 PASS/FAIL 计数。用于「该环境无法观测」的诚实结论——
+# 绝不把不可观测写成 PASS（真协议红线）。
+info() {
+	printf '%-4s %-30s %s\n' INFO "$1" "${2:-}" | tee -a "$OUT/summary.txt"
+}
+
+die() {
+	printf 'ABORT: %s\n' "$*" | tee -a "$OUT/summary.txt" >&2
+	exit 2
+}
+
+# ---------------------------------------------------------------------------
+# adb / root 原语
+# ---------------------------------------------------------------------------
+d() { "$AB" shell "$1" 2>&1 | tr -d '\r'; }
+
+SU_KIND=""
+SU_BIN=""
+KSUD_CLI=""
+
+RR() {
+	local cmd=$1
+	case "$SU_KIND" in
+	su) d "$SU_BIN -c '$cmd'" ;;
+	ksud) d "printf '%s\n' '$cmd' | $KSUD_CLI debug su" ;;
+	*) return 1 ;;
+	esac
+}
+
+RR_ok() { RR "$1; echo RC=\$?" | grep -q 'RC=0'; }
+
+# 注意不能写成 `RR "test -f $f" && ...`：RR 的返回码来自管道末端的 tr，
+# 永远是 0。只能看输出。
+file_exists() { [ "$(RR "test -e $1 && echo Y")" = "Y" ]; }
+file_nonempty() { [ "$(RR "test -s $1 && echo Y")" = "Y" ]; }
+mounted() { [ "$(RR "grep -c $1 /proc/mounts" | tr -d ' \r\n')" != "0" ]; }
+
+detect_channel() {
+	[ -x "$AB" ] || die "缺少 $AB（chmod +x）"
+	d 'id' | grep -q 'uid=' || die "设备不在线：adb1.sh 找不到目标设备"
+
+	local out
+	out=$(d '/product/bin/su -c id' 2>/dev/null)
+	if printf '%s' "$out" | grep -q 'uid=0'; then
+		SU_KIND=su
+		SU_BIN=/product/bin/su
+	else
+		out=$(d "printf 'id\n' | /data/local/tmp/ksud debug su" 2>/dev/null)
+		if printf '%s' "$out" | grep -q 'uid=0'; then
+			SU_KIND=ksud
+			KSUD_CLI=/data/local/tmp/ksud
+		else
+			die "无 root 通道（/product/bin/su 与 ksud debug su 均不可用）"
+		fi
+	fi
+
+	local k
+	for k in /product/bin/ksud /data/adb/ksud /data/local/tmp/ksud; do
+		if RR_ok "test -x $k"; then
+			KSUD_CLI=$k
+			break
+		fi
+	done
+	[ -n "$KSUD_CLI" ] || die "找不到可执行的 ksud"
+	printf 'channel: %s  ksud=%s\n' "$SU_KIND" "$KSUD_CLI"
+}
+
+susfs_cli() { RR "$KSUD_CLI susfs $*"; }
+
+# 内核侧看到该命令成功的次数（全量 dmesg，容忍环形缓冲滚动）
+#
+# 注意：RR 会把命令塞进 `su -c '...'`，因此命令体内**绝对不能出现单引号**
+# （会提前闭合、把后半截交给外层 shell）。这里用双引号包标记与 "ret: 0"：
+# 双引号在 su -c 的单引号内是字面量，正好由设备侧 sh 解释。
+# 标记必须整体加引号再交给 grep -F：一来避免 `->` 被当成重定向，二来调用方
+# 可以传入带空格的精确标记（`CMD_SUSFS_ADD_SUS_PATH ->`），否则它作为
+# `..._LOOP` / `..._STATICALLY` 的前缀会被一起数进去。
+count_marker() {
+	RR "dmesg | grep -F \"$1\" | grep -c \"ret: 0\"" | tr -d '\r\n '
+}
+
+# 通用日志行计数（不加 "ret: 0" 过滤）
+count_plain() {
+	RR "dmesg | grep -c -F \"$1\"" | tr -d ' \r\n'
+}
+
+# ---------------------------------------------------------------------------
+# Level 1：命令受理
+# ---------------------------------------------------------------------------
+run1() {
+	local label=$1 marker=$2 c0 c1 cli
+	shift 2
+	c0=$(count_marker "$marker")
+	cli=$(susfs_cli "$@" 2>&1)
+	c1=$(count_marker "$marker")
+	printf '### %s :: ksud susfs %s\n%s\n\n' "$label" "$*" "$cli" >>"$OUT/cli.txt"
+	if [ "${c1:-0}" -gt "${c0:-0}" ]; then
+		res PASS "$label" "$marker ret=0"
+	else
+		res FAIL "$label" "dmesg 未见 $marker ret=0（$(
+			RR "dmesg | grep -F \"$marker\" | tail -n 2" | tr '\n' '|'
+		)）"
+	fi
+}
+
+# 负向测试：不存在的路径必须被内核拒绝（证明打点不是无条件打印）
+run1_reject() {
+	local label=$1 marker=$2 cli c0 c1
+	shift 2
+	c0=$(count_marker "$marker")
+	cli=$(susfs_cli "$@" 2>&1)
+	c1=$(count_marker "$marker")
+	printf '### %s (negative) :: ksud susfs %s\n%s\n\n' "$label" "$*" "$cli" >>"$OUT/cli.txt"
+	if [ "${c1:-0}" -eq "${c0:-0}" ] &&
+		RR "dmesg | grep -F \"$marker\" | tail -n 1" | grep -q 'ret: -'; then
+		res PASS "$label(负向)" "不存在的路径被拒"
+	else
+		res FAIL "$label(负向)" "内核未拒绝该路径（打点可能是无条件打印）"
+	fi
+}
+
+show_features() {
+	local out n
+	out=$(susfs_cli show enabled_features 2>&1)
+	printf '%s\n' "$out" >"$OUT/features_$1.txt"
+	n=$(printf '%s\n' "$out" | grep -c '^CONFIG_KSU_SUSFS_')
+	printf '%s' "$n"
+}
+
+# ---------------------------------------------------------------------------
+# 自检（app 私有目录一律用 root 读写：标记 toybox 后 run-as 里的 toybox 全没了）
+# ---------------------------------------------------------------------------
+selftest() {
+	local tag=$1 i f out
+	f="/data/user/0/$PKG/files/susfs_selftest_$tag.txt"
+	out="$OUT/selftest_$tag.txt"
+	RR "rm -f $f" >/dev/null 2>&1
+	d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag --es map $T_MAP" \
+		>/dev/null 2>&1
+	for i in $(seq 1 60); do
+		file_exists "$f" && break
+		sleep 0.5
+	done
+	if ! file_exists "$f"; then
+		# app 被 HANS 冻结时广播会排队不执行（熄屏场景）。拉前台解冻是
+		# 最小必要的 UI 动作（用户在亮屏使用设备时不会走到这里）。
+		printf 'selftest[%s]: 30s 未生成，拉前台重试\n' "$tag"
+		d "am start -n $PKG/.MainActivity" >/dev/null 2>&1
+		sleep 1
+		# 必须重发一次：首次广播若落在 stopped 包上会被丢弃且不补投，
+		# 光 am start 只解锁状态，不会再触发那一发已丢的广播。
+		RR "rm -f $f" >/dev/null 2>&1
+		d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag --es map $T_MAP" \
+			>/dev/null 2>&1
+		for i in $(seq 1 40); do
+			file_exists "$f" && break
+			sleep 0.5
+		done
+	fi
+	RR "cat $f" >"$out"
+	if ! grep -q '^end=1' "$out" 2>/dev/null; then
+		res FAIL "selftest[$tag]" "自检文件未生成（app 未运行？先手动打开一次 app 再跑）"
+		return 1
+	fi
+	return 0
+}
+
+kv() { sed -n "s/^$1=//p" "$2" | head -n 1; }
+
+# cmp_eq <name> <key> <before期望> <after期望>
+cmp_eq() {
+	local name=$1 key=$2 eb=$3 ea=$4 b a
+	b=$(kv "$key" "$OUT/selftest_before.txt")
+	a=$(kv "$key" "$OUT/selftest_after.txt")
+	if [ "$b" = "$eb" ] && [ "$a" = "$ea" ]; then
+		res PASS "$name" "$key: $b -> $a"
+	else
+		res FAIL "$name" "期望 $eb -> $ea，实测 $b -> $a"
+	fi
+}
+
+# cmp_same <name> <key>   对照项：前后必须一致且不是 ERR
+cmp_same() {
+	local name=$1 key=$2 b a
+	b=$(kv "$key" "$OUT/selftest_before.txt")
+	a=$(kv "$key" "$OUT/selftest_after.txt")
+	if [ -n "$a" ] && [ "$a" = "$b" ] && ! printf '%s' "$a" | grep -q '^ERR'; then
+		res PASS "$name" "$key 未受影响（$a）"
+	else
+		res FAIL "$name" "$key 前后不一致（$b -> $a）"
+	fi
+}
+
+# cmp_changed <name> <key>   要求 before != after，且两侧都不是 ERR
+cmp_changed() {
+	local name=$1 key=$2 b a
+	b=$(kv "$key" "$OUT/selftest_before.txt")
+	a=$(kv "$key" "$OUT/selftest_after.txt")
+	if [ -n "$a" ] && [ "$a" != "$b" ] &&
+		! printf '%s' "$b" | grep -q '^ERR' &&
+		! printf '%s' "$a" | grep -q '^ERR'; then
+		res PASS "$name" "$key: $b -> $a"
+	else
+		res FAIL "$name" "$key 未变化（$b -> $a）"
+	fi
+}
+
+# ---------------------------------------------------------------------------
+# 主流程
+# ---------------------------------------------------------------------------
+detect_channel
+
+BOOT=$(RR 'cat /proc/sys/kernel/random/boot_id' | tr -d ' \r\n-')
+[ -n "$BOOT" ] || die "读不到 boot_id"
+MARKED_FILE="$OUT/.marked_boot"
+if [ -f "$MARKED_FILE" ] && [ "$(cat "$MARKED_FILE")" = "$BOOT" ]; then
+	die "本 boot ($BOOT) 已标记过，重启后再验收（本 ABI 无 DEL 命令）"
+fi
+printf 'boot: %s\n' "$BOOT"
+
+# ---- 语义前提：进程必须带 TIF_PROC_UMOUNTED ----
+# SUS_PATH / SUS_MAP / OPEN_REDIRECT(uid_scheme=unmounted-app) / SUS_MOUNT 的隐藏
+# 都门控在 susfs_is_current_proc_umounted_app() = TIF_PROC_UMOUNTED && uid>=10000，
+# 而该 thread flag 只由内核在「模块已加载后 zygote fork 出的进程 setresuid」
+# 那一刻打上（ksu_handle_umount，default 非 root profile umount_modules=true）。
+# app 进程若早于模块加载就已存在，就永远没有这个标记 —— 验收会假失败。
+# 所以先把旧进程杀掉，让下面第一次广播冷启动出一个带标记的新进程。
+# 注意用 kill -9 而不是 am force-stop：后者会把包置 stopped，害死 BOOT_COMPLETED。
+OLD_PID=$(RR "pidof $PKG" | tr -d ' \r\n')
+if [ -n "$OLD_PID" ]; then
+	RR "kill -9 $OLD_PID" >/dev/null 2>&1
+	sleep 1
+	printf 'killed stale app pid=%s（等广播冷启动带标记的新进程）\n' "$OLD_PID"
+fi
+
+# ---- 0. 目标确认（找不到就早退，别在设备上留半套标记） ----
+for p in "$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_REDIR" "$T_REDIR_SRC" "$C_PATH"; do
+	file_exists "$p" || die "目标不存在：$p"
+done
+
+T_MAP=""
+for p in $MAP_CANDIDATES; do
+	if file_exists "$p"; then
+		T_MAP=$p
+		break
+	fi
+done
+[ -n "$T_MAP" ] || die "SUS_MAP 目标都不存在：$MAP_CANDIDATES"
+printf 'targets: path=%s loop=%s kstat=%s map=%s redirect=%s<-%s\n' \
+	"$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_MAP" "$T_REDIR" "$T_REDIR_SRC"
+
+# ---- 1. 准备 ----
+RR "mkdir -p $SUS_SRC $SUS_DST"
+# 值里只有一个空格、没有单引号：不加引号时 echo 会把两个词原样用空格连回去。
+RR "echo $FAKE_CMDLINE_TXT > $FAKE_CMDLINE"
+file_nonempty "$FAKE_CMDLINE" || die "伪造 cmdline 文件写失败"
+printf '%s\n' "$FAKE_CMDLINE_TXT" >"$OUT/fake_cmdline.txt"
+
+# 假挂载必须由 ksu 域建立：SUS_MOUNT 只给 ksu 域建的 mount 打伪 id
+mounted "$SUS_DST" || RR "mount --bind $SUS_SRC $SUS_DST" >/dev/null 2>&1
+mounted "$SUS_DST" || die "bind mount 失败：$SUS_SRC -> $SUS_DST"
+
+# 让 app 也能看见它：zygote（以及开机预热好的 usap 池）在启动时就各自持有
+# 一份挂载命名空间拷贝，之后 shell 域新建的挂载不会传播进去 —— 而 app 进程
+# 正是从这些命名空间 fork 出来的。所以再逐个 nsenter 进去 bind 一次；每次
+# 都由 ksu 域发起，同样会被 alloc_vfsmnt 钩子打上伪 id。
+NS_PIDS=""
+for n in zygote64 zygote usap64 usap32; do
+	for pid in $(RR "pidof $n" | tr -d ' \r\n'); do
+		RR "nsenter -t $pid -m mount --bind $SUS_SRC $SUS_DST" >/dev/null 2>&1
+		v=$(RR "nsenter -t $pid -m grep -c $SUS_DST /proc/self/mounts" |
+			tr -d ' \r\n')
+		[ "${v:-0}" != 0 ] && NS_PIDS="$NS_PIDS $pid"
+	done
+done
+printf 'prepared: %s -> %s (额外打标命名空间 pid:%s)\n' \
+	"$SUS_SRC" "$SUS_DST" "${NS_PIDS:- 无}"
+
+# ---- 2. 基线 ----
+F_BEFORE=$(show_features before)
+[ "$F_BEFORE" = 9 ] && res PASS "features(before)" "9 项全部上报" ||
+	res FAIL "features(before)" "只上报 $F_BEFORE 项"
+
+VERSION_OUT=$(susfs_cli show version 2>&1)
+VARIANT_OUT=$(susfs_cli show variant 2>&1)
+printf 'show version: %s\nshow variant: %s\n\n' "$VERSION_OUT" "$VARIANT_OUT" >>"$OUT/cli.txt"
+printf '%s' "$VERSION_OUT" | grep -q 'v2\.3\.0' &&
+	res PASS "show version" "$VERSION_OUT" ||
+	res FAIL "show version" "$VERSION_OUT"
+printf '%s' "$VARIANT_OUT" | grep -q 'GKI' &&
+	res PASS "show variant" "$VARIANT_OUT" ||
+	res FAIL "show variant" "$VARIANT_OUT"
+
+# 真实 kstat（必须在标记前读；SUS_KSTAT 的 stat 伪装没有 uid 门控）
+REAL_INO=$(RR "stat -c %i $T_KSTAT" | tr -d ' \r\n')
+REAL_SIZE=$(RR "stat -c %s $T_KSTAT" | tr -d ' \r\n')
+printf 'real kstat: ino=%s size=%s\n' "$REAL_INO" "$REAL_SIZE"
+case "$REAL_INO" in '' | *[!0-9]*) die "读不到 $T_KSTAT 的真实 ino（$REAL_INO）" ;; esac
+
+SELFTEST_OK=1
+selftest before || SELFTEST_OK=0
+
+# 内核侧直接证据的基线：susfs_path_inode_hidden() 命中时会打 "hiding ino"
+# （需要 enable_log=1，下面第一件事就是开它）。
+HID0=$(count_plain "hiding ino")
+
+# ---- 3. Level 1 ----
+# 标记统一带 " ->" 后缀：`CMD_SUSFS_ADD_SUS_PATH` 是 `..._LOOP` 的前缀、
+# `CMD_SUSFS_ADD_SUS_KSTAT` 是 `..._STATICALLY` 的前缀，不区分就会把
+# 后者的成功行数进前者的增量里（负向测试会因此假通过/假失败）。
+run1 "enable_log" CMD_SUSFS_ENABLE_LOG enable_log 1
+run1 "add_sus_path" "CMD_SUSFS_ADD_SUS_PATH ->" add_sus_path "$T_PATH"
+run1 "add_sus_path_loop" "CMD_SUSFS_ADD_SUS_PATH_LOOP ->" \
+	add_sus_path_loop "$T_PATH_LOOP"
+run1 "add_sus_map" CMD_SUSFS_ADD_SUS_MAP add_sus_map "$T_MAP"
+run1 "add_sus_kstat" "CMD_SUSFS_ADD_SUS_KSTAT ->" add_sus_kstat "$T_KSTAT"
+run1 "update_sus_kstat_full_clone" CMD_SUSFS_UPDATE_SUS_KSTAT update_sus_kstat_full_clone "$T_KSTAT"
+# statically 必须最后跑：它整体覆盖同一路径的 info（memcpy），
+# 最终 spoofed_ino/spoofed_size 才是这里给的固定值。
+run1 "add_sus_kstat_statically" "CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY ->" \
+	add_sus_kstat_statically "$T_KSTAT" "$K_INO" default default "$K_SIZE"
+run1 "add_open_redirect" CMD_SUSFS_ADD_OPEN_REDIRECT \
+	add_open_redirect "$T_REDIR" "$T_REDIR_SRC" 3
+run1 "hide_sus_mnts" CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS \
+	hide_sus_mnts_for_non_su_procs 1
+run1 "set_uname" CMD_SUSFS_SET_UNAME set_uname "$FAKE_RELEASE" "$FAKE_VERSION"
+run1 "set_cmdline" CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG \
+	set_cmdline_or_bootconfig "$FAKE_CMDLINE"
+
+run1_reject "add_sus_path" "CMD_SUSFS_ADD_SUS_PATH ->" add_sus_path /data/local/tmp/no_such_susfs_target
+
+# 未实现的命令必须诚实报 unsupported（内核侧不写 err，userspace 初值 126）
+AVC_OUT=$(susfs_cli enable_avc_log_spoofing 1 2>&1)
+printf '### enable_avc_log_spoofing\n%s\n\n' "$AVC_OUT" >>"$OUT/cli.txt"
+if printf '%s' "$AVC_OUT" | grep -qi 'unsupported'; then
+	res PASS "enable_avc_log_spoofing" "诚实报 unsupported"
+else
+	res FAIL "enable_avc_log_spoofing" "未报 unsupported：$AVC_OUT"
+fi
+
+# ---- 4. arm 之后 feature 列表必须仍是 9 项（钩子装不上会降级） ----
+F_AFTER=$(show_features after)
+[ "$F_AFTER" = 9 ] && res PASS "features(after)" "9 项（arm 后无降级）" ||
+	res FAIL "features(after)" "降到 $F_AFTER 项（某处 arm 失败）"
+
+# ---- 5. Level 2：语义对照 ----
+if [ "$SELFTEST_OK" = 1 ]; then
+	selftest after || SELFTEST_OK=0
+fi
+
+if [ "$SELFTEST_OK" = 1 ]; then
+	cmp_eq "SUS_PATH exists" path.toybox.exists 1 0
+	cmp_eq "SUS_PATH listed" path.toybox.listed 1 0
+	cmp_eq "SUS_PATH_LOOP exists" path.propdefault.exists 1 0
+	cmp_eq "SUS_PATH_LOOP listed" path.propdefault.listed 1 0
+	cmp_same "SUS_PATH 对照" path.sh.exists
+	cmp_same "SUS_PATH 对照 listed" path.sh.listed
+
+	# 内核侧独立证据：susfs_path_inode_hidden() 命中会打 "hiding ino"。
+	# 有增量 = 内核真的执行了隐藏分支（与 app 观测量两条独立证据链）。
+	HID1=$(count_plain "hiding ino")
+	if [ "${HID1:-0}" -gt "${HID0:-0}" ]; then
+		res PASS "SUS_PATH 内核侧" "dmesg 'hiding ino' $HID0 -> $HID1"
+	else
+		res FAIL "SUS_PATH 内核侧" "dmesg 'hiding ino' 无增量（$HID0 -> ${HID1:-?}）"
+	fi
+
+	cmp_eq "SUS_KSTAT ino" kstat.hosts.ino "$REAL_INO" "$K_INO"
+	cmp_eq "SUS_KSTAT size" kstat.hosts.size "$REAL_SIZE" "$K_SIZE"
+	cmp_same "SUS_KSTAT 对照 ino" kstat.sh.ino
+
+	# SUS_MAP：判定单位是 VMA，目标库的每条映射占 maps 一行（libc 通常 4 段），
+	# 所以判据是「标记前 >=1 行 → 标记后 0 行」，行数取自 app 侧对 host 传入
+	# 目标路径的精确计数（不是布尔、也不是写死的文件名）。
+	MB=$(kv map.target.lines "$OUT/selftest_before.txt")
+	MA=$(kv map.target.lines "$OUT/selftest_after.txt")
+	if [ "${MB:-0}" -ge 1 ] && [ "${MA:-1}" = 0 ]; then
+		res PASS "SUS_MAP maps" "$T_MAP 行数 $MB -> $MA"
+	else
+		res FAIL "SUS_MAP maps" "$T_MAP 行数 $MB -> $MA（before 应 >=1，after 应为 0）"
+	fi
+	# map.numentries 只写入 out/selftest_*.txt 供人工比对，不参与评分：
+	# 进程自身会不断创建/释放线程栈与 JIT 页，行数浮动属正常噪声。
+
+	cmp_changed "OPEN_REDIRECT 内容" redirect.otacerts
+	cmp_same "OPEN_REDIRECT 对照" redirect.hosts
+
+	# SUS_MOUNT 有两条彼此独立的证据：
+	# ① 内核侧（与挂载命名空间无关，权威）：ksu 域创建的挂载会被
+	#    alloc_vfsmnt/clone_mnt 的 kretprobe 换成伪 id（>= DEFAULT_KSU_MNT_ID
+	#    = 2000000000）。真实 id 由内核 ida 从 0 起分配、永远到不了该区间，
+	#    所以「伪 id」本身就是「这个挂载对 app 隐藏」的内核标记。
+	#    root/su 处在 ksu 域，不受隐藏影响，能把它读出来。
+	# ② app 侧：该挂载从 /proc/self/mounts 消失。前提是 app 与该挂载在同一个
+	#    挂载命名空间——Android 11+ 若给了 app 私有 namespace，它本来就不在
+	#    里面，此时 0 -> 0 无法区分「隐藏生效」与「从来没看见」，只能记信息项，
+	#    不能伪造成 PASS。
+	MI_LINE=$(RR "grep -F $SUS_DST /proc/self/mountinfo")
+	FAKE_ID=$(printf '%s' "$MI_LINE" | cut -d' ' -f1)
+	case "$FAKE_ID" in '' | *[!0-9]*) FAKE_ID=0 ;; esac
+	if [ "$FAKE_ID" -ge 2000000000 ]; then
+		res PASS "SUS_MOUNT 内核打标" "mnt_id=$FAKE_ID（>= 2e9 伪 id）"
+	else
+		res FAIL "SUS_MOUNT 内核打标" \
+			"mnt_id=$FAKE_ID（alloc_vfsmnt 钩子应换成 >= 2e9）"
+	fi
+
+	MB_M=$(kv mount.sus_dst "$OUT/selftest_before.txt")
+	MA_M=$(kv mount.sus_dst "$OUT/selftest_after.txt")
+	MB_I=$(kv mountinfo.sus_dst "$OUT/selftest_before.txt")
+	MA_I=$(kv mountinfo.sus_dst "$OUT/selftest_after.txt")
+	if [ "${MB_M:-0}" = 1 ] && [ "${MA_M:-1}" = 0 ]; then
+		res PASS "SUS_MOUNT app 隐藏" \
+			"mounts 1 -> 0（mountinfo $MB_I -> $MA_I）"
+	elif [ "${MB_M:-1}" = 0 ] && [ "${MA_M:-1}" = 0 ]; then
+		info "SUS_MOUNT app 隐藏: app 看不到该挂载（私有挂载命名空间），本项不作判据"
+	else
+		res FAIL "SUS_MOUNT app 隐藏" \
+			"mounts 期望 1 -> 0，实测 $MB_M -> $MA_M（mountinfo $MB_I -> $MA_I）"
+	fi
+
+	cmp_eq "SPOOF_UNAME release" uname.release \
+		"$(kv uname.release "$OUT/selftest_before.txt")" "$FAKE_RELEASE"
+	cmp_eq "SPOOF_UNAME version" uname.version \
+		"$(kv uname.version "$OUT/selftest_before.txt")" "$FAKE_VERSION"
+
+	cmp_eq "SPOOF_CMDLINE" cmdline \
+		"$(kv cmdline "$OUT/selftest_before.txt")" "$FAKE_CMDLINE_TXT"
+	# 本内核 CONFIG_BOOT_CONFIG 未开、没有 /proc/bootconfig，所以
+	# SPOOF_CMDLINE_OR_BOOTCONFIG 只对 /proc/cmdline 可观测（已文档化）。
+	cmp_eq "SPOOF bootconfig(本内核无此项)" bootconfig 0 0
+
+	if [ "$(kv kallsyms.ok "$OUT/selftest_after.txt")" != "1" ]; then
+		res FAIL "HIDE_KSU_SUSFS_SYMBOLS" \
+			"app 读不到 /proc/kallsyms（$(kv kallsyms.err "$OUT/selftest_after.txt")）"
+	else
+		# 该 feature 没有 enable 开关：s_show 钩子在模块加载时就装上了，
+		# 所以只要模块在跑，before/after 都应为 0（不能拿 before>0 当基线
+		# ——那会必然 FAIL）。为排除「整个文件没读到所以是 0」，同时要求
+		# 两个不会被隐藏的普通符号可见。
+		for pair in "susfs:HIDE_SYMBOLS(susfs_)" "ksu:HIDE_SYMBOLS(ksu_)"; do
+			k=${pair%%:*}
+			n=${pair#*:}
+			b=$(kv "kallsyms.$k" "$OUT/selftest_before.txt")
+			a=$(kv "kallsyms.$k" "$OUT/selftest_after.txt")
+			if [ "${a:-1}" = 0 ] && [ "${b:-0}" = 0 ]; then
+				res PASS "$n" "before/after 均 0 条可见"
+			else
+				res FAIL "$n" "before=$b after=$a（模块加载即隐藏，两侧都应为 0）"
+			fi
+		done
+		for pair in "stext:对照(_stext)" "doexit:对照(do_exit)"; do
+			k=${pair%%:*}
+			n=${pair#*:}
+			a=$(kv "kallsyms.$k" "$OUT/selftest_after.txt")
+			if [ "${a:-0}" -gt 0 ]; then
+				res PASS "$n" "$a 条可见（kallsyms 通道正常）"
+			else
+				res FAIL "$n" "不可见 —— kallsyms 通道异常，「符号为 0」不可信"
+			fi
+		done
+	fi
+fi
+
+# ---- 6. 复原能复原的部分 ----
+susfs_cli set_uname default default >/dev/null 2>&1
+susfs_cli hide_sus_mnts_for_non_su_procs 0 >/dev/null 2>&1
+RR "umount $SUS_DST" >/dev/null 2>&1
+for pid in $NS_PIDS; do
+	RR "nsenter -t $pid -m umount $SUS_DST" >/dev/null 2>&1
+done
+printf '%s\n' "$BOOT" >"$MARKED_FILE"
+
+# ---- 7. 汇总 ----
+{
+	printf '\n=========== SUSFS ACCEPTANCE ===========\n'
+	printf 'boot   : %s\n' "$BOOT"
+	printf 'device : %s\n' "$(RR 'getprop ro.product.model')"
+	printf 'kernel : %s\n' "$(RR 'uname -r')"
+	printf 'driver : %s\n' "$(RR 'cat /sys/module/kernelsu/version 2>/dev/null')"
+	printf 'PASS=%d FAIL=%d\n' "$PASS" "$FAIL"
+	printf '注意：SUS_PATH / SUS_MAP / SUS_KSTAT / OPEN_REDIRECT / CMDLINE 的标记\n'
+	printf '      无法撤销，必须重启设备才能回到干净状态。\n'
+} | tee -a "$OUT/summary.txt"
+
+[ "$FAIL" = 0 ] || exit 1
+exit 0

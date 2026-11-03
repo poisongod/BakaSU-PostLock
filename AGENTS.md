@@ -4745,37 +4745,114 @@ root shell 里 `ksud susfs` 却报错」是两份不同二进制所致。已统�
 `vfs_getattr_nosec`/`vfs_mkdir` 有桩必须解。统一走
 `susfs_register_kprobe_at()`（`susfs_probe.c`），不要各写一份。
 
-**ko 产物状态（2026-11-03 SUS_KSTAT 命令名修正轮）**：源码/产物 = **`0c822b7d`**
-（**九个 feature 全部实现**、编译零 warning、UND 170 全导出、`U .*susfs_` = 0）。
-本轮唯一代码改动：`susfs_add_sus_kstat()` 的结果日志按 `info.is_statically` 区分
-`CMD_SUSFS_ADD_SUS_KSTAT` / `CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY`（上游
-`fs_susfs.c:626-634` 同款；逻辑分支本身两边一致，只是标签）；另给
-`spoofed_mnt_id = 0` 补上是「本内核无消费者」的注释（上游写
-`non_sus_mnt_id`，仅用于 5.10+ `kstat.mnt_id` 与 fdinfo ino 行，本内核两者皆无）。
-三端已同步并 commit：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
-`PostLock-Boot/.../assets/postlock/kernelsu.ko` = 同 sha；
-`PAYLOAD_VERSION` = `v23-susfs-kstat-cmdlabel-20261103`（不 bump 则设备 staging 不刷新）。
+**ko 产物状态（2026-11-03 SUS_KSTAT 诚实上报轮）**：产物 sha1 =
+**`02fba6b036fef9da7e28e92016e56148e478c174`**（**九个 feature 全部实现**、编译零
+warning、`tools/check_ko_und.sh` → `OK`（170 UND 全在设备 `__ksymtab`）、
+`U .*susfs_` = 0、确定性构建可复现同 sha）。
+
+本轮改动（只关诚实上报，不加 feature）：`susfs_kstat` 原来「钩子装不上也照样
+`available()=true`」，等于向管理器谎报。现改为三层：`susfs_kstat_core_ok`（符号
+解析）+ `susfs_kstat_available()`（core + 已注册）+ `susfs_kstat_trial()`
+（`maxactive=8` 试注册 `vfs_getattr_nosec` 成功才置 true，随即注销）——注册失败
+即降级、`susfs_get_enabled_features()` 不再上报 `CONFIG_KSU_SUSFS_SUS_KSTAT`。
+至此 **9 项全部有 `available()` 门控**，与「未实现/装不上就不上报」的真协议一致。
+
+三端同 sha 已同步：`../BakaSU/kernel/kernelsu.ko`、`build/embed/kernelsu.ko`、
+`PostLock-Boot/.../assets/postlock/kernelsu.ko`；
+`PAYLOAD_VERSION` = `v24-susfs-kstat-honest-20261103`（不 bump 则设备 staging 不刷新）。
 版本串仍是 `v4.2.0-rc3-5b76b884-dirty@BakaSU` / KSU_VERSION 35222（`../BakaSU`
 HEAD/rev-list 未动，无漂移）。
-`../BakaSU` fork main = **`69ad8abf`**（上一轮 commit-tree 推送；本地 HEAD 仍
-`5b76b884`/rev-list **4522**、status 32 行不变；远端树 615 条 blob 与工作树逐一
-比对一致，两个 `uapi` 符号链接 blob 与 HEAD 同值）。
 **全部未装机验收**——目标 PFUM10 全通道 offline，`adb devices` 只剩错设备
-`401e909a`（红线勿动）。
+`401e909a`（红线勿动）；验收脚本与语义前提见下节。
 
 > **只改注释也会换 sha**：本轮唯一代码改动是 `susfs_map.c`，之后仅编辑了
 > `susfs.c`/`susfs_map.c` 的注释，重编仍得新 sha（`ab5e0e06` → `6683047d`）
 > ——`__LINE__` 与内联行号类信息会进二进制，别拿「只改注释」推断产物不变，
 > 一律重编 + 重跑 `tools/check_ko_und.sh` + 三端 sha1 比对。
 
+### 九项功能验收设计与语义前提（2026-11-03，脚本 `/tmp/opencode/susfs/accept.sh`）
+
+**`SUS_PATH` / `SUS_MAP` / `OPEN_REDIRECT`(uid_scheme=3) / `SUS_MOUNT` 的隐藏全部门控
+在 `TIF_PROC_UMOUNTED`**：`susfs_is_current_proc_umounted_app()` =
+`test_thread_flag(TIF_PROC_UMOUNTED) && current_uid().val >= 10000`
+（`susfs/include/linux/susfs_def.h:154`）。该 thread flag 由内核在 **setresuid 那一刻**
+打上（`hook/setuid_hook.c` → `feature/kernel_umount.c:ksu_handle_umount` →
+`susfs_set_current_proc_umounted()`），条件是
+`is_appuid(new_uid) && ksu_uid_should_umount(new_uid)`；而
+`ksu_uid_should_umount` 对「无 profile 的非 root app」取
+`default_non_root_profile.umount_modules = true`（`policy/allowlist.c:71/326`）
+→ **普通 app 进程天然带标记**（被授予 su 的 app 与 manager 除外）。
+
+推论的硬要求（不满足就全是假失败）：
+
+- **进程必须晚于模块加载启动**：flag 只在 setresuid 那一次打，模块没加载时进程照常
+  启动但不带标记 → 之后无论怎么 `add_sus_path` 都不会隐藏。验收脚本第一件事是
+  `kill -9 $(pidof com.postlock.boot)` 让广播冷启动新进程（**绝不能用 `am force-stop`**，
+  那会把包装成 stopped、害死下一次 BOOT_COMPLETED）。
+- flag 是 thread flag，但 `dup_task_struct` 整份复制 task_struct → 主线程打标后新建的
+  线程全部继承，所以自检放在广播的 worker 线程里跑没问题。
+- 语义验证载体只能是**真实 app 进程**（zygote fork + setresuid）：`adb shell`(2000)、
+  `su -c`(0)、`run-as`（无 TIF flag）看到的永远是未隐藏世界。
+
+**目标选型（避开互相干扰；全部 root 属主 → 与 app uid 不同 → 会隐藏）**：
+
+| 项 | 目标 | 对照 |
+|---|---|---|
+| `SUS_PATH` | `/system/bin/toybox` | `/system/bin/sh` |
+| `SUS_PATH_LOOP` | `/system/etc/prop.default` | 同上 |
+| `SUS_KSTAT` | `/system/etc/hosts`（伪造 `ino 777001` / `size 4096`） | `/system/bin/sh` |
+| `SUS_MAP` | `/apex/com.android.runtime/lib64/bionic/libc.so`（`/system/lib64/libc.so` 是 symlink 不能当目标；兜底 `/apex/com.android.art/lib64/libc++.so`） | — |
+| `OPEN_REDIRECT` | `/system/etc/security/otacerts.zip` ← `/system/etc/hosts`，`uid_scheme=3`(UnmountedApp) | `/system/etc/hosts` 自身内容 |
+
+**`SUS_KSTAT` 必须按 `add_sus_kstat` → `update_sus_kstat_full_clone` →
+`add_sus_kstat_statically` 顺序**：内核 add 路径对同 ino 命中后整体 `memcpy` 覆盖
+info，`full_clone` 会把 `spoofed_size` 刷回真实值，所以 statically 必须最后跑；
+它把 `target_ino = md.ino()`（真实）而用户传的 `ino` 落 `spoofed_ino`
+（`userspace/ksud/src/android/susfs/api/features/sus_kstat.rs` 实证）——这正是制造
+可观测 ino/size 变化的手段。**`susfs_vfs_getattr_ret` 无 uid 门控**（对全进程生效）
+→ 真实 ino/size 必须在打标记**之前**读。
+
+**两处会咬人的现实副作用**：① 标记 `/system/bin/toybox` 后 **shell(2000) 域的 toybox
+全部被隐藏**（属主 root 0 ≠ 2000）→ 验收脚本对设备的一切读写都走 root（`RR`），shell
+只用于 `am broadcast` / `am start`；② 该窗口内普通 app 也看不到/不能 exec toybox，属
+预期（SUSFS 遮的就是 app 世界），验收完必须重启清标记（本 ABI **无任何 DEL 命令**）。
+
+**双证据链（缺一即可定位「没隐藏」还是「没生效到 app」）**：app 侧
+`SusfsSelfTest` 把 key=value 写进 `files/susfs_selftest_<tag>.txt`，host 在标记前
+（`--es tag before`）/后（`--es tag after`）各触发一次做同进程对照；内核侧同时数
+dmesg 增量：`hiding ino`（stat/open 隐藏命中，`susfs_path.c:313`）与 `hiding dirent`
+（readdir 隐藏命中，`:367`）——两条链独立。
+
+**验收脚本已入库 `tools/susfs/accept.sh`（+ `tools/susfs/adb1.sh` 选通道）**，
+输出默认落 `/tmp/opencode/susfs/out`（`OUT=` 可覆盖）。三条容易踩的设计：
+
+- **`info()` ≠ PASS**：app 无法观测的项记为 `INFO`（不计数），绝不伪造成 PASS。
+  真协议同样适用于验收脚本本身。
+- **SUS_MOUNT 双证据**：① **内核侧（权威、与命名空间无关）**——去 `su` 域读
+  `/proc/self/mountinfo`，我们那个 bind mount 的 `mnt_id` 必须 ≥ `2000000000`
+  （`DEFAULT_KSU_MNT_ID`；真实 id 由内核 ida 从低位分配，永远进不了该区间），
+  这就是 `alloc_vfsmnt` kretprobe 真的把 id 换成伪 id 的直接证据；② app 侧可见性
+  `1 -> 0` 才算隐藏 PASS，`0 -> 0` 只能记 INFO（app 私有挂载命名空间里从来没有它，
+  无法区分「隐藏生效」与「从来没看见」）。
+- **app 能看见自建 mount 的前提**：`zygote64`/`zygote` 以及开机预热的
+  `usap64`/`usap32` 池在启动时就各自持有一份挂载命名空间拷贝，之后 shell 域新建
+  的挂载**不会传播**进去，而 app 进程正是从这些命名空间 fork 的。所以脚本除
+  自身命名空间外，还要逐个 `nsenter -t <pid> -m mount --bind` 打进这些命名空间
+  （同样由 ksu 域发起 → 同样被打伪 id），收尾时逐个 `nsenter ... umount`。
+
 **审计轮修复（5a579fc6 vs e1d6d977，全为语义/一致性缺陷，无新增 feature）**：
 
-1. **`susfs_path.c` 删除「inode 属主 == 当前 uid 就不隐藏」**。上游
-   `susfs_is_inode_sus_path()` 无条件按 bit 判定，且本文件 readdir 侧的
-   `susfs_path_match_dirent()`（按 ino/name/d_type 匹配）本来就没有该检查 →
-   原逻辑会让「`ls` 看不到（readdir 隐藏）但 `cat` 打得开（open 不隐藏）」，
-   并直接废掉最常见用法（藏 app 自己在 `/sdcard/Android/data/<pkg>` 下建的
-   文件）。**真 bug，已删**。
+1. ~~**`susfs_path.c` 删除「inode 属主 == 当前 uid 就不隐藏」**~~ ——**该结论是错的，
+   已推翻并恢复原实现**。上游 `fs_susfs.c:354` 有
+   `is_i_uid_not_allowed(i_uid) { return current_uid().val != i_uid; }`，
+   `susfs_is_inode_sus_path()` 的判定是 `test_bit(...) && is_i_uid_not_allowed(...)`
+   ——**「不隐藏给属主」是上游语义，必须保留**。本实现的
+   `susfs_path_inode_hidden()`（bit + `current_uid()==inode->i_uid` 直接
+   return false）与 `susfs_path_match_dirent()`（同一 test 用缓存的
+   `target_uid`）两侧一致，所以 `ls` 与 `cat` 不会不一致。
+   （顺带纠正：`SUS_PATH` 全线还门控在
+   `susfs_is_current_proc_umounted_app()` = `TIF_PROC_UMOUNTED && uid>=10000`
+   ——shell(2000)/root(0) 永远不会被隐藏，管理器因此仍然可用。）
 2. **`susfs_kstat.c` add 侧重复检测改全表查找**：原
    `hash_for_each_possible(..., new_entry->target_ino)` 只在「新 ino 所在桶」
    里找同名 → 文件被「重写+rename」替换过（ino 变化）时旧节点永远留在旧桶，
