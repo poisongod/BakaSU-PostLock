@@ -27,6 +27,10 @@ APP=com.resukisu.resukisu
 ACT=org.bakasu.bakasu.ui.MainActivity
 STAGE=/data/local/tmp/ksu_boot
 TMP=/data/local/tmp
+# SUVTZ P1-1: 0600 keeps the chain log (KASLR base + pvo in clear text) out
+# of any app's reach; the PostLock log panel then only shows app-domain
+# chains.  SUVTZ_CHAIN_LOG_MODE=0644 restores the old cross-uid readability.
+CHAIN_LOG_MODE=${SUVTZ_CHAIN_LOG_MODE:-0600}
 
 die() { echo "postlock: ERROR: $*" >&2; exit 1; }
 # unified log line prefix, same shape as chain/restore/receiver logs
@@ -209,7 +213,12 @@ else
 fi
 mkdir -p $TMP
 chcon u:object_r:shell_data_file:s0 $TMP
-chmod 777 $TMP
+# SUVTZ P1-1 (2026-11-03): 0777 handed every app a writable AND listable
+# stash -- a single ls of /data/local/tmp enumerated the whole toolkit.  Stock
+# Android ships 0711 (traverse-only for non-owners), which is also what the
+# app-domain gate needs (it must traverse to read ksu_kaslr).  The chain
+# runs as shell (the owner) and restore as root, so both keep full access.
+chmod 0711 $TMP
 echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 # roll back the OMK injector config BEFORE ksud services (which triggers the
 # OMK injection that reads it): the uid:1000 scoop variant caused a
@@ -397,6 +406,62 @@ if [ -x $STAGE/ksud ]; then
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
 fi
+# --- SUVTZ P1-1: DAC hygiene (2026-11-03) -----------------------------
+# The P0 baseline (docs/suvtz-p0-baseline.md, 30 probes) measured what a
+# third-party app still reaches by simply guessing a path: ksu_boot/ and
+# ovl/ were 0777, and every .ko / finitmod / ksud / preload copy was
+# world-readable (kernelsu.ko 13.7MB, chain log 431KB with the KASLR base
+# and pvo in clear text).  None of it is needed by untrusted_app: the app
+# reads its OWN private filesDir/postlock copy (ChainTrigger ->
+# PayloadRepo.ensure; the STAGE_DIR constant there has zero references),
+# and restore runs as root, so CAP_DAC_OVERRIDE keeps every path working.
+# Deliberately left world-readable (tracked as an open decision in the
+# report): ksu_kaslr / ksu_payload -- the app-domain gate + paste inputs;
+# closing them permanently disables app self-dispatch on BOOT_COMPLETED.
+if [ -d $STAGE ]; then
+  chown 2000:2000 $STAGE 2>/dev/null || true
+  chmod 0700 $STAGE 2>/dev/null || true
+fi
+for f in kernelsu.ko oplus_check_suppress.ko kernelsu_hotload_init.ko; do
+  if [ -f $TMP/\$f ]; then chmod 0600 $TMP/\$f 2>/dev/null || true; fi
+done
+if [ -f $TMP/finitmod ]; then chmod 0700 $TMP/finitmod 2>/dev/null || true; fi
+# shell-exec'd binaries: owner shell + 0700 (run_fops.sh LD_PRELOADs
+# /data/local/tmp/preload.so, the /product/bin/su wrapper execs ksud).
+for f in ksud preload.so; do
+  if [ -f $TMP/\$f ]; then
+    chown 2000:2000 $TMP/\$f 2>/dev/null || true
+    chmod 0700 $TMP/\$f 2>/dev/null || true
+  fi
+done
+# Overlay skeleton is root-only EXCEPT upper: its mode IS the merged
+# /product/bin mode (measured: upper 0777 -> /product/bin 0777).  Stock is
+# 0755 and shell must keep traversing it to exec the su wrapper.
+# NEVER chmod $TMP/ovl/lower -- that is a bind mount of the real /product/bin.
+if [ -d $TMP/ovl ]; then
+  chmod 0700 $TMP/ovl 2>/dev/null || true
+  if [ -d $TMP/ovl/tmp ]; then chmod 0700 $TMP/ovl/tmp 2>/dev/null || true; fi
+  if [ -d $TMP/ovl/tmp/upper ]; then chmod 0755 $TMP/ovl/tmp/upper 2>/dev/null || true; fi
+  if [ -d $TMP/ovl/tmp/work ]; then chmod 0700 $TMP/ovl/tmp/work 2>/dev/null || true; fi
+fi
+# Run residue: the chain/restore logs carry the KASLR base and pvo in clear
+# text, pstore_dump is a raw kernel log, ts.state is the tailnet node key.
+# shell stays owner so the host can still append the host-verify probe line.
+for f in postlock_restore.log chain_run.state pstore_dump ts.state tsd.log .ks_lock_slots .cfgfslock; do
+  if [ -f $TMP/\$f ]; then
+    chown 2000:2000 $TMP/\$f 2>/dev/null || true
+    chmod 0600 $TMP/\$f 2>/dev/null || true
+  fi
+done
+# The chain log is the one file with a legitimate cross-uid reader: the
+# PostLock app's log panel tails it.  0600 (default) closes the leak and
+# limits the panel to app-domain chains; SUVTZ_CHAIN_LOG_MODE=0644 restores
+# the old behaviour at the cost of the KASLR base being app-readable.
+if [ -f $TMP/postlock_chain.log ]; then
+  chown 2000:2000 $TMP/postlock_chain.log 2>/dev/null || true
+  chmod $CHAIN_LOG_MODE $TMP/postlock_chain.log 2>/dev/null || true
+fi
+log "suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)"
 # --- enforce=1 data-path rules (2026-10-28) ----------------------------
 # Manager data features under strict SELinux (measured 2026-10-28, boot
 # 587002ff): service check package / RootService / pm list packages all
@@ -645,7 +710,7 @@ ab push "$TRIG_B64" $STAGE/trigger.b64 >/dev/null
 ab shell "base64 -d $STAGE/trigger.b64 > $TRIGGER_SCRIPT && chmod 755 $TRIGGER_SCRIPT" \
   || echo "WARN: trigger script write failed"
 rm -f "$TRIG_B64"
-ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; nohup sh $TRIGGER_SCRIPT > $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
+ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; : > $CHAIN_OUT; chmod $CHAIN_LOG_MODE $CHAIN_OUT; nohup sh $TRIGGER_SCRIPT >> $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
   || echo "WARN: detach failed (see $CHAIN_OUT)"
 
 # --- wait for the async KS_COLDSTART restore -----------------------------
@@ -703,7 +768,7 @@ ENC=$(ab shell "cat /sys/fs/selinux/enforce" | tr -d '\r')
 # Append the real measurement to restore.log so the STRICT-OK marker's
 # probe=host-verify field is backed by an on-log line, automatically.
 PROBE_OUT=$(ab shell "/product/bin/su -c id" | tr -d '\r')
-ab shell "echo '[host-verify] probe: $PROBE_OUT' >> /data/local/tmp/postlock_restore.log" || true
+ab shell "echo '[host-verify] probe: $PROBE_OUT' >> /data/local/tmp/postlock_restore.log; chmod 0600 /data/local/tmp/postlock_restore.log 2>/dev/null" || true
 ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
   die "legacy libgrant wrap still set — clear it: setprop wrap.$APP \"\""

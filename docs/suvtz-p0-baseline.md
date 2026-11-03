@@ -15,8 +15,13 @@ v3 §5 的判据是形式化的：
 这句话要能用，**S 必须是可枚举、可执行的集合**。否则"修好了"与"本来就正常"分不清，
 "还剩几项"也永远只是估计。
 
-P0 的产出就是这份可执行基线：7 类观测面收敛成 25 条探针，每条有判定与实测值。
+P0 的产出就是这份可执行基线：7 类观测面收敛成 30 条探针，每条有判定与实测值。
 它同时也是 P1 的验收前置——P1 每改一处，重跑本表看 FAIL 是否下降、PASS 是否被打破。
+
+> **2026-11-03 第二轮扫描（30 探针）**：首轮只覆盖"按设计该藏什么"，
+> 漏了"检测方只要猜路径就能读到什么"。补 B7–B11 五项后 FAIL 从 7 涨到 12，
+> 并且**新发现的 5 项全部是纯 DAC 泄漏**（B 类），全都可以零内核改动修掉。
+> 首轮 25 项结论未变，仅 §3 的 B1/B6 根因修正（不需要 chown 到 app uid）。
 
 ## 1. 方法：视角分级与诚实原则
 
@@ -39,7 +44,7 @@ P0 的产出就是这份可执行基线：7 类观测面收敛成 25 条探针�
    "观测不到"与"没法观测"是两件事。
 3. 期望值来自 v3 §5.3 的 stock 期望定义，**不是实测对照机**（手头没有同型号 stock 设备）。
 
-## 2. 结果：25 项，7 FAIL / 18 PASS / 0 INFO
+## 2. 结果：30 项，12 FAIL / 18 PASS / 0 INFO
 
 ```
 A1  FAIL  管理器包可枚举          package:com.resukisu.resukisu
@@ -47,12 +52,17 @@ A2  FAIL  工具包可枚举            package:com.postlock.boot; package:com.p
 A3  PASS  其它 root 工具包        -
 A4  PASS  app 可见 ksud 进程      0
 A5  PASS  app 可见 tailscaled     0
-B1  FAIL  物料目录 ksu_boot       finitmod; kernelsu.ko; ksud; preload.so; restore.sh; ...
+B1  FAIL  物料目录 ksu_boot       finitmod; kernelsu.ko; kernelsu_hotload_init.ko; ksud; ksud.log; ...
 B2  PASS  /data/local/tmp 可枚举  Permission denied（目录 0771）
 B3  PASS  /data/adb 可枚举        Permission denied
 B4  FAIL  /product/bin/su         -rwxr-xr-x root root 915B（wrapper）
 B5  PASS  /system/bin/su          No such file
 B6  FAIL  物料 ko 可读            -rw-rw-rw- shell shell 13759256B
+B7  FAIL  ksud 二进制可读         4107512B（全文可读；只有 exec 被 SELinux 拒）
+B8  FAIL  链日志可读              431002B（KASLR/pvo/静态 fallback 明文）
+B9  FAIL  overlay upper 可列      ksud;su
+B10 FAIL  KASLR 参考可读          kaslr boot=... text=ffffffeeb8880000 slide=0000002ea88000
+B11 FAIL  restore.sh 可读         #!/system/bin/sh（整套恢复流程明文）
 C1  PASS  /sys/module/kernelsu    Permission denied
 C2  PASS  /sys/module/oplus_check_suppress  Permission denied
 C3  PASS  /proc/modules 含 kernelsu          Permission denied
@@ -71,7 +81,13 @@ E3  PASS  mountinfo 暴露 tmpfs upper  0
 
 原始输出：`/tmp/opencode/suvtz/scan_5394a404.{txt,tsv}`
 
-## 3. 7 项 FAIL 的根因（逐项）
+**B7–B11 是同一类东西**：探针名都以"猜路径"为前提——检测方只要知道
+`/data/local/tmp/<名词>` 的形状（而这个形状在多个公开 kernelSU/susfs 讨论里都在传），
+就能直接读到整套链。它们的价值在于证明 **B2 的 PASS 是假安慰**：
+目录 0771 只挡住了"列目录"，挡不住"按名字取"。B8/B10 是其中信息量最大的两项
+（KASLR 基址 + pvo + 整套恢复脚本）。
+
+## 3. 12 项 FAIL 的根因（逐项）
 
 ### A1 / A2 —— 包名（PMS 层）
 
@@ -90,29 +106,56 @@ SUSFS 的任何钩子都在 VFS / syscall 层，改不了 PMS 的返回结果。
 **结论：A1 属 T1b（当前不可达）**，A2 可通过改包名缓解（但改包名会让
 `ksu_debug_manager_appid` / `postlock` 的 uid 解析链全部要重走，收益 vs 成本需评估）。
 
-### B1 / B6 —— 物料目录与 ko 文件（**纯 DAC，host 脚本自己造成**）
+### B1 / B6 / B7 / B8 / B9 / B10 / B11 —— 物料面（**纯 DAC，host 脚本自己造成**）
 
-实测权限：
+实测权限（`/data/local/tmp` = 0771，所以逐个文件测，不靠列目录）：
 
 ```
-drwxrwx--x  shell shell  /data/local/tmp          ← 0771，不可列可穿越
-drwxrwxrwx  shell shell  /data/local/tmp/ksu_boot ← 0777，完全开放  ← 问题在这
--rw-rw-rw-  shell shell  ksu_boot/kernelsu.ko     ← 0666
--rw-r--r--  shell shell  ksu_boot/ksud            ← 0644
+drwxrwx--x  shell shell  /data/local/tmp              ← 0771，不可列可穿越
+drwxrwxrwx  shell shell  /data/local/tmp/ksu_boot     ← 0777，完全开放   ← B1
+-rw-rw-rw-  shell shell  ksu_boot/kernelsu.ko         ← 0666            ← B6
+-rw-r--r--  shell shell  ksu_boot/ksud                ← 0644
+-rwxr-xr-x  root  root   /data/local/tmp/ksud         ← 0755            ← B7
+-rwxr-xr-x  root  root   /data/local/tmp/preload.so   ← 0755
+-rw-rw-rw-  shell shell  postlock_chain.log           ← 0666            ← B8
+drwxrwxrwx  root  root   /data/local/tmp/ovl/tmp/upper ← 0777           ← B9
+-rw-r--r--  shell shell  ksu_kaslr                    ← 0644            ← B10
+-rwx (在 0777 目录里)     ksu_boot/restore.sh                            ← B11
 ```
 
-`postlock.sh` stage 时对 `ksu_boot` 做了 `chmod 777`、对 ko 做了 `chmod 666`
-（为了让 app 域能读 `preload.so` 触发链）。**副作用是任何 app 都能读整套链物料。**
+`postlock.sh` stage 时为了让 app 域能读 `preload.so` 而 `chmod 777 $TMP`、
+`chmod 777 $STAGE`、`chmod 666` ko —— 结果 `$TMP` 变成 0771（可穿越），
+**于是任何一个猜得到文件名的 app 就能读全套**：13.7MB 的 ko、4107512B 的 ksud、
+431002B 的链日志（KASLR 基址 + pvo + 静态 fallback 明文）、
+`ksu_kaslr`（`text=ffffffeeb8880000 slide=0000002ea88000` 直接给出内核 text 基址）、
+以及 `restore.sh` 全文。
 
-这一项**不需要内核改动**：
+这一项**不需要内核改动，也不需要 chown 到 app uid**（首轮的推断是错的，见 §4.2）：
 
-- `ksu_boot` 的 `chown` 到管理器 app uid + `chmod 0700`
-  → 管理器可读（触发链正常）、其它 app 被 DAC 拒、restore（uid 0）可读
-- 但 restage 时必须重新 chown（app 重装会换 uid）
+- `ksu_boot` → `chown 2000:2000` + `chmod 0700`（`shell` 属主即可：host adb push
+  是 shell，链也是 shell；restore 是 root，CAP_DAC_OVERRIDE 无视权限位）
+- `/data/local/tmp` → `chmod 0711`（stock 值；app 仍需 `x` 才能读到 `ksu_kaslr`）
+- 物料 `kernelsu.ko`/`oplus_check_suppress.ko`/`kernelsu_hotload_init.ko` → 0600
+- `finitmod` → 0700；`ksud`/`preload.so` → `chown 2000:2000` + 0700
+  （shell 要 exec 它们；app 域 exec 本来就被 SELinux 拒）
+- 运行残留 `postlock_chain.log`/`postlock_restore.log`/`chain_run.state`/
+  `pstore_dump`/`ts.state`/`tsd.log`/`.ks_lock_slots`/`.cfgfslock` → 0600 shell
+- overlay 骨架 `ovl`/`ovl/tmp`/`ovl/tmp/work` → 0700 root；
+  **`ovl/tmp/upper` 必须留 0755**——实测它的 mode 就是挂载后 `/product/bin` 的 mode
+  （0777 → `/product/bin` 也是 0777），收成 0700 会让 shell 失去 `/product/bin` 的
+  `x` 位 → su wrapper 不可达；**`ovl/lower` 绝不能 chmod**（它是 `/product/bin` 的 bind）
 
-**注意**：这会让"DAC 层解决"与"触发链依赖"耦合。触发链要读 `preload.so`，
-所以**目录属主必须 = 管理器 uid**，不能 chmod 700 保持 shell 属主（那连管理器自己都读不了）。
-这正是 P1b 的第一个实施项。
+**`ksud` 收 0700 的安全性已实测**（2026-11-03，改前 0755 root）：
+app 域 `run-as com.postlock.boot /data/local/tmp/ksud --version`
+→ `can't execute: Permission denied`、`rc=126` —— **SELinux 本来就拒
+`untrusted_app` exec `shell_data_file`**，DAC 收紧不改变任何现有行为；
+而内核侧 su 路径（sucompat）在 exec 前 `commit_creds(ksu_cred)`，
+DAC 检查用 uid 0（`CAP_DAC_OVERRIDE`）照样通过。
+shell（owner）与 root 各自不受影响，链与 restore 无回归。
+
+**唯一有争议的两项**：`ksu_kaslr` / `ksu_payload` 停留在 0644 —— 它们是 app 域自己
+跑链时的 gate/paste 输入（app 无法自行算内核地址），收成 0600 等于永久关掉
+"BOOT_COMPLETED 自派发"。这两项与 B8 一起列为待决策项（§5 P1-3）。
 
 ### B4 —— `/product/bin/su`（overlay wrapper）
 
@@ -156,7 +199,7 @@ adbd 就又不监听 5555 → WAN 通道断 → 需要重新写入。**这是持
 ```
 
 一条 `grep overlay /proc/self/mountinfo` 就拿到整套链物料路径。
-**这是 7 项里信息量最大的一项**——它一次性泄漏了 overlay 机制、物料目录、upper 目录。
+**这是全部 FAIL 项里信息量最大的一项**——它一次性泄漏了 overlay 机制、物料目录、upper 目录。
 
 根因：SUS_MOUNT 的打标钩子只对**ksu 域**发起的 mount 生效
 （`susfs_mount.c` 里 `security_task_getsecid()` vs `u:r:ksu:s0`），
@@ -188,15 +231,21 @@ adbd 就又不监听 5555 → WAN 通道断 → 需要重新写入。**这是持
 如果将来某个检测方换到 `shell` 或 `system` 域（例如通过某个漏洞），那才需要补——
 但那时它已经不在"普通 app"的威胁模型里。
 
-### 4.2 ❌ "物料面必须靠 SUS_PATH 隐藏"
+### 4.2 ❌ "物料面必须靠 SUS_PATH 隐藏" / "必须 chown 到管理器 uid"
 
 原计划：用 `SUS_PATH` 给 `/data/local/tmp/ksu_boot` 打标。
 
 **实测：根因是目录 `0777`，pure DAC 问题**，且 `SUS_PATH` 的语义
 （属主 ≠ 当前 uid 才隐藏）在这里会造成死锁——它会连**管理器自己**一起隐藏，
-而管理器必须能读 `preload.so` 才能触发链。
+而管理器必须能读触发链物料。
 
-**结论：chown 到管理器 uid + chmod 0700 即可，零内核改动。**
+首轮由此推出"必须 chown 到管理器 uid"，**第二轮扫描后该推断被推翻**：
+app 主进程根本不读 `/data/local/tmp/ksu_boot`——
+`ChainTrigger.kt` 走 `PayloadRepo.ensure(ctx)`，即 app 私有
+`filesDir/postlock/`；`PayloadRepo.STAGE_DIR` 那个常量是死声明（零引用）。
+而 app 侧 `restore.sh` 虽然读 `ksu_boot`，但它由链 root 后 fork（uid 0）。
+
+**结论：`chown 2000:2000` + `chmod 0700` 即可，零内核改动，也不必跟着 app 重装换 uid。**
 （B4 是例外，见 §3。）
 
 ### 4.3 ❌ "先做 P1c（模块面）再做 P1b（物料面）"
@@ -205,25 +254,38 @@ adbd 就又不监听 5555 → WAN 通道断 → 需要重新写入。**这是持
 
 | 项 | 收益 | 成本 | 结论 |
 |---|---|---|---|
-| B1/B6 物料 | 高（整套链物料路径） | **零内核改动**，只改脚本权限 | **先做** |
-| E2 overlay | 最高（一条 grep 定性） | 中（改 restore 挂载域） | 次之 |
-| A2 工具包名 | 中 | 中（改包名 + 全链 uid 解析重走） | 后 |
-| B4 su | 中 | 高（与 su 可用性冲突） | 需设计决策 |
-| D1 adb port | 中 | 高（持久性 vs 可检测性冲突） | 需设计决策 |
+| B1/B6/B7/B8/B9/B10/B11 物料面 | 高（整套链物料路径 + KASLR 明文） | **零内核改动**，只改脚本权限 | **先做（P1-1）** |
+| E2 overlay | 最高（一条 grep 定性） | 中（改 restore 挂载域） | 次之（P1-2） |
+| A2 工具包名 | 中 | 中（改包名 + 全链 uid 解析重走） | 后（P1-4） |
+| B4 su | 中 | 高（与 su 可用性冲突） | 需设计决策（P1-3） |
+| D1 adb port | 中 | 高（持久性 vs 可检测性冲突） | 需设计决策（P1-3） |
 | A1 管理器包名 | 中 | 极低收益（上游 applicationId 不能换） | 放弃 |
 
 ## 5. 修正后的 P1 路线
 
 按实测重排（原 P1a/P1b/P1c/P1d 作废）：
 
-- **P1-1（零内核，先做）**：`ksu_boot` chown 到管理器 uid + chmod 0700；
-  ko / 物料 `chmod 0600`。同步改 `tools/postlock.sh` 与 app `assets/postlock/restore.sh`
-  两处（两处必须一致，否则装机后行为不同）。
-  **验收**：B1/B6 转 PASS，同时触发链仍能跑通（这是关键——不能为了隐藏把链弄坏）。
+- **P1-1（零内核，已落地待验）**：DAC 收敛，见 §3 B1/B6 小节的清单。
+  同步改 `tools/postlock.sh` 与 app `assets/postlock/restore.sh`
+  （两份必须一致，否则装机后行为不同；生成物 round-trip diff 只有一处
+  有意的差异：chain log 的 mode 在 host 侧是展开值、在 asset 侧是
+  `${SUVTZ_CHAIN_LOG_MODE:-0600}`）。
+  插入点 = overlay 建好、ksud 拷完之后（root/kernel:s0 上下文）。
+  **验收**：B1/B6/B7/B8/B9/B11 转 PASS、`/data/local/tmp` 保持可穿越、
+  触发链与 restore 全链无回归（这是关键——不能为了隐藏把链弄坏）。
 - **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效
   （可顺带验证 SUS_MOUNT，一石二鸟）。
-- **P1-3（需决策）**：B4 / D1 —— 先把冲突点摆给用户，不擅自取舍。
+- **P1-3（需决策，见 §5.1）**：B4 / B8 / B10 / D1 四项冲突点，不擅自取舍。
 - **P1-4（后）**：A2 包名。
+
+### 5.1 待决策的四项冲突
+
+| 项 | 冲突 | 三个选项 |
+|---|---|---|
+| **B4** `/product/bin/su` | su 要给**任意**被授予的 app exec，属主不能是某个 app uid | ① 接受"名字可见、内容不可读"（现状）② SUS_PATH 打标（被授予的 app 也一起被隐藏，su 坏）③ 放弃 `/product/bin` 载体，su 只经 ksud wrapper |
+| **B8** 链日志 | 431KB 含 KASLR/pvo 明文；但 PostLock 面板要 tail 它做实时日志 | ① 默认 0600（已实现，`SUVTZ_CHAIN_LOG_MODE=0644` 可回退）→ 面板只见 app 域链 ② 0644 保留面板，接受泄漏 ③ 日志脱敏（打码 text/slide 字段）后 0644 |
+| **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644（现状）② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）③ 只在考试轮临时放宽 |
+| **D1** `persist.adb.tcp.port=5555` | WAN 通道 bootstrap 需要 adbd 常驻监听 5555 | ① 保持常驻 ② 通道建立后清空（下次冷启动断链，需重新写）③ 换非持久通道（每 boot host/链写一次） |
 
 ## 6. 复跑方法
 

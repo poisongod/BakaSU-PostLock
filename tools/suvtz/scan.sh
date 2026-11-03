@@ -85,10 +85,13 @@ LAST_OUT=""
 # 命令体约束: 不含单引号 (runas 外层用 sh -c '...' 包裹)。全部探针已遵守。
 exec_v() {
 	local view="$1" cmd="$2" raw rc
+	# 设备侧必须先把 stderr 并进 stdout (2>&1), 否则 echo 的 __RC__ 会插进
+	# 命令 stderr 的两次写之间 (实测 ls: "<path>__RC__1\n: Permission denied"),
+	# 输出顺序被打乱、实测值被污染。
 	if [ "$view" = runas ]; then
-		raw=$("$ADB" -s "$S" shell "run-as $PKG sh -c '$cmd'; echo __RC__\$?" 2>&1)
+		raw=$("$ADB" -s "$S" shell "run-as $PKG sh -c '$cmd' 2>&1; echo __RC__\$?" 2>&1)
 	else
-		raw=$("$ADB" -s "$S" shell "$cmd; echo __RC__\$?" 2>&1)
+		raw=$("$ADB" -s "$S" shell "sh -c '$cmd' 2>&1; echo __RC__\$?" 2>&1)
 	fi
 	raw=$(printf '%s' "$raw" | tr -d '\r')
 	rc=$(printf '%s\n' "$raw" | sed -n 's/.*__RC__\([0-9][0-9]*\).*/\1/p' | tail -1)
@@ -178,6 +181,11 @@ PROBES=(
 "B4${T}B${T}/product/bin/su 存在${T}runas${T}ls -l /product/bin/su${T}absent"
 "B5${T}B${T}/system/bin/su 存在${T}runas${T}ls -l /system/bin/su${T}absent"
 "B6${T}B${T}物料 ko 可读${T}runas${T}ls -l /data/local/tmp/ksu_boot/kernelsu.ko${T}absent"
+"B7${T}B${T}ksud 二进制可读${T}runas${T}wc -c < /data/local/tmp/ksud${T}absent"
+"B8${T}B${T}链日志可读${T}runas${T}head -1 /data/local/tmp/postlock_chain.log${T}absent"
+"B9${T}B${T}overlay upper 可列${T}runas${T}ls /data/local/tmp/ovl/tmp/upper${T}absent"
+"B10${T}B${T}KASLR 参考可读${T}runas${T}cat /data/local/tmp/ksu_kaslr${T}absent"
+"B11${T}B${T}restore.sh 可读${T}runas${T}head -1 /data/local/tmp/ksu_boot/restore.sh${T}absent"
 "C1${T}C${T}/sys/module/kernelsu${T}runas${T}ls /sys/module/kernelsu${T}absent"
 "C2${T}C${T}/sys/module/oplus_check_suppress${T}runas${T}ls /sys/module/oplus_check_suppress${T}absent"
 "C3${T}C${T}/proc/modules 含 kernelsu${T}runas${T}grep -c kernelsu /proc/modules${T}zero"
