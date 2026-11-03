@@ -37,12 +37,16 @@ SUS_SRC=/data/local/tmp/sus_src
 SUS_DST=/data/local/tmp/sus_dst
 FAKE_CMDLINE=/data/local/tmp/sus_fake_cmdline
 
-T_PATH=/system/bin/toybox                  # SUS_PATH
-T_PATH_LOOP=/system/etc/prop.default       # SUS_PATH_LOOP
-T_KSTAT=/system/etc/hosts                  # SUS_KSTAT（普通文件，非符号链接）
+T_PATH_CANDS="/system/bin/toybox /vendor/bin/toybox /system/xbin/toybox"
+T_PATH_LOOP_CANDS="/system/etc/prop.default /system/build.prop"
+T_KSTAT=/system/etc/hosts                   # SUS_KSTAT（普通文件，非符号链接）
 T_REDIR=/system/etc/security/otacerts.zip  # OPEN_REDIRECT target
 T_REDIR_SRC=/system/etc/hosts              # OPEN_REDIRECT redirected
-C_PATH=/system/bin/sh                      # 对照（不标记）
+# 对照项候选（不标记）。/system/bin/sh 在 AOSP 上指向 mksh，但个别 ROM 会把它
+# 变成 toybox 的链接 —— 那样标记 toybox 会连带隐藏对照，判据自相矛盾。所以
+# 按序取第一个「inode 与被标记目标都不同」的候选，而不是写死一个。
+C_PATH_CANDS="/system/bin/sh /system/bin/mksh /system/bin/linker64 \
+/system/bin/app_process64 /system/framework/framework.jar"
 # SUS_MAP 目标：必须是进程真的已映射的实际路径（/system/lib64/libc.so 是符号
 # 链接，kern_path 解析到 apex，用 apex 实路径更直观）。按序取第一个存在的。
 MAP_CANDIDATES="/apex/com.android.runtime/lib64/bionic/libc.so \
@@ -206,7 +210,7 @@ selftest() {
 	f="/data/user/0/$PKG/files/susfs_selftest_$tag.txt"
 	out="$OUT/selftest_$tag.txt"
 	RR "rm -f $f" >/dev/null 2>&1
-	d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag --es map $T_MAP" \
+	d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
 		>/dev/null 2>&1
 	for i in $(seq 1 60); do
 		file_exists "$f" && break
@@ -221,7 +225,7 @@ selftest() {
 		# 必须重发一次：首次广播若落在 stopped 包上会被丢弃且不补投，
 		# 光 am start 只解锁状态，不会再触发那一发已丢的广播。
 		RR "rm -f $f" >/dev/null 2>&1
-		d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag --es map $T_MAP" \
+		d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
 			>/dev/null 2>&1
 		for i in $(seq 1 40); do
 			file_exists "$f" && break
@@ -314,20 +318,48 @@ else
 	printf 'no stale app process（首次广播将冷启动一个新进程）\n'
 fi
 
-# ---- 0. 目标确认（找不到就早退，别在设备上留半套标记） ----
-for p in "$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_REDIR" "$T_REDIR_SRC" "$C_PATH"; do
+# ---- 0. 目标选择（找不到就在打标之前早退，不在设备上留半套标记） ----
+ino_of() { RR "stat -c %i $1" | tr -d ' \r\n'; }
+
+# 取候选表里第一个「存在且是普通文件（跟随符号链接）」的路径
+pick_file() {
+	local p
+	for p in $1; do
+		[ "$(RR "test -f $p && echo Y")" = "Y" ] || continue
+		printf '%s' "$p"
+		return 0
+	done
+	return 1
+}
+
+T_PATH=$(pick_file "$T_PATH_CANDS") || die "SUS_PATH 目标候选都不存在：$T_PATH_CANDS"
+T_PATH_LOOP=$(pick_file "$T_PATH_LOOP_CANDS") || die "SUS_PATH_LOOP 目标候选都不存在：$T_PATH_LOOP_CANDS"
+for p in "$T_KSTAT" "$T_REDIR" "$T_REDIR_SRC"; do
 	file_exists "$p" || die "目标不存在：$p"
 done
 
-# 对照项必须与被标记目标不是同一个 inode：/system/bin 下一大批文件名都是
-# toybox 的符号链接，一旦 sh 也是它的链接，标记 toybox 会连带隐藏对照，
-# 判据就自相矛盾（会假 FAIL）。宁可在打标之前 die，也不要在设备上留半套标记。
-T_PATH_INO=$(RR "stat -c %i $T_PATH" | tr -d ' \r\n')
-C_PATH_INO=$(RR "stat -c %i $C_PATH" | tr -d ' \r\n')
-if [ -z "$T_PATH_INO" ] || [ "$T_PATH_INO" = "$C_PATH_INO" ]; then
-	die "对照 $C_PATH 与目标 $T_PATH 同 inode（$T_PATH_INO）：对照无效，先换一个非 toybox 的普通文件"
-fi
-printf 'control inode: %s=%s  %s=%s\n' "$T_PATH" "$T_PATH_INO" "$C_PATH" "$C_PATH_INO"
+P_INO=$(ino_of "$T_PATH")
+L_INO=$(ino_of "$T_PATH_LOOP")
+K_INO_REAL=$(ino_of "$T_KSTAT")
+[ -n "$P_INO" ] || die "读不到 $T_PATH 的 inode"
+
+# 对照项必须与两个被标记目标、以及 SUS_KSTAT 目标都不同 inode：/system/bin
+# 下一大批文件名都是 toybox 的符号链接，一旦 sh 也是它的链接，标记 toybox
+# 会连带隐藏对照，判据就自相矛盾（假 FAIL）。找不到合适对照就在打标之前
+# die —— 设备上不会留半套标记，修完可直接重跑。
+C_PATH="" C_INO=""
+for p in $C_PATH_CANDS; do
+	[ "$(RR "test -f $p && echo Y")" = "Y" ] || continue
+	i=$(ino_of "$p")
+	[ -n "$i" ] || continue
+	[ "$i" = "$P_INO" ] && continue
+	[ "$i" = "$L_INO" ] && continue
+	[ "$i" = "$K_INO_REAL" ] && continue
+	C_PATH=$p C_INO=$i
+	break
+done
+[ -n "$C_PATH" ] || die "找不到与被标记目标不同 inode 的对照文件：$C_PATH_CANDS"
+printf 'control inode: %s=%s  %s=%s\n' "$T_PATH" "$P_INO" "$C_PATH" "$C_INO"
 
 T_MAP=""
 for p in $MAP_CANDIDATES; do
@@ -339,6 +371,11 @@ done
 [ -n "$T_MAP" ] || die "SUS_MAP 目标都不存在：$MAP_CANDIDATES"
 printf 'targets: path=%s loop=%s kstat=%s map=%s redirect=%s<-%s\n' \
 	"$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_MAP" "$T_REDIR" "$T_REDIR_SRC"
+
+# 自检广播的 extras：目标全部由 host 选定后下发，app 侧不写死任何路径
+# （不同 ROM 的 toybox/prop.default/对照文件位置并不一致）。
+ST_EXTRAS="--es map $T_MAP --es path $T_PATH --es pathloop $T_PATH_LOOP"
+ST_EXTRAS="$ST_EXTRAS --es ctl $C_PATH --es redir $T_REDIR --es redirsrc $T_REDIR_SRC"
 
 # ---- 1. 准备 ----
 RR "mkdir -p $SUS_SRC $SUS_DST"
@@ -440,12 +477,12 @@ if [ "$SELFTEST_OK" = 1 ]; then
 fi
 
 if [ "$SELFTEST_OK" = 1 ]; then
-	cmp_eq "SUS_PATH exists" path.toybox.exists 1 0
-	cmp_eq "SUS_PATH listed" path.toybox.listed 1 0
-	cmp_eq "SUS_PATH_LOOP exists" path.propdefault.exists 1 0
-	cmp_eq "SUS_PATH_LOOP listed" path.propdefault.listed 1 0
-	cmp_same "SUS_PATH 对照" path.sh.exists
-	cmp_same "SUS_PATH 对照 listed" path.sh.listed
+	cmp_eq "SUS_PATH exists" path.target.exists 1 0
+	cmp_eq "SUS_PATH listed" path.target.listed 1 0
+	cmp_eq "SUS_PATH_LOOP exists" path.loop.exists 1 0
+	cmp_eq "SUS_PATH_LOOP listed" path.loop.listed 1 0
+	cmp_same "SUS_PATH 对照" path.ctl.exists
+	cmp_same "SUS_PATH 对照 listed" path.ctl.listed
 
 	# 内核侧独立证据：susfs_path_inode_hidden() 命中会打 "hiding ino"。
 	# 有增量 = 内核真的执行了隐藏分支（与 app 观测量两条独立证据链）。
@@ -456,9 +493,9 @@ if [ "$SELFTEST_OK" = 1 ]; then
 		res FAIL "SUS_PATH 内核侧" "dmesg 'hiding ino' 无增量（$HID0 -> ${HID1:-?}）"
 	fi
 
-	cmp_eq "SUS_KSTAT ino" kstat.hosts.ino "$REAL_INO" "$K_INO"
-	cmp_eq "SUS_KSTAT size" kstat.hosts.size "$REAL_SIZE" "$K_SIZE"
-	cmp_same "SUS_KSTAT 对照 ino" kstat.sh.ino
+	cmp_eq "SUS_KSTAT ino" kstat.target.ino "$REAL_INO" "$K_INO"
+	cmp_eq "SUS_KSTAT size" kstat.target.size "$REAL_SIZE" "$K_SIZE"
+	cmp_same "SUS_KSTAT 对照 ino" kstat.ctl.ino
 
 	# SUS_MAP：判定单位是 VMA，目标库的每条映射占 maps 一行（libc 通常 4 段），
 	# 所以判据是「标记前 >=1 行 → 标记后 0 行」，行数取自 app 侧对 host 传入
@@ -473,8 +510,8 @@ if [ "$SELFTEST_OK" = 1 ]; then
 	# map.numentries 只写入 out/selftest_*.txt 供人工比对，不参与评分：
 	# 进程自身会不断创建/释放线程栈与 JIT 页，行数浮动属正常噪声。
 
-	cmp_changed "OPEN_REDIRECT 内容" redirect.otacerts
-	cmp_same "OPEN_REDIRECT 对照" redirect.hosts
+	cmp_changed "OPEN_REDIRECT 内容" redirect.target
+	cmp_same "OPEN_REDIRECT 对照" redirect.src
 
 	# SUS_MOUNT 有两条彼此独立的证据：
 	# ① 内核侧（与挂载命名空间无关，权威）：ksu 域创建的挂载会被
