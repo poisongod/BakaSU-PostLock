@@ -1,0 +1,243 @@
+# SUVTZ P0 基线 —— 观测面实测（2026-11-03）
+
+> 设计文档: [`suvtz-v3-design.md`](suvtz-v3-design.md) §3 观测面清单 / §5 观测等价判据
+> 扫描器: `tools/suvtz/scan.sh`
+> 设备: PFUM10 / 192.168.137.10:5555 / boot `5394a404`
+
+## 0. 为什么先做这一步
+
+v3 §5 的判据是形式化的：
+
+```
+∀ s ∈ S（观测面）: s(D_rooted) ≡ s(D_stock)
+```
+
+这句话要能用，**S 必须是可枚举、可执行的集合**。否则"修好了"与"本来就正常"分不清，
+"还剩几项"也永远只是估计。
+
+P0 的产出就是这份可执行基线：7 类观测面收敛成 25 条探针，每条有判定与实测值。
+它同时也是 P1 的验收前置——P1 每改一处，重跑本表看 FAIL 是否下降、PASS 是否被打破。
+
+## 1. 方法：视角分级与诚实原则
+
+检测方 = 任意第三方 app（`untrusted_app` 域）。但 host 侧拿不到 app 域，只能用两个代理：
+
+| 视角 | 构成 | 与真实检测方的关系 |
+|---|---|---|
+| `shell` | uid 2000 + `u:r:shell:s0` | 能力**远超**检测方，只作对照 |
+| `runas` | app uid + `u:r:runas_app:s0`（`run-as <pkg>`） | DAC 精确，**SELinux 域不等价**于 `untrusted_app` |
+
+推论（写进脚本输出）：`runas` 的 PASS 是**必要条件不是充分条件**——`runas_app` 若某权限
+比 `untrusted_app` 宽，会给出假 PASS；反之若更严，会给假 FAIL。
+真正的判据需 app 自身代码复测（`SusfsSelfTest`，P2 扩充）。
+
+三条判定纪律：
+
+1. **`Permission denied` / `No such file` = 观测不到 = PASS**，不是 INFO。
+   检测方看不到就是看不到，不管是被谁挡的。
+2. **命令本身跑不起来（exec 被拒 / 命令缺失 / rc 126/127）= INFO**，绝不判 PASS。
+   "观测不到"与"没法观测"是两件事。
+3. 期望值来自 v3 §5.3 的 stock 期望定义，**不是实测对照机**（手头没有同型号 stock 设备）。
+
+## 2. 结果：25 项，7 FAIL / 18 PASS / 0 INFO
+
+```
+A1  FAIL  管理器包可枚举          package:com.resukisu.resukisu
+A2  FAIL  工具包可枚举            package:com.postlock.boot; package:com.postlock.privateapp
+A3  PASS  其它 root 工具包        -
+A4  PASS  app 可见 ksud 进程      0
+A5  PASS  app 可见 tailscaled     0
+B1  FAIL  物料目录 ksu_boot       finitmod; kernelsu.ko; ksud; preload.so; restore.sh; ...
+B2  PASS  /data/local/tmp 可枚举  Permission denied（目录 0771）
+B3  PASS  /data/adb 可枚举        Permission denied
+B4  FAIL  /product/bin/su         -rwxr-xr-x root root 915B（wrapper）
+B5  PASS  /system/bin/su          No such file
+B6  FAIL  物料 ko 可读            -rw-rw-rw- shell shell 13759256B
+C1  PASS  /sys/module/kernelsu    Permission denied
+C2  PASS  /sys/module/oplus_check_suppress  Permission denied
+C3  PASS  /proc/modules 含 kernelsu          Permission denied
+C4  PASS  /proc/kallsyms 含 ksu_/susfs_      Permission denied
+C5  PASS  ksu 参数文件可读        Permission denied
+D1  FAIL  persist.adb.tcp.port    5555
+D2  PASS  wrap.* 注入属性         0
+D3  PASS  ro.debuggable           0
+D4  PASS  ro.build.type           user
+D5  PASS  verifiedbootstate       green
+D6  PASS  sys.oem_unlock_allowed  0
+E1  PASS  SELinux enforce 可读    Permission denied
+E2  FAIL  mountinfo 暴露 overlay  1
+E3  PASS  mountinfo 暴露 tmpfs upper  0
+```
+
+原始输出：`/tmp/opencode/suvtz/scan_5394a404.{txt,tsv}`
+
+## 3. 7 项 FAIL 的根因（逐项）
+
+### A1 / A2 —— 包名（PMS 层）
+
+`pm list packages` 走 Binder → `PackageManagerService`，**完全不经文件系统**。
+SUSFS 的任何钩子都在 VFS / syscall 层，改不了 PMS 的返回结果。
+
+能改它的只有：
+
+- 改包名（真名，非伪造）→ 与"真协议"不冲突，但**只能改我们自己的两个包**
+  （`com.postlock.boot`、`com.postlock.privateapp`）；`com.resukisu.resukisu`
+  是上游 `applicationId`（`managerPackageName`，换它会断升级路径）
+- 管理器层过滤（谎报）→ **红线禁止**
+- SELinux 限制 `QUERY_ALL_PACKAGES` → 不现实（影响所有 app 的正常功能，且该权限由
+  PackageManager 内部判定，不是 SELinux class）
+
+**结论：A1 属 T1b（当前不可达）**，A2 可通过改包名缓解（但改包名会让
+`ksu_debug_manager_appid` / `postlock` 的 uid 解析链全部要重走，收益 vs 成本需评估）。
+
+### B1 / B6 —— 物料目录与 ko 文件（**纯 DAC，host 脚本自己造成**）
+
+实测权限：
+
+```
+drwxrwx--x  shell shell  /data/local/tmp          ← 0771，不可列可穿越
+drwxrwxrwx  shell shell  /data/local/tmp/ksu_boot ← 0777，完全开放  ← 问题在这
+-rw-rw-rw-  shell shell  ksu_boot/kernelsu.ko     ← 0666
+-rw-r--r--  shell shell  ksu_boot/ksud            ← 0644
+```
+
+`postlock.sh` stage 时对 `ksu_boot` 做了 `chmod 777`、对 ko 做了 `chmod 666`
+（为了让 app 域能读 `preload.so` 触发链）。**副作用是任何 app 都能读整套链物料。**
+
+这一项**不需要内核改动**：
+
+- `ksu_boot` 的 `chown` 到管理器 app uid + `chmod 0700`
+  → 管理器可读（触发链正常）、其它 app 被 DAC 拒、restore（uid 0）可读
+- 但 restage 时必须重新 chown（app 重装会换 uid）
+
+**注意**：这会让"DAC 层解决"与"触发链依赖"耦合。触发链要读 `preload.so`，
+所以**目录属主必须 = 管理器 uid**，不能 chmod 700 保持 shell 属主（那连管理器自己都读不了）。
+这正是 P1b 的第一个实施项。
+
+### B4 —— `/product/bin/su`（overlay wrapper）
+
+```
+-rwxr-xr-x 1 root root 915  /product/bin/su
+```
+
+915 字节 = restore 生成的 wrapper 脚本。`root:root 0755` 是**必须的**：
+su 要给任意被授予的 app exec，属主不能是某个 app uid。
+
+因此 DAC 层解决不了（chmod 会同时挡住合法调用）。能覆盖它的只有：
+
+- `SUS_PATH` 打标 → 属主 `root(0) ≠ app uid` → 对**所有** app 隐藏
+  → 但**被授予 su 的 app 也会被隐藏**，它的 su 就坏了
+- `SUS_PATH` + 把已授予 uid 的文件属主改成该 uid → 一个文件只能有一个属主，
+  无法满足"多个被授予 app 都能 exec"的语义
+
+**结论：B4 与 su 的可用性直接冲突，属设计级取舍**（要么暴露、要么牺牲 su 的多 app 支持）。
+留到 P1 与"su 是否必须常驻 `/product/bin`"一起决策。
+
+### D1 —— `persist.adb.tcp.port = 5555`
+
+属性区是 init 映射的共享内存，进程 `mmap` 后直读，**不经任何 syscall**。
+内核钩子碰不到，SELinux 只能按 `properties_*` class 控制按域的读权限，
+而 `persist.*` 属 `properties_serial` / `properties_core`，app 域有读权限。
+
+唯一可行方向是**用完清除**：该属性只在 WAN 通道 bootstrap 时需要，
+通道建立后能改回空（`setprop persist.adb.tcp.port ''`）。但下一次冷启动
+adbd 就又不监听 5555 → WAN 通道断 → 需要重新写入。**这是持久性 vs 可检测性的直接冲突。**
+
+### E2 —— overlay 挂载在 app 的 mountinfo 里
+
+实测原文（app 域读自己的 `/proc/self/mountinfo`）：
+
+```
+3425 113 0:126 / /product/bin rw,relatime shared:65 - overlay overlay
+  rw,context=u:object_r:system_file:s0,
+  lowerdir=/data/local/tmp/ovl/lower,
+  upperdir=/data/local/tmp/ovl/tmp/upper,
+  workdir=/data/local/tmp/ovl/tmp/work
+```
+
+一条 `grep overlay /proc/self/mountinfo` 就拿到整套链物料路径。
+**这是 7 项里信息量最大的一项**——它一次性泄漏了 overlay 机制、物料目录、upper 目录。
+
+根因：SUS_MOUNT 的打标钩子只对**ksu 域**发起的 mount 生效
+（`susfs_mount.c` 里 `security_task_getsecid()` vs `u:r:ksu:s0`），
+而 restore 建 overlay 时是 `kernel:s0`（`POSTLOCK-RESTORE` 诊断头自证 `context=u:r:kernel:s0`）
+→ 不打标 → 不隐藏。
+
+修法有两条，都要动 restore：
+
+- (a) 让 overlay 在 ksu 域建（`runcon u:r:ksu:s0` 或经 ksud 代建）
+- (b) 根本不挂 overlay：su 用别的载体（但要解决 PATH 劫持与多 app 支持）
+
+## 4. 三个被本次实测推翻的预设
+
+这一节是 P0 的主要价值：**避免做无用功**。
+
+### 4.1 ❌ "需要新增 `susfs_kernfs.c` 来隐藏 `/sys/module/kernelsu`"
+
+原计划：离线已确认 `kernfs_iop_lookup$999bdfdc…` / `kernfs_fop_readdir$999bdfdc…` /
+`kernfs_dop_revalidate$999bdfdc…` 三个符号可 resolve（带 CFI 哈希，现有
+`susfs_unwrap_jump_table()` 能解），准备写一个 kprobe 模块做模块面隐藏。
+
+**实测：C1/C2/C3/C4/C5 全 PASS。** app 域读 `/sys/module/kernelsu`、
+`/proc/modules`、`/proc/kallsyms` **全部 Permission denied**。
+
+原因：`/sys/module/*` 的 `ls` 需要 `kernfs` 的 `read` 权限，app 域没有；
+`/proc/modules`、`/proc/kallsyms` 同样被 SELinux 拒。
+
+**结论：模块面对 app 域本来就是不可达的（T2），这一段内核代码不需要写。**
+如果将来某个检测方换到 `shell` 或 `system` 域（例如通过某个漏洞），那才需要补——
+但那时它已经不在"普通 app"的威胁模型里。
+
+### 4.2 ❌ "物料面必须靠 SUS_PATH 隐藏"
+
+原计划：用 `SUS_PATH` 给 `/data/local/tmp/ksu_boot` 打标。
+
+**实测：根因是目录 `0777`，pure DAC 问题**，且 `SUS_PATH` 的语义
+（属主 ≠ 当前 uid 才隐藏）在这里会造成死锁——它会连**管理器自己**一起隐藏，
+而管理器必须能读 `preload.so` 才能触发链。
+
+**结论：chown 到管理器 uid + chmod 0700 即可，零内核改动。**
+（B4 是例外，见 §3。）
+
+### 4.3 ❌ "先做 P1c（模块面）再做 P1b（物料面）"
+
+原路线按"实现难度"排序。实测表明应改为按**收益/成本比**排序：
+
+| 项 | 收益 | 成本 | 结论 |
+|---|---|---|---|
+| B1/B6 物料 | 高（整套链物料路径） | **零内核改动**，只改脚本权限 | **先做** |
+| E2 overlay | 最高（一条 grep 定性） | 中（改 restore 挂载域） | 次之 |
+| A2 工具包名 | 中 | 中（改包名 + 全链 uid 解析重走） | 后 |
+| B4 su | 中 | 高（与 su 可用性冲突） | 需设计决策 |
+| D1 adb port | 中 | 高（持久性 vs 可检测性冲突） | 需设计决策 |
+| A1 管理器包名 | 中 | 极低收益（上游 applicationId 不能换） | 放弃 |
+
+## 5. 修正后的 P1 路线
+
+按实测重排（原 P1a/P1b/P1c/P1d 作废）：
+
+- **P1-1（零内核，先做）**：`ksu_boot` chown 到管理器 uid + chmod 0700；
+  ko / 物料 `chmod 0600`。同步改 `tools/postlock.sh` 与 app `assets/postlock/restore.sh`
+  两处（两处必须一致，否则装机后行为不同）。
+  **验收**：B1/B6 转 PASS，同时触发链仍能跑通（这是关键——不能为了隐藏把链弄坏）。
+- **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效
+  （可顺带验证 SUS_MOUNT，一石二鸟）。
+- **P1-3（需决策）**：B4 / D1 —— 先把冲突点摆给用户，不擅自取舍。
+- **P1-4（后）**：A2 包名。
+
+## 6. 复跑方法
+
+```bash
+tools/suvtz/scan.sh                    # 完整输出
+tools/suvtz/scan.sh -q                 # 只出汇总
+SERIAL=<ip>:5555 tools/suvtz/scan.sh
+```
+
+输出落 `/tmp/opencode/suvtz/scan_<boot8>.{txt,tsv}`。**换 boot 后重跑**即可验证：
+
+- **持久性判据**：上一 boot 的 FAIL 项是否在本 boot 仍为 FAIL（该 FAIL 是"每 boot 重犯"
+  还是"一次性"）
+- **回归**：原本 PASS 的项是否变 FAIL（改动引入的新泄漏）
+
+注意：本表的 PASS 是 `runas_app` 视角的必要条件，不是 `untrusted_app` 的充分条件。
+真正的终局判据在 P2——app 自身代码跑同一套探针。

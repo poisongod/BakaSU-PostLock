@@ -12,7 +12,7 @@ if [ -n "${SERIAL:-}" ]; then
 	exec "$ADB" -s "$SERIAL" "$@"
 fi
 
-for s in 192.168.8.10:5555 100.71.26.6:5555; do
+for s in 192.168.137.10:5555 192.168.8.10:5555 100.71.26.6:5555; do
 	if ! "$ADB" -s "$s" get-state 2>/dev/null | grep -q '^device$'; then
 		"$ADB" connect "$s" >/dev/null 2>&1 || true
 	fi
