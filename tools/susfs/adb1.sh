@@ -12,11 +12,14 @@ if [ -n "${SERIAL:-}" ]; then
 	exec "$ADB" -s "$SERIAL" "$@"
 fi
 
+# Windows adb.exe 的 get-state 带 \r，直接 grep '^device$' 永不匹配（曾让
+# 本封装在设备明明在线时空转 + connect 到不可达地址长时间挂住）。
+# connect 一律加 timeout：不可达 IP 上 adb connect 会阻塞很久。
 for s in 192.168.137.10:5555 192.168.8.10:5555 100.71.26.6:5555; do
-	if ! "$ADB" -s "$s" get-state 2>/dev/null | grep -q '^device$'; then
-		"$ADB" connect "$s" >/dev/null 2>&1 || true
+	if ! "$ADB" -s "$s" get-state 2>/dev/null | tr -d '\r' | grep -q '^device$'; then
+		timeout 8 "$ADB" connect "$s" >/dev/null 2>&1 || true
 	fi
-	if "$ADB" -s "$s" get-state 2>/dev/null | grep -q '^device$'; then
+	if "$ADB" -s "$s" get-state 2>/dev/null | tr -d '\r' | grep -q '^device$'; then
 		exec "$ADB" -s "$s" "$@"
 	fi
 done
