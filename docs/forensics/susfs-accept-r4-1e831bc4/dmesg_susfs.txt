@@ -1,0 +1,52 @@
+[ 7753.234317] (7)[13896:ksud]susfs:[0][13896][susfs_get_enabled_features] CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: 0
+[ 7753.475629] (7)[13900:ksud]susfs:[0][13900][susfs_show_version] CMD_SUSFS_SHOW_VERSION -> ret: 0
+[ 7753.713471] (6)[13911:ksud]susfs:[0][13911][susfs_show_variant] CMD_SUSFS_SHOW_VARIANT -> ret: 0
+[ 7759.198576] (7)[14049:ksud]susfs: CMD_SUSFS_ENABLE_LOG -> ret: 0
+[ 7764.747014] (7)[14083:ksud]susfs:[0][14083][susfs_path_arm] sus_path hooks armed
+[ 7764.747118] (7)[14083:ksud]susfs:[0][14083][susfs_path_add] sus_path '/system/etc/NOTICE.xml.gz' added, ino: 9540670, loop: 0
+[ 7764.747122] (7)[14083:ksud]susfs:[0][14083][susfs_path_add] CMD_SUSFS_ADD_SUS_PATH -> ret: 0
+[ 7767.993622] (7)[14136:ksud]susfs:[0][14136][susfs_path_add] sus_path '/system/build.prop' added, ino: 9540628, loop: 1
+[ 7767.993625] (7)[14136:ksud]susfs:[0][14136][susfs_path_add] CMD_SUSFS_ADD_SUS_PATH_LOOP -> ret: 0
+[ 7768.224321] (1)[5568:kworker/1:2]susfs:[0][5568][susfs_path_loop_run] sus_path loop: refreshed 1, failed 0
+[ 7768.420231] (2)[5871:kworker/2:2]susfs:[0][5871][susfs_path_loop_run] sus_path loop: refreshed 1, failed 0
+[ 7772.713222] (7)[14231:ksud]susfs:[0][14231][susfs_map_arm] sus_map hooks armed
+[ 7772.713226] (7)[14231:ksud]susfs:[0][14231][susfs_add_sus_map] pathname: '/apex/com.android.runtime/lib64/bionic/libc.so', is flagged as AS_FLAGS_SUS_MAP
+[ 7772.713230] (7)[14231:ksud]susfs:[0][14231][susfs_add_sus_map] CMD_SUSFS_ADD_SUS_MAP -> ret: 0
+[ 7774.529793] (7)[14295:ksud]susfs:[0][14295][susfs_mark_inode_sus_kstat] marked AS_FLAGS_SUS_KSTAT on pathname: '/system/etc/hosts', inode->i_sb->s_dev: 265289751, inode->i_ino: 9608777, inode->i_mapping->flags: 0x800000000
+[ 7774.529822] (7)[14295:ksud]susfs:[0][14295][susfs_add_sus_kstat] added '/system/etc/hosts'
+[ 7774.668707] (1)[5568:kworker/1:2]susfs:[0][5568][susfs_path_loop_run] sus_path loop: refreshed 1, failed 0
+[ 7774.669997] (6)[14295:ksud]susfs:[0][14295][susfs_kstat_register_hooks]no bl seq_printf inside inotify_fdinfo, inotify spoof disabled
+[ 7774.670003] (6)[14295:ksud]susfs:[0][14295][susfs_kstat_register_hooks] SUS_KSTAT hooks registered
+[ 7774.670006] (6)[14295:ksud]susfs:[0][14295][susfs_add_sus_kstat] CMD_SUSFS_ADD_SUS_KSTAT -> ret: 0
+[ 7774.862431] (6)[14385:libksud.so]susfs:[0][14385][susfs_show_version] CMD_SUSFS_SHOW_VERSION -> ret: 0
+[ 7775.023338] (7)[14436:libksud.so]susfs:[0][14436][susfs_show_version] CMD_SUSFS_SHOW_VERSION -> ret: 0
+[ 7775.061583] (7)[14444:libksud.so]susfs:[0][14444][susfs_get_enabled_features] CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: 0
+[ 7775.101461] (7)[14451:libksud.so]susfs:[0][14451][susfs_show_variant] CMD_SUSFS_SHOW_VARIANT -> ret: 0
+[ 7776.808745] (6)[14547:ksud]susfs:[0][14547][susfs_mark_inode_sus_kstat] marked AS_FLAGS_SUS_KSTAT on pathname: '/system/etc/hosts', inode->i_sb->s_dev: 265289751, inode->i_ino: 9608777, inode->i_mapping->flags: 0x800000000
+[ 7776.808749] (6)[14547:ksud]susfs:[0][14547][susfs_update_sus_kstat] updated '/system/etc/hosts', target_ino: 9608777
+[ 7776.808750] (6)[14547:ksud]susfs:[0][14547][susfs_update_sus_kstat] CMD_SUSFS_UPDATE_SUS_KSTAT -> ret: 0
+[ 7778.378665] (6)[14593:ksud]susfs:[0][14593][susfs_mark_inode_sus_kstat] marked AS_FLAGS_SUS_KSTAT on pathname: '/system/etc/hosts', inode->i_sb->s_dev: 265289751, inode->i_ino: 9608777, inode->i_mapping->flags: 0x800000000
+[ 7778.378671] (6)[14593:ksud]susfs:[0][14593][susfs_add_sus_kstat] pathname: '/system/etc/hosts' already exists, entry updated
+[ 7778.378673] (6)[14593:ksud]susfs:[0][14593][susfs_add_sus_kstat] CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY -> ret: 0
+[ 7780.950264] (6)[14633:ksud]susfs:[0][14633][susfs_or_arm] open_redirect hooks armed
+[ 7780.950269] (6)[14633:ksud]susfs:[0][14633][susfs_add_open_redirect] open_redirect added: '/system/etc/security/otacerts.zip' -> '/system/etc/hosts' scheme=3 alias='/my_engineering/etc/security/otacerts.zip'
+[ 7780.950274] (6)[14633:ksud]susfs:[0][14633][susfs_add_open_redirect] CMD_SUSFS_ADD_OPEN_REDIRECT -> ret: 0
+[ 7785.017362] (7)[14654:ksud]susfs:[0][14654][susfs_set_hide_sus_mnts_for_non_su_procs] hide sus mounts for non-su procs: 1
+[ 7785.017367] (7)[14654:ksud]susfs:[0][14654][susfs_set_hide_sus_mnts_for_non_su_procs] CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS -> ret: 0
+[ 7788.838839] (7)[14673:ksud]susfs:[0][14673][susfs_set_uname] set spoofed release: '6.1.99-android13-8-gdeadbeef001', version: 'TestBuild-SMP-PREEMPT-aarch64'
+[ 7788.838841] (7)[14673:ksud]susfs:[0][14673][susfs_set_uname] CMD_SUSFS_SET_UNAME -> ret: 0
+[ 7792.237343] (7)[14697:ksud]susfs:[0][14697][susfs_set_cmdline_or_bootconfig] CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG -> ret: 0
+[ 7795.746892] (7)[14719:ksud]susfs:[0][14719][susfs_path_add] CMD_SUSFS_ADD_SUS_PATH -> ret: -2
+[ 7799.393212] (7)[14741:ksud]susfs:[0][14741][susfs_set_avc_log_spoofing] CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING -> unsupported (126)
+[ 7799.694673] (7)[14745:ksud]susfs:[0][14745][susfs_get_enabled_features] CMD_SUSFS_SHOW_ENABLED_FEATURES -> ret: 0
+[ 7851.928276] (7)[5790:kworker/7:1]susfs:[0][5790][susfs_path_loop_run] sus_path loop: refreshed 1, failed 0
+[ 7853.396351] (0)[15145:susfs-selftest]susfs:[10287][15145][susfs_path_inode_hidden] hiding ino '9540670'
+[ 7853.396880] (3)[15145:susfs-selftest]susfs:[10287][15145][susfs_path_match_dirent] hiding dirent 'NOTICE.xml.gz' ino '9540670'
+[ 7853.397257] (3)[15145:susfs-selftest]susfs:[10287][15145][susfs_path_inode_hidden] hiding ino '9540628'
+[ 7853.397412] (3)[15145:susfs-selftest]susfs:[10287][15145][susfs_path_match_dirent] hiding dirent 'build.prop' ino '9540628'
+[ 7853.397604] (3)[15145:susfs-selftest]susfs:[10287][15145][susfs_path_match_dirent] hiding dirent 'NOTICE.xml.gz' ino '9540670'
+[ 7853.424145] (7)[15145:susfs-selftest]susfs:[10287][15145][susfs_or_sys_openat] open_redirect: '/system/etc/security/otacerts.zip' -> '/system/etc/hosts' scheme=3 uid=10287
+[ 7860.935802] (7)[15200:ksud]susfs:[0][15200][susfs_set_uname] set spoofed release: '5.4.254-qgki-g977b99b1fbb9', version: '#1 SMP PREEMPT Mon Sep 15 16:09:23 CST 2025'
+[ 7860.935804] (7)[15200:ksud]susfs:[0][15200][susfs_set_uname] CMD_SUSFS_SET_UNAME -> ret: 0
+[ 7861.241047] (7)[15204:ksud]susfs:[0][15204][susfs_set_hide_sus_mnts_for_non_su_procs] hide sus mounts for non-su procs: 0
+[ 7861.241049] (7)[15204:ksud]susfs:[0][15204][susfs_set_hide_sus_mnts_for_non_su_procs] CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS -> ret: 0

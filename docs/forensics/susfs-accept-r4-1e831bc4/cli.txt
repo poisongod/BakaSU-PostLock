@@ -1,0 +1,42 @@
+show version: v2.3.0
+show variant: GKI
+
+### enable_log :: ksud susfs enable_log 1
+
+
+### add_sus_path :: ksud susfs add_sus_path /system/etc/NOTICE.xml.gz
+
+
+### add_sus_path_loop :: ksud susfs add_sus_path_loop /system/build.prop
+
+
+### add_sus_map :: ksud susfs add_sus_map /apex/com.android.runtime/lib64/bionic/libc.so
+
+
+### add_sus_kstat :: ksud susfs add_sus_kstat /system/etc/hosts
+
+
+### update_sus_kstat_full_clone :: ksud susfs update_sus_kstat_full_clone /system/etc/hosts
+
+
+### add_sus_kstat_statically :: ksud susfs add_sus_kstat_statically /system/etc/hosts 777001 default default 123456
+
+
+### add_open_redirect :: ksud susfs add_open_redirect /system/etc/security/otacerts.zip /system/etc/hosts 3
+
+
+### hide_sus_mnts :: ksud susfs hide_sus_mnts_for_non_su_procs 1
+
+
+### set_uname :: ksud susfs set_uname 6.1.99-android13-8-gdeadbeef001 TestBuild-SMP-PREEMPT-aarch64
+
+
+### set_cmdline :: ksud susfs set_cmdline_or_bootconfig /data/local/tmp/sus_fake_cmdline
+
+
+### add_sus_path (negative) :: ksud susfs add_sus_path /data/local/tmp/no_such_susfs_target
+Error: SuSFS error: -2
+
+### enable_avc_log_spoofing
+Error: Unsupported SuSFS command: 0x60010
+

@@ -1,7 +1,11 @@
 # SUSFS 九项功能验收（LKM edition v2.3.0 / GKI ABI）
 
 脚本：`tools/susfs/accept.sh`（adb 通道由 `tools/susfs/adb1.sh` 选择，绝不落到错设备
-`401e909a`）。原始数据归档在 `docs/forensics/susfs-accept-r2-261cfe5f/`。
+`401e909a`）。原始数据归档在 `docs/forensics/susfs-accept-r{2,3,4}-*/`。
+
+**当前状态：九项全部通过（r4，boot `1e831bc4`）= 37 PASS / 0 FAIL / 3 INFO。**
+三处 INFO 是 app 域观测不到（`/proc/cmdline`、`/proc/kallsyms` 被 SELinux 拒；
+本内核无 `/proc/bootconfig`），对应能力已由 root 侧等价证据覆盖，未伪造成 PASS。
 
 ## 两级判据
 
@@ -69,8 +73,29 @@ SuSFS error: -2
 | 轮 | boot | 结果 | 说明 |
 |---|---|---|---|
 | r1 | `5394a404` | 31 PASS / 5 FAIL / 1 INFO | Level 1 九项全部 `ret: 0`；5 FAIL 见上表 |
-| r2 | `261cfe5f` | 见 `docs/forensics/susfs-accept-r2-261cfe5f/summary.txt` | 引入的三路冗余 su / v27 wrapper 全绿；SUSFS 只读查询九项全报 |
-| r3 | 待跑 | — | ko `e78ec0c6`（别名）+ ksud `e27988f3`（原拼写直传 / 去预检）+ vc79 自检 |
+| r2 | `261cfe5f` | 31 PASS / 5 FAIL | 三路冗余 su / v27 wrapper 全绿；app 侧已可跑（uid=10287），5 FAIL 全是上表那 5 个脚本/语义问题 |
+| r3 | `e7b53e30` | 19 PASS / 1 FAIL | ko `e78ec0c6`（别名）+ ksud `e27988f3`（原拼写直传 / 去预检）。**设备处于 `RUNNING_LOCKED`**：CE 未解锁 → `am broadcast` 返回 `result=0` 但 receiver 不执行、`/data/data/<pkg>` 不存在 → 自检文件无法生成，唯一 FAIL = `selftest[before]`；Level 1 与 root 侧 19 项全 PASS（内核侧修复已被证实） |
+| r4 | `1e831bc4` | **37 PASS / 0 FAIL / 3 INFO** | 用户解锁后 fresh boot 重跑（`OUT=/tmp/opencode/r4/susfs4`）。app 侧主体 `uid=10287 ctx=u:r:untrusted_app:s0:c31,c257,c512,c768`（真实 untrusted_app），九项语义全部 `1 -> 0` 或值比对成立；3 INFO 见下 |
 
 r3 前置条件：新 ko 必须由重启后的 `tools/postlock.sh` 加载（链 staging 里的
 `kernelsu.ko`），新 wrapper 与 `/data/adb/ksud` provision 同样在那一轮 restore 生效。
+
+## r4 结论（九项全绿）
+
+| feature | 证据（r4 summary） |
+|---|---|
+| `SUS_PATH` | `exists 1->0`、`listed 1->0`；LOOP 同；对照组 `gps_debug.conf` 未受影响；内核侧 `hiding ino` `0->2` |
+| `SUS_KSTAT` | `ino 9608777->777001`、`size 56->123456`；对照 ino 未受影响 |
+| `SUS_MAP` | `/apex/.../bionic/libc.so` 在 maps 中行数 `4->0` |
+| `SUS_MOUNT` | 内核侧 `mnt_id=2000000000`（≥2e9 伪 id）+ app 侧 `mounts 1->0`（mountinfo 同） |
+| `OPEN_REDIRECT` | 目标内容由 zip 头变为 `hosts` 内容；**别名路径** `/my_engineering/etc/security/otacerts.zip` 同样命中；源文件未受影响 |
+| `SPOOF_UNAME` | release/version 均被替换 |
+| `SPOOF_CMDLINE` | root 侧整串替换（app 域不可读 → INFO） |
+| `HIDE_KSU_SUSFS_SYMBOLS` | root 侧 `susfs_`/`ksu_`/`__ksu_` 计数全 0，`_stext`/`do_exit` 可见（app 域不可读 → INFO） |
+| `ENABLE_LOG` | 九项 feature 位全上报，命令全程 `ret: 0`；`avc_log_spoofing` 诚实 126 |
+
+**三处 INFO 的诚实边界**：`SPOOF_CMDLINE(app)` 与 `HIDE_SYMBOLS(app)` 因
+untrusted_app 读 `/proc/cmdline`、`/proc/kallsyms` 抛 `FileNotFoundException`；
+`SPOOF bootconfig` 因本内核 `CONFIG_BOOT_CONFIG=n`（无 `/proc/bootconfig`）。
+前两项的钩子**无 uid 门控**（全进程一致），root 侧 PASS 是等价证据；第三项
+能力在本内核上客观不可观测，不算未实现（`set_cmdline` 命令 `ret: 0` 已证受理）。

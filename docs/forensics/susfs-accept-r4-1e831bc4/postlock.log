@@ -1,0 +1,34 @@
+
+[1e831bc4 03:46:10] ==> check host artifacts
+
+[1e831bc4 03:46:11] ==> stage payloads at /data/local/tmp/ksu_boot
+
+[1e831bc4 03:46:15] ==> build restore script (manager uid=10277)
+
+[1e831bc4 03:46:16] ==> wait for system quiet (1-min load < 5.0)
+[1e831bc4 03:46:58] quiet after 45s (load=4.85) -> GO
+
+[1e831bc4 03:46:59] ==> trigger exploit (constructor blocks until rooted; then script runs as uid0)
+DETACHED
+
+[1e831bc4 03:47:00] ==> wait for restore (KS_COLDSTART fork)
+  restore OK; tail:
+    [1e831bc4 03:48:34] WARN-phantom-settings
+    [1e831bc4 03:48:36] suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)
+    [1e831bc4 03:48:38] su-triage: dmesg + ksu_dbg params + root ksud probe captured
+    [1e831bc4 03:48:38] sepolicy enforce1 rules applied
+    cmd: Can't find service: activity
+    [1e831bc4 03:48:39] selinux strict: flipping (builtin-only markers follow)
+    [1e831bc4 03:48:39] SELINUX-STRICT-OK enforce=1 probe=host-verify
+    [1e831bc4 03:48:39] POSTLOCK-RESTORE-OK
+
+[1e831bc4 03:48:42] ==> verify
+OK:
+  uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+  kernelsu 458752 0 - Live 0x0000000000000000 (OE)
+  daemon pid=
+  manager uid=10277  wrap.com.resukisu.resukisu= (must be empty)
+  WARN: app fd not confirmed — restart the app if the blue card is missing
+  driver: [  191.963068] (0)[3021:finitmod]KernelSU: Initialized with driver version: 35222, full_version: v4.2.0-rc3-5b76b884-dirty@BakaSU, ABI: aarch64, Work mode: LKM
+
+manual check: BakaSU blue card 工作中 Built-in, driver == manager version (v4.2.0-rc3 / 35252 / UAPI 6), 越狱模式 badge expected (真 late load), enforce=1

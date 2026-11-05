@@ -1,5 +1,10 @@
 # untrusted_app 域链路设计（app-domain chain design）
 
+> **状态：已废用（2026-11-06）。** 本文档记录 2026-10-19 ~ 10-23 的 app 域自跑链
+> 设计与实测；其载体 PostLock-Boot 已冻结为 legacy（见 `AGENTS.md`
+> 「PostLock-Boot 冻结为 legacy」一节）。现行方案 = host 侧 `tools/postlock.sh`
+> 在冷 boot 跑链（shell 域），app 只保留 SUSFS 自检载体。本文保留作历史归因参考。
+
 状态：v1 设计稿（2026-10-20），分支 `untrusted_app`。
 前置定案：链全程在 untrusted_app 域自跑（用户约束「提权链禁走 shell 域」）；
 shell/adb 辅助仅限代读写文件（共享 KASLR 文件，第七轮定案）；不 setenforce、

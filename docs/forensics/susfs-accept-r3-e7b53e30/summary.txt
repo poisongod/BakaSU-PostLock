@@ -1,0 +1,37 @@
+PASS features(before)               9 项全部上报
+PASS show version                   v2.3.0
+PASS show variant                   GKI
+FAIL selftest[before]               自检文件未生成（app 未运行？先手动打开一次 app 再跑）
+PASS enable_log                     CMD_SUSFS_ENABLE_LOG ret=0
+PASS add_sus_path                   CMD_SUSFS_ADD_SUS_PATH -> ret=0
+PASS add_sus_path_loop              CMD_SUSFS_ADD_SUS_PATH_LOOP -> ret=0
+PASS add_sus_map                    CMD_SUSFS_ADD_SUS_MAP ret=0
+PASS add_sus_kstat                  CMD_SUSFS_ADD_SUS_KSTAT -> ret=0
+PASS update_sus_kstat_full_clone    CMD_SUSFS_UPDATE_SUS_KSTAT ret=0
+PASS add_sus_kstat_statically       CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY -> ret=0
+PASS add_open_redirect              CMD_SUSFS_ADD_OPEN_REDIRECT ret=0
+PASS hide_sus_mnts                  CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS ret=0
+PASS set_uname                      CMD_SUSFS_SET_UNAME ret=0
+PASS set_cmdline                    CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG ret=0
+PASS add_sus_path(负向)           不存在的路径被拒
+PASS enable_avc_log_spoofing        诚实报 unsupported
+PASS features(after)                9 项（arm 后无降级）
+PASS SPOOF_CMDLINE                  root 侧 /proc/cmdline 已整体替换为伪造串
+PASS HIDE_KSU_SUSFS_SYMBOLS         susfs_/ksu_/__ksu_ 均 0 条，_stext=1 do_exit=2 可见
+
+=========== SUSFS ACCEPTANCE ===========
+boot   : e7b53e30c2cc4fce9249412d6decec5c
+device : PFUM10
+kernel : 5.4.254-qgki-g977b99b1fbb9
+driver : 
+app    : uid= ctx=
+PASS=19 FAIL=1
+注意：SUS_PATH / SUS_MAP / SUS_KSTAT / OPEN_REDIRECT / CMDLINE 的标记
+      无法撤销，必须重启设备才能回到干净状态。
+
+— 诊断提示（全部隐藏项都失败时先看这里）—
+隐藏只对带 TIF_PROC_UMOUNTED 的 app 进程生效，它要求：
+  1) 进程是模块加载之后由 zygote fork 的（脚本已 kill 旧进程重来）；
+  2) 该 uid 没有 su 授权（allow_su=1 的 profile 会让
+     ksu_uid_should_umount() 返回 false，标志就不打）。
+管理器「超级用户」里若能看到 com.postlock.boot，先撤销授权再重跑。
