@@ -462,6 +462,33 @@ if [ -f $TMP/postlock_chain.log ]; then
   chmod $CHAIN_LOG_MODE $TMP/postlock_chain.log 2>/dev/null || true
 fi
 log "suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)"
+# --- su/fd regression triage (2026-11-03) ------------------------------
+# The host verify's '/product/bin/su -c id' dies with "could not retrieve
+# kernelsu driver fd" although kernelsu is Live.  Root only exists inside
+# this window, so snapshot the kernel ring buffer here: it still holds the
+# module init of this boot AND every earlier su attempt.  Plus the ksu_dbg_*
+# parameters (shell cannot stat them: sysfs SELinux label -> -?????????) and
+# a root-context 'ksud debug su', which separates "reboot() supercall hook
+# not installed" from "uid 2000 / shell-domain only".
+dmesg > $TMP/dmesg_boot.txt 2>/dev/null || true
+chmod 0644 $TMP/dmesg_boot.txt 2>/dev/null || true
+{
+  for p in ksu_dbg_stage ksu_dbg_kp_rc ksu_dbg_kp_hits ksu_dbg_kp_reg ksu_dbg_kp_kps ksu_dbg_exec_fd ksu_dbg_sysent ksu_dbg_disp ksu_dbg_disp_hits ksu_dbg_patch ksu_dbg_tp_rc ksu_dbg_tp_hits ksu_dbg_setuid_hits ksu_debug_manager_appid enforce_on_load lookup_hook; do
+    echo "\$p=\$(cat /sys/module/kernelsu/parameters/\$p 2>&1)"
+  done
+  echo "--- /proc/modules ---"
+  cat /proc/modules 2>&1
+} > $TMP/ksu_dbg_params.txt 2>&1 || true
+chmod 0644 $TMP/ksu_dbg_params.txt 2>/dev/null || true
+if [ -x $TMP/ksud ]; then
+  {
+    echo "== as root (uid 0, kernel:s0) =="
+    printf 'id\n' | $TMP/ksud debug su
+    echo "rc=\$?"
+  } > $TMP/ksu_su_asroot.txt 2>&1 || true
+  chmod 0644 $TMP/ksu_su_asroot.txt 2>/dev/null || true
+fi
+log "su-triage: dmesg + ksu_dbg params + root ksud probe captured"
 # --- enforce=1 data-path rules (2026-10-28) ----------------------------
 # Manager data features under strict SELinux (measured 2026-10-28, boot
 # 587002ff): service check package / RootService / pm list packages all
