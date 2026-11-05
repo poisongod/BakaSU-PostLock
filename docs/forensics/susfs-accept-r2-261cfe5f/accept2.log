@@ -1,0 +1,63 @@
+channel: su  ksud=/product/bin/ksud
+boot: 261cfe5f4a514340ac8f8db7fece0770
+killed stale app pid=30694（等广播冷启动带标记的新进程）
+control inode: /system/bin/toybox=9421202  /system/bin/sh=9072363
+targets: path=/system/bin/toybox loop=/system/build.prop kstat=/system/etc/hosts map=/apex/com.android.runtime/lib64/bionic/libc.so redirect=/system/etc/security/otacerts.zip<-/system/etc/hosts
+prepared: /data/local/tmp/sus_src -> /data/local/tmp/sus_dst (额外打标命名空间 pid: 9840 9841 2586 30978 10588 10589)
+PASS features(before)               9 项全部上报
+PASS show version                   v2.3.0
+PASS show variant                   GKI
+real kstat: ino=9608777 size=56
+PASS enable_log                     CMD_SUSFS_ENABLE_LOG ret=0
+PASS add_sus_path                   CMD_SUSFS_ADD_SUS_PATH -> ret=0
+PASS add_sus_path_loop              CMD_SUSFS_ADD_SUS_PATH_LOOP -> ret=0
+PASS add_sus_map                    CMD_SUSFS_ADD_SUS_MAP ret=0
+PASS add_sus_kstat                  CMD_SUSFS_ADD_SUS_KSTAT -> ret=0
+PASS update_sus_kstat_full_clone    CMD_SUSFS_UPDATE_SUS_KSTAT ret=0
+PASS add_sus_kstat_statically       CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY -> ret=0
+PASS add_open_redirect              CMD_SUSFS_ADD_OPEN_REDIRECT ret=0
+PASS hide_sus_mnts                  CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS ret=0
+PASS set_uname                      CMD_SUSFS_SET_UNAME ret=0
+PASS set_cmdline                    CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG ret=0
+FAIL add_sus_path(负向)           内核未拒绝该路径（打点可能是无条件打印）
+PASS enable_avc_log_spoofing        诚实报 unsupported
+PASS features(after)                9 项（arm 后无降级）
+selftest[after]: 30s 未生成，拉前台重试
+PASS SUS_PATH exists                path.target.exists: 1 -> 0
+FAIL SUS_PATH listed                期望 1 -> 0，实测 0 -> 0
+PASS SUS_PATH_LOOP exists           path.loop.exists: 1 -> 0
+PASS SUS_PATH_LOOP listed           path.loop.listed: 1 -> 0
+PASS SUS_PATH 对照                path.ctl.exists 未受影响（1）
+PASS SUS_PATH 对照 listed         path.ctl.listed 未受影响（0）
+PASS SUS_PATH 内核侧             dmesg 'hiding ino' 0 -> 2
+PASS SUS_KSTAT ino                  kstat.target.ino: 9608777 -> 777001
+PASS SUS_KSTAT size                 kstat.target.size: 56 -> 4096
+PASS SUS_KSTAT 对照 ino           kstat.ctl.ino 未受影响（9072363）
+PASS SUS_MAP maps                   /apex/com.android.runtime/lib64/bionic/libc.so 行数 4 -> 0
+FAIL OPEN_REDIRECT 内容           redirect.target 未变化（504b0304140008000800000021380000 -> 504b0304140008000800000021380000）
+PASS OPEN_REDIRECT 对照           redirect.src 未受影响（3132372e302e302e3120202020202020）
+PASS SUS_MOUNT 内核打标         mnt_id=2000000000（>= 2e9 伪 id）
+PASS SUS_MOUNT app 隐藏           mounts 1 -> 0（mountinfo 1 -> 0）
+PASS SPOOF_UNAME release            uname.release: 5.4.254-qgki-g977b99b1fbb9 -> 6.1.99-android13-8-gdeadbeef001
+PASS SPOOF_UNAME version            uname.version: #1 SMP PREEMPT Mon Sep 15 16:09:23 CST 2025 -> TestBuild-SMP-PREEMPT-aarch64
+FAIL SPOOF_CMDLINE                  期望 ERR:FileNotFoundException -> console=ttyMSM0,115200n8 androidboot.susfs=lkm-test，实测 ERR:FileNotFoundException -> ERR:FileNotFoundException
+INFO SPOOF bootconfig               本内核无 /proc/bootconfig（CONFIG_BOOT_CONFIG=n），该半边不可观测
+FAIL HIDE_KSU_SUSFS_SYMBOLS         app 读不到 /proc/kallsyms（ERR:FileNotFoundException）
+
+=========== SUSFS ACCEPTANCE ===========
+boot   : 261cfe5f4a514340ac8f8db7fece0770
+device : PFUM10
+kernel : 5.4.254-qgki-g977b99b1fbb9
+driver : 
+tools/susfs/accept.sh: 行 610: 警告： 命令替换：忽略输入中的 null 字节
+app    : uid=10287 ctx=u:r:untrusted_app:s0:c31,c257,c512,c768
+PASS=31 FAIL=5
+注意：SUS_PATH / SUS_MAP / SUS_KSTAT / OPEN_REDIRECT / CMDLINE 的标记
+      无法撤销，必须重启设备才能回到干净状态。
+
+— 诊断提示（全部隐藏项都失败时先看这里）—
+隐藏只对带 TIF_PROC_UMOUNTED 的 app 进程生效，它要求：
+  1) 进程是模块加载之后由 zygote fork 的（脚本已 kill 旧进程重来）；
+  2) 该 uid 没有 su 授权（allow_su=1 的 profile 会让
+     ksu_uid_should_umount() 返回 false，标志就不打）。
+管理器「超级用户」里若能看到 com.postlock.boot，先撤销授权再重跑。
