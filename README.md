@@ -37,6 +37,11 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 | `rodin`（默认） | 已验证 |
 | 其他 `src/targets/*` | 参考 |
 
+> 配套的 PostLock-Boot app（`../PostLock-Boot`）自 2026-11-06 起冻结为 legacy：
+> 开机自启跑链、APK 内嵌 payload、Tailscale/WAN 通道全部废用，仅保留 SUSFS
+> app 域自检这一个验收载体能力。恢复流程统一由 `tools/postlock.sh` 在冷 boot
+> 完成。详见 `AGENTS.md` 的「PostLock-Boot 冻结为 legacy」一节。
+
 ## 目录结构
 
 ```text

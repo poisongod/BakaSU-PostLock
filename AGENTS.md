@@ -4967,3 +4967,46 @@ comm -23 /tmp/u.txt /tmp/exported.txt   # 必须为空
 `selinux_state`、`security_hook_heads` 两个（类型名与变量名同名，宏会连类型一起
 改写）。其余（`init_mm`/`tasklist_lock`/`mntns_operations`/`selinuxfs_mount`/
 `selinux_blob_sizes`）都走 `#define sym (*ksu_g_sym)` 宏自动改写。
+
+## PostLock-Boot 冻结为 legacy（2026-11-06 用户裁决）
+
+**结论：`../PostLock-Boot` 不再演进，只保留「SUSFS app 域自检载体」一个职责。**
+判据 = 它当前被真实引用的面只剩三处：`tools/susfs/accept.sh` 的
+`SUSFS_SELFTEST` 广播、`tools/suvtz/scan.sh` 的 runas 近似域（本轮已解绑）、
+人工看日志面板；其余设计目标全部被主仓 `tools/postlock.sh` 覆盖或已被证伪。
+
+**废用（不再维护 / 不再同步 / 不再依赖）**：
+
+1. **开机自启自跑全链**（考试二产物：`BootReceiver`/`ChainService`/gate/
+   `ran_boot`/panic guard）——恢复流程统一走 host 侧 `tools/postlock.sh` 冷 boot
+   一条命令；app 自跑还必须先由 host 跑泄题轮写 `ksu_kaslr`/`ksu_payload`，
+   本身不自足。
+2. **APK 内嵌 payload**（`assets/postlock/` 7 个二进制 + `PayloadRepo.PAYLOAD_VERSION`）
+   ——stage 由 `postlock.sh` 从 `build/embed/` 直接 push。**以后改 ko/ksud/preload/
+   ocsk 只同步 `build/embed/`（与独立仓产物），不要再动 app assets、不要 bump
+   PAYLOAD_VERSION**。这层历史上反复咬人（sha 脱节、忘 bump 则设备 staging 不刷新）。
+3. **Tailscale / WAN 自建通道**（`WanChannel`、`@postlock-tsd-sh`、hairpin、
+   `services/tailscale` 自启）——当前通道是 LAN `192.168.137.10:5555`。
+4. **gate / `ksu_kaslr` 新鲜度判据 / 防同 boot 二跑**——只在 app 自跑路径上有
+   意义。`postlock.sh` 跑完仍把 `ksu_kaslr` 改成占位值，这是该机制过时后的
+   副作用（保留无害，纯粹防解锁后 app 自己 dispatch 第二条链）。
+
+**保留（唯一职责）**：`platform/SusfsSelfTest.kt` 的 app 域自检键值输出
+（`am broadcast -n com.postlock.boot/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST
+--es tag <t>` → `files/susfs_selftest_<t>.txt`）。SUSFS 的隐藏语义门控在
+`TIF_PROC_UMOUNTED && uid>=10000`，只有 zygote fork 的真实 app 进程带标记，
+root / shell / run-as 看到的永远是未隐藏世界——这套自检是「隐藏对 app 真生效」
+的唯一证据来源。**载体不必须是这个 app**：任何 debuggable 且实现同款广播契约的
+app 都行，换载体只改 `accept.sh` 的 `PKG=`。
+
+**配套改动（本轮）**：
+
+- `tools/suvtz/scan.sh`：`PKG` 默认值由 `com.postlock.boot` 改为空；不设则
+  `RUNAS_OK=0`、runas 视角整段记 `INFO`（符合「观测不到 ≠ 没法观测」纪律）。
+  A2 探针保留 `postlock` 关键字（包仍在设备上，探针语义 = 工具包是否可被枚举）。
+- `tools/susfs/accept.sh`：头注释标注载体已冻结、换载体方式。
+- 主仓 `README.md`「当前状态」与 `postlock-app/README.md` 顶部各加状态块。
+
+**不要做的**：不要删仓（`poisongod/PostLock-Boot` 保持私有、只读参考）、
+不要删设备上的 `com.postlock.boot`（SUSFS 自检仍靠它）、不要重新 bump app 版本
+或同步 assets。

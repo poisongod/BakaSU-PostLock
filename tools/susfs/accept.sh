@@ -11,6 +11,10 @@
 # TIF_PROC_UMOUNTED（只有 zygote fork 出来的 app 才有）。shell / run-as / su
 # 看到的永远是未隐藏的世界（见 platform/SusfsSelfTest.kt 头注释）。
 #
+# 载体：PKG 默认 com.postlock.boot。该 app 自 2026-11-06 起冻结为 legacy，但保留
+# SusfsSelfTest 这一个能力——上面的限制没有变，它是「隐藏对 app 真生效」的唯一
+# 证据来源。换载体只需改 PKG= 且实现同款 SUSFS_SELFTEST 广播契约。
+#
 # 两个刻意的设计选择（踩过的坑）：
 #   1. 隐藏只对「app 进程」生效：所有路径/映射/挂载隐藏都门控在
 #      susfs_is_current_proc_umounted_app() = TIF_PROC_UMOUNTED && uid>=10000，

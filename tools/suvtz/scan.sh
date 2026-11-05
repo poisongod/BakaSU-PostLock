@@ -19,14 +19,18 @@
 #   tools/suvtz/scan.sh                  # 扫描并打印
 #   tools/suvtz/scan.sh -q               # 只写文件, 打印汇总
 #   SERIAL=1.2.3.4:5555 tools/suvtz/scan.sh
-#   PKG=com.postlock.boot tools/suvtz/scan.sh   # 用于近似 app 域的 app (需 debuggable)
+#   PKG=<包名> tools/suvtz/scan.sh       # runas 近似域的载体（需 debuggable）
+#                                        # 不设则跳过 runas 视角、整段记 INFO
+#                                        # （PostLock-Boot 已冻结，不再默认绑定）
 #
 # 退出码: 0 = 无 FAIL; 1 = 有 FAIL; 2 = 设备不可用
 
 set -u
 
 ADB="${ADB_BIN:-/mnt/c/WINDOWS/system32/adb.exe}"
-PKG="${PKG:-com.postlock.boot}"
+# PostLock-Boot 自 2026-11-06 冻结为 legacy，不再作为默认载体。
+# runas 视角只是 app uid 的 DAC 近似，载体可以是任何 debuggable app。
+PKG="${PKG:-}"
 OUT="${OUT:-/tmp/opencode/suvtz}"
 SERIAL="${SERIAL:-}"
 QUIET=0
@@ -65,9 +69,13 @@ SUMMARY="$OUT/scan_${BOOT8}.tsv"
 REPORT="$OUT/scan_${BOOT8}.txt"
 : > "$SUMMARY"
 
-# runas 视角是否可用 (需 debuggable + run-as)
+# runas 视角是否可用 (需 PKG 非空 + debuggable + run-as)
 RUNAS_OK=1
-"$ADB" -s "$S" shell "run-as $PKG true" >/dev/null 2>&1 || RUNAS_OK=0
+if [ -z "$PKG" ]; then
+	RUNAS_OK=0
+else
+	"$ADB" -s "$S" shell "run-as $PKG true" >/dev/null 2>&1 || RUNAS_OK=0
+fi
 
 # runas 域的命令执行能力自检: 若连 getprop 都 exec 不了, 该视角所有探针记 INFO,
 # 因为 "exec 失败" 不是 "观测不到"。
@@ -169,6 +177,8 @@ judge() {
 # 字段(Tab 分隔): ID  类  描述  视角  命令  期望
 # 命令里可以出现 | (管道), 因为分隔符是 Tab。
 #   A 包与进程   B 文件系统   C 内核符号与模块   D 系统属性   E SELinux 与挂载
+# A2 的 postlock 是 legacy 工具包名：PostLock-Boot 已冻结但仍在设备上，探针语义
+# 是「我们的工具包是否可被第三方枚举」，不随冻结失效。
 PROBES=(
 "A1${T}A${T}管理器包可枚举${T}shell${T}pm list packages | grep -i -e resukisu -e bakasu${T}absent"
 "A2${T}A${T}工具包可枚举${T}shell${T}pm list packages | grep -i -e postlock${T}absent"
