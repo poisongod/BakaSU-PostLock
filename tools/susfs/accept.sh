@@ -37,23 +37,27 @@ SUS_SRC=/data/local/tmp/sus_src
 SUS_DST=/data/local/tmp/sus_dst
 FAKE_CMDLINE=/data/local/tmp/sus_fake_cmdline
 
-T_PATH_CANDS="/system/bin/toybox /vendor/bin/toybox /system/xbin/toybox"
+# SUS_PATH 目标必须是「app 能列出的目录下的普通文件」：判断 readdir 面隐藏
+# （listed 1 -> 0）要先能 list 父目录，而 /system/bin 对 app 是 Permission
+# denied（会假失败）。/system/etc 可列，且 NOTICE.xml.gz 没有运行期读取者。
+T_PATH_CANDS="/system/etc/NOTICE.xml.gz /system/etc/apns-conf.xml \
+/vendor/etc/NOTICE.xml.gz"
 T_PATH_LOOP_CANDS="/system/etc/prop.default /system/build.prop"
 T_KSTAT=/system/etc/hosts                   # SUS_KSTAT（普通文件，非符号链接）
 T_REDIR=/system/etc/security/otacerts.zip  # OPEN_REDIRECT target
 T_REDIR_SRC=/system/etc/hosts              # OPEN_REDIRECT redirected
-# 对照项候选（不标记）。/system/bin/sh 在 AOSP 上指向 mksh，但个别 ROM 会把它
-# 变成 toybox 的链接 —— 那样标记 toybox 会连带隐藏对照，判据自相矛盾。所以
-# 按序取第一个「inode 与被标记目标都不同」的候选，而不是写死一个。
-C_PATH_CANDS="/system/bin/sh /system/bin/mksh /system/bin/linker64 \
-/system/bin/app_process64 /system/framework/framework.jar"
+# 对照项候选（不标记）：必须同样位于 app 可列目录（否则 listed 恒 0，
+# 「对照未受影响」判据失去意义），且 inode 与两个被标记目标、SUS_KSTAT 目标
+# 都不同（个别 ROM 会把这些名字做成同一 inode 的链接）。
+C_PATH_CANDS="/system/etc/gps_debug.conf /system/etc/apns-conf.xml \
+/system/etc/audio_effects.conf /system/framework/framework.jar /system/bin/sh"
 # SUS_MAP 目标：必须是进程真的已映射的实际路径（/system/lib64/libc.so 是符号
 # 链接，kern_path 解析到 apex，用 apex 实路径更直观）。按序取第一个存在的。
 MAP_CANDIDATES="/apex/com.android.runtime/lib64/bionic/libc.so \
 /apex/com.android.art/lib64/libc++.so"
 
 K_INO=777001
-K_SIZE=4096
+K_SIZE=123456
 # 伪造串不能以 '#' 或 '-' 开头：经 su -c '...' 传给设备 sh 时会被当注释/选项。
 FAKE_RELEASE=6.1.99-android13-8-gdeadbeef001
 FAKE_VERSION=TestBuild-SMP-PREEMPT-aarch64
@@ -157,6 +161,17 @@ count_marker() {
 # 通用日志行计数（不加 "ret: 0" 过滤）
 count_plain() {
 	RR "dmesg | grep -c -F \"$1\"" | tr -d ' \r\n'
+}
+
+# root 侧读 /proc/cmdline。SPOOF_CMDLINE 的钩子整体替换 cmdline_proc_show，
+# 没有 uid 门控 → root 看到的同样是伪造值，这是本项唯一可用的观测通道
+# （app 域读 /proc/cmdline 被 SELinux 拒，见 Level 2 的 INFO 项）。
+root_cmdline() { RR "cat /proc/cmdline" | tr -d '\r' | sed 's/[[:space:]]*$//'; }
+
+# root 侧 /proc/kallsyms 计数（按 name 前缀命中；同样无 uid 门控 → root 一致）。
+# 命令体内不能出现单引号（RR 会塞进 su -c '...'），所以用双引号。
+ksym_count() {
+	RR "grep -c -F \" $1\" /proc/kallsyms" | tr -d ' \r\n'
 }
 
 # ---------------------------------------------------------------------------
@@ -369,13 +384,22 @@ for p in $MAP_CANDIDATES; do
 	fi
 done
 [ -n "$T_MAP" ] || die "SUS_MAP 目标都不存在：$MAP_CANDIDATES"
-printf 'targets: path=%s loop=%s kstat=%s map=%s redirect=%s<-%s\n' \
-	"$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_MAP" "$T_REDIR" "$T_REDIR_SRC"
+
+# OPEN_REDIRECT 的第二种拼写：同一 inode 的规范路径（目标常是符号链接，
+# 例如 /system/etc/security/otacerts.zip -> /my_engineering/...）。规则按
+# 「调用方写的字符串」匹配，内核把规范名存成别名，这里取出来在 app 侧验证
+# 两侧都能命中。不是符号链接时为空，该项只记 INFO。
+T_REDIR_ALIAS=$(RR "readlink -f $T_REDIR" | tr -d ' \r\n')
+[ "$T_REDIR_ALIAS" = "$T_REDIR" ] && T_REDIR_ALIAS=""
+printf 'targets: path=%s loop=%s kstat=%s map=%s redirect=%s<-%s alias=%s\n' \
+	"$T_PATH" "$T_PATH_LOOP" "$T_KSTAT" "$T_MAP" "$T_REDIR" "$T_REDIR_SRC" \
+	"${T_REDIR_ALIAS:-无}"
 
 # 自检广播的 extras：目标全部由 host 选定后下发，app 侧不写死任何路径
 # （不同 ROM 的 toybox/prop.default/对照文件位置并不一致）。
 ST_EXTRAS="--es map $T_MAP --es path $T_PATH --es pathloop $T_PATH_LOOP"
 ST_EXTRAS="$ST_EXTRAS --es ctl $C_PATH --es redir $T_REDIR --es redirsrc $T_REDIR_SRC"
+[ -n "$T_REDIR_ALIAS" ] && ST_EXTRAS="$ST_EXTRAS --es rediralias $T_REDIR_ALIAS"
 
 # ---- 1. 准备 ----
 RR "mkdir -p $SUS_SRC $SUS_DST"
@@ -427,6 +451,10 @@ case "$REAL_INO" in '' | *[!0-9]*) die "读不到 $T_KSTAT 的真实 ino（$REAL
 
 SELFTEST_OK=1
 selftest before || SELFTEST_OK=0
+
+# root 侧 cmdline 基线（必须在 set_cmdline 之前读；伪造后 root 也读到假值）
+CM_B=$(root_cmdline)
+printf 'root cmdline before: %.100s\n' "$CM_B"
 
 # 内核侧直接证据的基线：susfs_path_inode_hidden() 命中时会打 "hiding ino"
 # （需要 enable_log=1，下面第一件事就是开它）。
@@ -513,6 +541,23 @@ if [ "$SELFTEST_OK" = 1 ]; then
 	cmp_changed "OPEN_REDIRECT 内容" redirect.target
 	cmp_same "OPEN_REDIRECT 对照" redirect.src
 
+	# 同一文件的第二种拼写（符号链接的目标）。规则按调用方写的字符串
+	# 匹配，内核把规范名存成别名 —— 两侧都必须命中，否则「用哪个拼写
+	# 打开」就会成为可用性差异（真实 app 两种都会用）。
+	if [ -n "$T_REDIR_ALIAS" ]; then
+		RB=$(kv redirect.alias "$OUT/selftest_before.txt")
+		RA=$(kv redirect.alias "$OUT/selftest_after.txt")
+		if [ -n "$RA" ] && [ "$RA" != "$RB" ] &&
+			! printf '%s' "$RA" | grep -q '^ERR'; then
+			res PASS "OPEN_REDIRECT 别名内容" "$T_REDIR_ALIAS: $RB -> $RA"
+		else
+			res FAIL "OPEN_REDIRECT 别名内容" \
+				"$T_REDIR_ALIAS: $RB -> $RA（别名未命中重定向）"
+		fi
+	else
+		info "OPEN_REDIRECT 别名" "$T_REDIR 不是符号链接，无第二种拼写可测"
+	fi
+
 	# SUS_MOUNT 有两条彼此独立的证据：
 	# ① 内核侧（与挂载命名空间无关，权威）：ksu 域创建的挂载会被
 	#    alloc_vfsmnt/clone_mnt 的 kretprobe 换成伪 id（>= DEFAULT_KSU_MNT_ID
@@ -552,43 +597,51 @@ if [ "$SELFTEST_OK" = 1 ]; then
 	cmp_eq "SPOOF_UNAME version" uname.version \
 		"$(kv uname.version "$OUT/selftest_before.txt")" "$FAKE_VERSION"
 
-	cmp_eq "SPOOF_CMDLINE" cmdline \
-		"$(kv cmdline "$OUT/selftest_before.txt")" "$FAKE_CMDLINE_TXT"
+	# app 域读 /proc/cmdline 被 SELinux 拒（FileNotFoundException），因此
+	# 该项改在下面的 root 侧小节判定；钩子整体替换 cmdline_proc_show、
+	# 没有 uid 门控，root 与 app 看到的是同一个被改写的结果。
+	info "SPOOF_CMDLINE(app)" \
+		"app 域不可读（$(kv cmdline "$OUT/selftest_after.txt")），改由 root 侧观测"
 	# 本内核 CONFIG_BOOT_CONFIG 未开、没有 /proc/bootconfig，所以
 	# SPOOF_CMDLINE_OR_BOOTCONFIG 只对 /proc/cmdline 可观测（已文档化）。
 	# 这一半是「本环境无法观测」，不是通过也不是失败 —— 记 INFO。
 	info "SPOOF bootconfig" "本内核无 /proc/bootconfig（CONFIG_BOOT_CONFIG=n），该半边不可观测"
 
-	if [ "$(kv kallsyms.ok "$OUT/selftest_after.txt")" != "1" ]; then
-		res FAIL "HIDE_KSU_SUSFS_SYMBOLS" \
-			"app 读不到 /proc/kallsyms（$(kv kallsyms.err "$OUT/selftest_after.txt")）"
-	else
-		# 该 feature 没有 enable 开关：s_show 钩子在模块加载时就装上了，
-		# 所以只要模块在跑，before/after 都应为 0（不能拿 before>0 当基线
-		# ——那会必然 FAIL）。为排除「整个文件没读到所以是 0」，同时要求
-		# 两个不会被隐藏的普通符号可见。
-		for pair in "susfs:HIDE_SYMBOLS(susfs_)" "ksu:HIDE_SYMBOLS(ksu_)"; do
-			k=${pair%%:*}
-			n=${pair#*:}
-			b=$(kv "kallsyms.$k" "$OUT/selftest_before.txt")
-			a=$(kv "kallsyms.$k" "$OUT/selftest_after.txt")
-			if [ "${a:-1}" = 0 ] && [ "${b:-0}" = 0 ]; then
-				res PASS "$n" "before/after 均 0 条可见"
-			else
-				res FAIL "$n" "before=$b after=$a（模块加载即隐藏，两侧都应为 0）"
-			fi
-		done
-		for pair in "stext:对照(_stext)" "doexit:对照(do_exit)"; do
-			k=${pair%%:*}
-			n=${pair#*:}
-			a=$(kv "kallsyms.$k" "$OUT/selftest_after.txt")
-			if [ "${a:-0}" -gt 0 ]; then
-				res PASS "$n" "$a 条可见（kallsyms 通道正常）"
-			else
-				res FAIL "$n" "不可见 —— kallsyms 通道异常，「符号为 0」不可信"
-			fi
-		done
-	fi
+	# /proc/kallsyms 同样在 app 域不可读，改由 root 侧小节判定（该钩子也
+	# 没有 uid 门控）。这里只如实记录 app 侧的观测结果。
+	info "HIDE_SYMBOLS(app)" \
+		"app 域不可读 /proc/kallsyms（$(kv kallsyms.err "$OUT/selftest_after.txt")），改由 root 侧观测"
+fi
+
+# ---- 5b. root 侧观测：两项特性都没有 uid 门控，root 与 app 等价 ----
+# 这两项之所以不能像其它项一样只看 app：untrusted_app 域读 /proc/cmdline 与
+# /proc/kallsyms 均被 SELinux 拒（dontaudit 静默）。而内核侧的钩子既不判
+# uid 也不判 TIF 标志，root 通道看到的完全一致，因此用 root 观测是等价且
+# 可复现的证据，不是降低标准。
+CM_A=$(root_cmdline)
+# before 必须不是伪造串（否则本轮无法证明「被替换」）、after 必须精确等于伪造串。
+if [ -n "${CM_B:-}" ] && [ "$CM_B" != "$FAKE_CMDLINE_TXT" ] &&
+	[ "$CM_A" = "$FAKE_CMDLINE_TXT" ]; then
+	res PASS "SPOOF_CMDLINE" "root 侧 /proc/cmdline 已整体替换为伪造串"
+else
+	res FAIL "SPOOF_CMDLINE" \
+		"root 侧未替换（before=${CM_B:0:60} after=${CM_A:0:60}）"
+fi
+
+KS_SUSFS=$(ksym_count susfs_)
+KS_KSU=$(ksym_count ksu_)
+KS_KSX=$(ksym_count __ksu_)
+KS_STEXT=$(ksym_count _stext)
+KS_DOEXIT=$(ksym_count do_exit)
+# 判据：所有隐藏前缀命中数为 0，且两个绝不在前缀表里的普通符号可见。
+# 后者排除「整个 /proc/kallsyms 读不到所以是 0」这种假阳性。
+if [ "${KS_SUSFS:-1}" = 0 ] && [ "${KS_KSU:-1}" = 0 ] && [ "${KS_KSX:-1}" = 0 ] &&
+	[ "${KS_STEXT:-0}" -gt 0 ] && [ "${KS_DOEXIT:-0}" -gt 0 ]; then
+	res PASS "HIDE_KSU_SUSFS_SYMBOLS" \
+		"susfs_/ksu_/__ksu_ 均 0 条，_stext=$KS_STEXT do_exit=$KS_DOEXIT 可见"
+else
+	res FAIL "HIDE_KSU_SUSFS_SYMBOLS" \
+		"susfs_=$KS_SUSFS ksu_=$KS_KSU __ksu_=$KS_KSX _stext=$KS_STEXT do_exit=$KS_DOEXIT"
 fi
 
 # ---- 6. 复原能复原的部分 ----
