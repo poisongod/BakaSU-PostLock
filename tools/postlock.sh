@@ -348,15 +348,21 @@ if [ ! -x /product/bin/su ]; then
     || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp || log WARN-tmpfs-mount
   mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
   rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
-  # su = compatibility shim, NOT the custom daemon client anymore: on this
-  # device /system/bin/su is a kernel-forged KernelPatch fake whose real
-  # file ENOENTs on exec (root-context 'su -c' fails outright), which
-  # broke module WebUIs (YH_YC panel's "状态读取失败") that hardcode
-  # 'su -c'.  Root callers are already root: pass through to sh -c;
-  # non-root falls back to the real driver's ksud (cp'd into the overlay
-  # because /data/adb is 0700 and shell cannot exec it there -- fix57:
-  # the old fallback exec'd /system/bin/su which ENOENTs post-relock,
-  # so shell-uid 'su -c' failed verify every time).
+  # su = compatibility shim: root callers are already root and go straight
+  # to sh -c (module WebUIs hardcode 'su -c' and must not pay a driver
+  # round-trip); non-root callers are handed to the driver's real su path.
+  # v27 (2026-11-05): the old non-root branch exec'd $TMP/ksud directly,
+  # which only ever worked for shell (uid 2000 owns that file).  An app
+  # domain cannot exec shell_data_file at all -- measured
+  # 'run-as com.postlock.boot /product/bin/su -c id' ->
+  # "/data/local/tmp/ksud: can't execute: Permission denied" even at DAC
+  # 0711, i.e. the denial is MAC (untrusted_app has no execute on
+  # shell_data_file), so every granted app's 'su' was dead.
+  # The real path is /system/bin/su: the driver's sucompat intercepts
+  # execve("/system/bin/su") for allow-listed uids at sys_enter and
+  # rewrites it to execveat(ksud fd) with the root profile applied, so
+  # the path does not even need to exist on disk.  That is upstream's own
+  # flow -- our wrapper just stops hiding it.
   cat > $TMP/ovl/tmp/upper/su <<'SUW'
 #!/system/bin/sh
 if [ "\$(id -u)" = 0 ]; then
@@ -366,21 +372,11 @@ if [ "\$(id -u)" = 0 ]; then
   fi
   exec /system/bin/sh
 fi
-# fix60: ksud debug su is a pipe-fed root shell (no -c flag: passing -c
-# made clap fail with "unexpected argument '-c'").  Feed the command on
-# stdin; EOF makes the su shell exit, and its rc carries the command's.
-# fix76 (redo34): ksud lives in $TMP (shell_data_file), NOT
-# /product/bin (system_file).  shell-domain exec of system_file is
-# dontaudit-silent denied: mmap(PROT_EXEC) fails inside the linker and
-# surfaces as "can't enable GNU RELRO protection ... Permission denied"
-# with ZERO avc records; the identical binary runs fine from $TMP
-# (measured uid=0 root shell under enforcing 2026-10-25).
-if [ "\$1" = "-c" ]; then
-  shift
-  printf '%s\n' "\$*" | $TMP/ksud debug su
-  exit \$?
-fi
-exec $TMP/ksud debug su "\$@"
+# Non-root: delegate to the driver.  sucompat decides allow/deny by uid
+# (allow-listed -> redirected root ksud, otherwise the exec is refused),
+# so a non-granted app gets the driver's own denial instead of a
+# misleading sh_data_file error.
+exec /system/bin/su "\$@"
 SUW
   chmod 755 $TMP/ovl/tmp/upper/su
   if [ -x $STAGE/ksud ]; then
@@ -394,10 +390,8 @@ SUW
 else
   log "overlay wrapper already present"
 fi
-# fix76: the wrapper execs ksud from $TMP, not /product/bin -- see the
-# wrapper comment (shell cannot exec system_file, dontaudit-silent).
-# Idempotent: runs even when the overlay branch above was skipped, so a
-# stale overlay from a previous boot still gets its wrapper fed.
+# $TMP/ksud is the shell/root-facing copy (restore + host triage use it;
+# $TMP is shell_data_file so shell can exec it).
 # 2026-10-30: source moved from /data/adb/ksud to $STAGE/ksud (host
 # stages the embedded blob; /data/adb/ksud only exists on devices where
 # an older chain run left it behind -- factory-reset first run died here).
@@ -405,6 +399,17 @@ if [ -x $STAGE/ksud ]; then
   cp -f $STAGE/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
+fi
+# v27 (2026-11-05): sucompat's KSUD_PATH is a compile-time
+# /data/adb/ksud -- the execve rewrite opens exactly that file.  The
+# manager installs it, but only once it has started (measured 2026-11-05:
+# /data/adb/ksud appeared when the manager first ran with root), so on a
+# fresh boot before any manager start every allow-listed 'su' would fall
+# back to the real exec and be refused.  Provision it here, and never
+# overwrite an existing install (the manager's copy is the release build).
+if [ -x $STAGE/ksud ] && [ ! -e /data/adb/ksud ]; then
+  cp -f $STAGE/ksud /data/adb/ksud 2>/dev/null && chmod 755 /data/adb/ksud 2>/dev/null \
+    && log su-driver-ksud-provisioned || log WARN-su-driver-ksud-cp
 fi
 # --- SUVTZ P1-1: DAC hygiene (2026-11-03) -----------------------------
 # The P0 baseline (docs/suvtz-p0-baseline.md, 30 probes) measured what a
