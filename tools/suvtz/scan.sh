@@ -37,8 +37,30 @@ QUIET=0
 [ "${1:-}" = "-q" ] && QUIET=1
 
 T=$'\t'
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 mkdir -p "$OUT" || exit 2
+
+# ---------------------------------------------------- 已接受暴露面
+# tools/suvtz/accepted.tsv : 每行 "<ID>\t<裁决日期>\t<理由>", # 开头为注释。
+#
+# 语义纪律: 被列为「已接受」的项**判定仍是 FAIL**, 只是从「未处理 FAIL」里摘出来
+# 单独计数。绝不改判 PASS —— 观测到就是观测到, 接受与否是威胁模型的取舍, 不是
+# 事实的改变。这样扫描输出仍能一眼看出「哪些残留是已知裁决过的」与「哪些是新泄漏」。
+#
+# 默认文件不存在/为空 => 行为与未引入该机制时完全一致。
+# ACCEPTED_FILE=  (空串) 可临时禁用;  ACCEPTED_FILE=/path 可换表。
+ACCEPTED_FILE="${ACCEPTED_FILE-$SCRIPT_DIR/accepted.tsv}"
+
+acc_reason() {
+	[ -n "$ACCEPTED_FILE" ] && [ -r "$ACCEPTED_FILE" ] || return 1
+	local r
+	r=$(awk -F'\t' -v id="$1" \
+		'!/^[[:space:]]*#/ && NF>=3 && $1==id {print $3; exit}' \
+		"$ACCEPTED_FILE" 2>/dev/null)
+	[ -n "$r" ] || return 1
+	printf '%s' "$(printf '%s' "$r" | tr '\t' ' ')"
+}
 
 # ---------------------------------------------------------------- 设备选择
 pick_device() {
@@ -272,7 +294,7 @@ side_word() {
 }
 
 # ---------------------------------------------------------------- 主循环
-npass=0; nfail=0; ninfo=0
+npass=0; nfail=0; ninfo=0; nacc=0
 {
 	echo "=================================================================="
 	echo "SUVTZ 观测面扫描  boot=$BOOT  device=$S"
@@ -286,6 +308,8 @@ npass=0; nfail=0; ninfo=0
 	echo "期望值来源: docs/suvtz-v3-design.md §5.3 定义的 stock 期望 (非实测对照机)。"
 	echo "类别: A 包与进程  B 文件系统  C 内核符号与模块  D 系统属性  E SELinux 与挂载"
 	echo "      X 成对交叉验证 (同一事实两条独立通道, 要求同向; 分歧=FAIL)"
+	echo "判定: PASS / FAIL / INFO ; FAIL* = 已显式裁决接受的 FAIL (仍计 FAIL, 单独列出)"
+	echo "      接受表: ${ACCEPTED_FILE:-<disabled>}"
 	echo "=================================================================="
 	printf '%-5s %-3s %-40s %-6s %s\n' ID 类 观测面 判定 实测/原因
 	echo "------------------------------------------------------------------"
@@ -302,9 +326,16 @@ for p in "${PROBES[@]}"; do
 		judge "$expect"
 	fi
 
+	acc=""   # set -u: every branch below reads it
 	case "$VERDICT" in
 		PASS) npass=$((npass+1));;
-		FAIL) nfail=$((nfail+1));;
+		FAIL)
+			if acc=$(acc_reason "$id"); then
+				nacc=$((nacc+1))
+			else
+				acc=""; nfail=$((nfail+1))
+			fi
+			;;
 		*)    ninfo=$((ninfo+1));;
 	esac
 
@@ -312,12 +343,16 @@ for p in "${PROBES[@]}"; do
 	act=$(printf '%s' "$LAST_OUT" | tr '\n' ';' | cut -c1-90)
 	[ -n "$act" ] || act="-"
 	[ -n "$REASON" ] && act="$act  ($REASON)"
+	[ -n "$acc" ] && act="$act  (已接受: $acc)"
 
-	printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "$expect" "$act" >> "$SUMMARY"
+	vtag="$VERDICT"
+	[ -n "$acc" ] && vtag="FAIL*"
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "$expect" "$act" "$acc" >> "$SUMMARY"
 	if [ "$QUIET" = 0 ]; then
-		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" | tee -a "$REPORT" >&2
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$vtag" "$act" | tee -a "$REPORT" >&2
 	else
-		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" >> "$REPORT"
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$vtag" "$act" >> "$REPORT"
 	fi
 done
 
@@ -342,30 +377,50 @@ for p in "${PAIRS[@]}"; do
 		REASON="通道分歧 A=$(side_word "$ha") B=$(side_word "$hb")"
 	fi
 
+	acc=""   # set -u: every branch below reads it
 	case "$VERDICT" in
 		PASS) npass=$((npass+1));;
-		FAIL) nfail=$((nfail+1));;
+		FAIL)
+			if acc=$(acc_reason "$id"); then
+				nacc=$((nacc+1))
+			else
+				acc=""; nfail=$((nfail+1))
+			fi
+			;;
 		*)    ninfo=$((ninfo+1));;
 	esac
 
 	act="A=$va | B=$vb"
 	[ -n "$REASON" ] && act="$act  ($REASON)"
+	[ -n "$acc" ] && act="$act  (已接受: $acc)"
 
-	printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "same-direction" "$act" >> "$SUMMARY"
+	vtag="$VERDICT"
+	[ -n "$acc" ] && vtag="FAIL*"
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "same-direction" "$act" "$acc" >> "$SUMMARY"
 	if [ "$QUIET" = 0 ]; then
-		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" | tee -a "$REPORT" >&2
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$vtag" "$act" | tee -a "$REPORT" >&2
 	else
-		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" >> "$REPORT"
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$vtag" "$act" >> "$REPORT"
 	fi
 done
 
 {
 	echo "------------------------------------------------------------------"
-	echo "FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))"
+	if [ "$nacc" -gt 0 ]; then
+		echo "FAIL=$nfail (另有已接受 $nacc)  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo+nacc))"
+	else
+		echo "FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))"
+	fi
 	echo
 	if [ "$nfail" -gt 0 ]; then
-		echo "FAIL 项 (检测方可直接观测到的 root 证据):"
-		awk -F'\t' '$4=="FAIL"{printf "  %-5s %s\n",$1,$6}' "$SUMMARY"
+		echo "FAIL 项 (检测方可直接观测到的 root 证据, 未裁决):"
+		awk -F'\t' '$4=="FAIL" && $7=="" {printf "  %-5s %s\n",$1,$6}' "$SUMMARY"
+		echo
+	fi
+	if [ "$nacc" -gt 0 ]; then
+		echo "已接受暴露面 (判定仍为 FAIL, 经显式裁决接受; 表: $ACCEPTED_FILE):"
+		awk -F'\t' '$4=="FAIL" && $7!="" {printf "  %-5s %s\n",$1,$7}' "$SUMMARY"
 		echo
 	fi
 	if [ "$ninfo" -gt 0 ]; then

@@ -373,7 +373,7 @@ FAIL=5  PASS=30  INFO=0  总计=35        # P0 同口径 30 项时为 12 FAIL / 
 | A1 管理器包可枚举 | `package:com.resukisu.resukisu` | 待立项（套壳 `KSU_PACKAGE_NAME`，见 §5.1 注） |
 | A2 工具包可枚举 | `package:com.postlock.boot; package:com.postlock.privateapp` | P1-4 / P1-3 裁决 |
 | B4 `/product/bin/su` 存在 | `-rwxr-xr-x root root 412B` | §5.1 B4 三选项 |
-| B10 `ksu_kaslr` 可读 | `kaslr boot=4c069829... text=ffffffed22a80000 slide=0000002d12a000` | §5.1 B10 三选项 |
+| B10 `ksu_kaslr` 可读 | `kaslr boot=4c069829... text=ffffffed22a80000 slide=0000002d12a000` | §5.1 B10 / §5.1.2（`SUVTZ_KASLR_MODE=0600` 已实现，默认 0644） |
 | D1 `persist.adb.tcp.port` | `5555` | §5.1 D1 三选项 |
 
 **X 类五对全同向**（无一例通道分歧），说明当前没有「某条读取路径漏堵」：
@@ -421,8 +421,88 @@ X5 PASS  A=0 | B=0                      (ps 与直接枚举 /proc/*/comm 都找�
 |---|---|---|
 | **B4** `/product/bin/su` | su 要给**任意**被授予的 app exec，属主不能是某个 app uid | ① 接受"名字可见、内容不可读"（现状）② SUS_PATH 打标（被授予的 app 也一起被隐藏，su 坏）③ 放弃 `/product/bin` 载体，su 只经 ksud wrapper |
 | ~~**B8** 链日志~~ | ~~431KB 含 KASLR/pvo 明文；但 PostLock 面板要 tail 它做实时日志~~ **已按选项①落地（P1-1，logs 0600），app 域实测 PASS** | ① 默认 0600（已实现，`SUVTZ_CHAIN_LOG_MODE=0644` 可回退）→ 面板只见 app 域链 ② 0644 保留面板，接受泄漏 ③ 日志脱敏（打码 text/slide 字段）后 0644 |
-| **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644（现状）② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）③ 只在考试轮临时放宽 |
+| **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644（现状，默认）② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）**已实现：`SUVTZ_KASLR_MODE=0600`** ③ 只在考试轮临时放宽 |
 | **D1** `persist.adb.tcp.port=5555` | WAN 通道 bootstrap 需要 adbd 常驻监听 5555 | ① 保持常驻 ② 通道建立后清空（下次冷启动断链，需重新写）③ 换非持久通道（每 boot host/链写一次） |
+
+#### 5.1.1 裁决登记机制：`tools/suvtz/accepted.tsv`
+
+「已裁决接受」的暴露面**不能改判成 PASS**（那会把未解决说成已解决），但每次都
+在报告里占一行 FAIL 也不利于收敛观察。所以加一层**纯标注**机制：
+
+```tsv
+# ID<TAB>裁决日期<TAB>理由（单行），# 开头的行忽略
+B10	2026-11-07	生产路径改由 host 触发，app 自派发已随 PostLock-Boot 冻结
+```
+
+`scan.sh` 的行为（`ACCEPTED_FILE` 默认 `$(dirname $0)/accepted.tsv`）：
+
+| 输入 | 输出 |
+|---|---|
+| 文件不存在 / 全注释（**默认状态**） | 与引入前**逐字一致**（`FAIL=5`） |
+| 文件含 `B10` | `B10` 行标记 `FAIL*`，汇总写 `FAIL=4 (另有已接受 1)`，并单列「已接受暴露面」段落列出 ID+理由 |
+| `ACCEPTED_FILE=` （空） | 打印 `<disabled>`，等同未启用 |
+
+要点：
+
+- **判定仍是 FAIL**，`PASS` 计数不变，`FAIL*` 只表示「已裁决、不再作为待办」。
+- 只匹配第 1 列 ID；ID 写错（拼写/大小写）静默不命中，避免误吞真正的回归。
+- 汇总行 `FAIL=N (另有已接受 M)` 里 `N + M` = 原始 FAIL 数，便于和 P0 表对账。
+- tsv 第 3 列理由会原样回显，**不要写敏感信息**（该文件进 git）。
+
+离线三态验证（假 adb + `pm`/`getprop` stub，`/tmp/opencode/fk/`）：
+默认 `FAIL=5 PASS=27 INFO=3`（与本轮真机的 5 项一致）→ 接受 `A1` 后
+`A1 FAIL*` + 汇总 `FAIL=4 (另有已接受 1)` + 单列「已接受暴露面」段落 →
+`ACCEPTED_FILE=` 打印 `<disabled>` 并回到 `FAIL=5`。真机复测同一台设备
+（`SERIAL=5bf5bf85`）在默认全注释表下仍是 `FAIL=5 PASS=30 INFO=0`，
+**逐项与引入前一致**。
+
+#### 5.1.2 三个待裁项的落地成本实测（2026-11-07）
+
+**B10 `ksu_kaslr` — 选项② 已实现，可一键开启（默认不动）**
+
+- 现状：文件由链（`src/main.c` 的 `ks_persist_kaslr_file`）以 **shell uid + umask 022**
+  写出 = `0644`；`/data/local/tmp` 是 `0711 shell:shell`（other 可穿越）→ app uid
+  按名字直接可读。实测 app 域（`run-as com.postlock.boot`）读到
+  `kaslr boot=4c069829… text=ffffffed22a80000 slide=0000002d12a00000`。
+- 收 0600 后同一命令：`cat: /data/local/tmp/ksu_kaslr: Permission denied`，rc=1
+  （实测后已 `chmod 644` 回滚，设备状态复原）。**此时 B10 探针即转 PASS**。
+- `tools/postlock.sh` 新增 `SUVTZ_KASLR_MODE`（默认 `0644` = 今日行为）：
+  restore 尾部（`kernel:s0`）对 `ksu_kaslr`/`ksu_payload` 做 `chown 2000:2000` +
+  `chmod $KASLR_MODE`。owner 仍是 shell，下一轮链重写不受影响（`O_TRUNC` 不改权限）。
+- **唯一代价**：app 自派发路径失去 KASLR 输入。该路径已随 PostLock-Boot 冻结
+  （生产恢复走 host `postlock.sh`），所以代价 ≈ 0；但这仍是**威胁模型决定**，
+  不是 bug 修复，故默认不改，等裁决。
+
+**D1 `persist.adb.tcp.port=5555` — 选项② 的代价是「冷启动失去网络通道」**
+
+- 实测本机当前状态：**无 Wi-Fi**（`ip -4 addr` 只有 `rmnet_data3 10.22.105.208/27`），
+  `adbd` 监听 `[::]:5555`，但 host 用 `192.168.137.10:5555` / `192.168.8.10:5555`
+  都连不上（`device not found`），唯一通道是 USB `5bf5bf85`。
+- 该项写入路径 = `/data/property/persistent_properties` 里的 30 字节 protobuf 条目
+  （`postlock.sh` stage 的 `pp_adb_tcp.bin`），由 init 在 boot 时应用到
+  `persist.adb.tcp.port`。`setprop persist.adb.tcp.port` 本身被 SELinux 死拒
+  （即使 Permissive），所以「清空」也只能改同一个文件。
+- 选项② 的真实后果：清空后**下一次冷启动 adbd 不再监听 5555**，而本机 LAN/tailnet
+  本身就不是每 boot 可达的（本次实测连 IP 都没有）——一旦 USB 不在手边，
+  失去的是**唯一的救回通道**（历史上多次靠它复联）。故倾向①保持。
+- 若最终选②，改法就是一行的开关（restore 段跳过 `pp_adb_tcp.bin` 追加）；但
+  **已写入的条目需要显式删除 + 一次 reboot** 才生效，不做「只对未来生效」的半态。
+
+**B4 `/product/bin/su` — 三个选项都不免费**
+
+- ① 接受现状：`-rwxr-xr-x root root 412B`，app 域 `ls` 可见、内容不可写。
+  语义上 su **必须**能被任意「被授予」的 app exec，属主只能是 root；
+  任何「对某类 app 隐藏」的方案都会命中同一批被授予的 app。
+- ② `SUS_PATH` 打标：P0 实测已推翻——隐藏门控是
+  `TIF_PROC_UMOUNTED && uid>=10000`，被授予 su 的 app 恰恰**不带**该标记，
+  但同一 inode 的属主判定会让 `su` 在普通 app 世界里消失的同时**也影响
+  su 自身的调用方一致性**（同 inode 同属主），收益是「少一个名字」，代价是
+  可能把正常 su 调用打成偶发失败。不做。
+- ③ 放弃 `/product/bin` 载体：su 只能经 `ksud debug su`（管道式，
+  `printf '%s\n' "$*" | ksud debug su`）。功能可用，但每个走 PATH 的第三方脚本
+  （YH_YC WebUI 等）都要改，且 `ksud` 的 execve 本身是 OPPO `oplus_exec_block`
+  的上报源（会触发安全弹窗，靠 `oplus_check_suppress` 拦）。
+  这是「用一个更大的可检测面换一个小名字」，不做。
 
 ## 6. 复跑方法
 

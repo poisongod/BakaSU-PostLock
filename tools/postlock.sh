@@ -31,6 +31,14 @@ TMP=/data/local/tmp
 # of any app's reach; the PostLock log panel then only shows app-domain
 # chains.  SUVTZ_CHAIN_LOG_MODE=0644 restores the old cross-uid readability.
 CHAIN_LOG_MODE=${SUVTZ_CHAIN_LOG_MODE:-0600}
+# SUVTZ B10: ksu_kaslr is written by the chain (shell umask -> 0644) and is the
+# only input the app-domain gate ever read.  That self-dispatch path is frozen
+# with PostLock-Boot, so 0644 is no longer required -- but flipping the default
+# is a threat-model decision, not a bug fix.  Default stays at today's 0644;
+# SUVTZ_KASLR_MODE=0600 closes the exposure (measured: runas read goes from
+# a readable 93-byte line to "Permission denied", see docs/suvtz-p0-baseline
+# §5.1.2).  Applied from restore (kernel:s0) so the chmod always sticks.
+KASLR_MODE=${SUVTZ_KASLR_MODE:-0644}
 
 die() { echo "postlock: ERROR: $*" >&2; exit 1; }
 # unified log line prefix, same shape as chain/restore/receiver logs
@@ -577,6 +585,16 @@ if [ -f $TMP/postlock_chain.log ]; then
   chown 2000:2000 $TMP/postlock_chain.log 2>/dev/null || true
   chmod $CHAIN_LOG_MODE $TMP/postlock_chain.log 2>/dev/null || true
 fi
+# B10: the app-domain gate input (written by the chain as shell, umask 0644).
+# 0644 = today's behaviour; SUVTZ_KASLR_MODE=0600 makes it unreadable to any
+# app uid.  Owner stays shell so the chain can rewrite it next round.
+for f in ksu_kaslr ksu_payload; do
+  if [ -f $TMP/\$f ]; then
+    chown 2000:2000 $TMP/\$f 2>/dev/null || true
+    chmod $KASLR_MODE $TMP/\$f 2>/dev/null || true
+  fi
+done
+log "suvtz-b10: ksu_kaslr mode=$(stat -c %a $TMP/ksu_kaslr 2>/dev/null || echo absent) (want $KASLR_MODE)"
 log "suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)"
 # --- su/fd regression triage (2026-11-03) ------------------------------
 # The host verify's '/product/bin/su -c id' dies with "could not retrieve
