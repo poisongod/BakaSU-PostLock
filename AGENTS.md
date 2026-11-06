@@ -4915,6 +4915,42 @@ shell（uid 2000）直接跑 `/data/local/tmp/ksud susfs show version` 会打印
   `susfs_get_enabled_features` 各 `ret: 0`
 - `comm=ksud`（root CLI 复验）：同三条 `ret: 0`
 
+### 验收后必须重启清标记（2026-11-06 实测）
+
+`SUS_PATH` / `SUS_MAP` / `SUS_KSTAT` / `OPEN_REDIRECT` / `SPOOF_CMDLINE` 这五项
+**没有 DEL 命令**（ABI 只给 add/update），验收脚本打的标记（伪造 `uname -r`、
+对 app 隐藏 `/system/bin/toybox`、重定向 `otacerts.zip`、改 `hosts` 的 ino/size）
+**只能靠重启清除**。所以「验收 → 打包收尾」的标准动作 = 征得用户同意后重启 →
+冷 boot 重跑 `tools/postlock.sh` 恢复驱动 → 复验。
+
+干净 boot 的判据（缺一即标记没清干净）：
+- `uname -r` 回到真实值 `5.4.254-qgki-g977b99b1fbb9`（不是 SUSFS 伪造串）
+- `/system/bin/toybox` 对 app 域重新可见（`run-as <pkg> ls -l /system/bin/toybox`）
+- `head -1 /proc/self/mountinfo` 里不再有 SUS_MOUNT 的 `2000000000` 伪 mnt_id
+
+冷 boot 复验实测（boot `898d3136`，数据在 `docs/forensics/coldboot-898d3136/`）：
+链 `root=1` ×3 + `ks_neutralize ok=1` + restore 双 OK + `enforce=1` +
+`kernelsu`/`oplus_check_suppress` 加载 + `hotload` 不加载（legacy 按设计）+
+ocsk v14 `rep armed=2` + su `uid=0 … u:r:ksu:s0`，suvtz **6 FAIL / 24 PASS**。
+
+**suvtz 的 6 个 FAIL 全部是设计内暴露面**（不要当回归去「修」）：
+A1 管理器包可见、A2 工具包可见（`com.postlock.boot` = SUSFS 自检载体，
+`com.postlock.privateapp` = suvtz 私有包对照组，两者都别删）、
+B4 `/product/bin/su` 存在、B10 `ksu_kaslr` 可读（app 域 gate 输入）、
+D1 `persist.adb.tcp.port=5555`、E2 `/product/bin` overlay 出现在 mountinfo。
+
+**两个操作坑（本轮踩到）**：
+1. **`postlock.sh` 的 900s 超时在 tailnet 通道下不够**——stage 要 push 15MB
+   `kernelsu.ko`，relay 下约 14 分钟，脚本被 `timeout` 杀在「等 restore」之后。
+   链是 detached 的会跑完并成功，但**尾部步骤（写 `ksu_kaslr` 占位）被切掉** →
+   文件里留着本轮真实 KASLR → app 的 gate 变 ready，可能自己 dispatch 第二条链。
+   处置：手动 `su -c 'printf %s "kaslr boot=00000000-... text=0 slide=0" >
+   /data/local/tmp/ksu_kaslr'`；或把超时预算提到 ≥25 分钟。
+2. **熄屏休眠会同时断 tailnet 与 LAN 的 adb**（本次 `offline` 后唤醒，
+   Wi-Fi 以新 DHCP 地址回来）。此刻跑 suvtz 会整段 `INFO (runas 域不可用)`——
+   **这是 adb 命令失败被误判，不是 `run-as` 坏了**；通道恢复后
+   `run-as com.postlock.boot id` 正常（`uid=10287 … runas_app`）。
+
 ### 部署前必做：ko 的 UND 符号必须全部在设备 `__ksymtab` 里（2026-11-01）
 
 **症状**：`finitmod` 加载报 `Unknown symbol selinux_state (err -2)`（= `-ENOENT`），
