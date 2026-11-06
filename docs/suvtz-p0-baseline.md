@@ -265,12 +265,12 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
 
 按实测重排（原 P1a/P1b/P1c/P1d 作废）：
 
-- **P1-1（零内核，已落地待验）**：DAC 收敛，见 §3 B1/B6 小节的清单。
-  同步改 `tools/postlock.sh` 与 app `assets/postlock/restore.sh`
-  （两份必须一致，否则装机后行为不同；生成物 round-trip diff 只有一处
-  有意的差异：chain log 的 mode 在 host 侧是展开值、在 asset 侧是
-  `${SUVTZ_CHAIN_LOG_MODE:-0600}`）。
-  插入点 = overlay 建好、ksud 拷完之后（root/kernel:s0 上下文）。
+- **P1-1（零内核，已落地 `ec7f6194`，待 reboot 验收）**：DAC 收敛，见 §3
+  B1/B6 小节的清单。插入点 = overlay 建好、ksud 拷完之后（root/kernel:s0 上下文）。
+  **只改 `tools/postlock.sh` 一处**——原计划要同步 app `assets/postlock/restore.sh`
+  （"两份必须一致"），但 `PostLock-Boot` 已于 2026-11-06 冻结为 legacy
+  （不再演进、不再 bump `PAYLOAD_VERSION`、不再同步 assets），恢复流程唯一权威
+  就是 host 侧 `tools/postlock.sh`。以后改恢复语义不必再动 app。
   **验收**：B1/B6/B7/B8/B9/B11 转 PASS、`/data/local/tmp` 保持可穿越、
   触发链与 restore 全链无回归（这是关键——不能为了隐藏把链弄坏）。
 - **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效

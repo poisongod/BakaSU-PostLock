@@ -351,19 +351,29 @@ Keeper(root, ksu 域)
 
 ## 8. 实施路线
 
-| 阶段 | 内容 | 内核代码 | 依赖 | 预估 |
-|---|---|---|---|---|
-| **P0** | 观测面扫描器：7 类清单固化为可执行探针，输出 `PASS/FAIL/INFO`，建 stock 基线对照 | 零 | 无 | 1 天 |
-| **P1a** | 包面：管理器 Hide + 工具改名 | 零 | APK | 0.5 天 |
-| **P1b** | 物料面：SUS_PATH 标记（B1/B3/B5），restore 内重放 | 零 | 现有 SUSFS | 0.5 天 |
-| **P1c** | 模块面：`susfs_kernfs.c`（C2/C3/C4），三 hook 成对处理 | ~90 行 | 需重编 ko + 重启 | 1 天 |
-| **P1d** | 属性面：D1 使用后清理 + policy 收紧 | 零 | 需验证 | 0.5 天 |
-| **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 |
-| **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 |
+> **本表已被 P0 实测取代**（2026-11-03 第二轮 30 探针基线，见
+> [`suvtz-p0-baseline.md`](suvtz-p0-baseline.md) §4/§5）。下表保留为设计期原案，
+> 现行路线以 P0 文档的 **P1-1 ~ P1-4** 为准。
+
+| 阶段 | 内容 | 内核代码 | 依赖 | 预估 | 现状态 |
+|---|---|---|---|---|---|
+| **P0** | 观测面扫描器：7 类清单固化为可执行探针，输出 `PASS/FAIL/INFO`，建 stock 基线对照 | 零 | 无 | 1 天 | ✅ 已完成（`tools/suvtz/scan.sh`，30 探针） |
+| **P1a** | 包面：管理器 Hide + 工具改名 | 零 | APK | 0.5 天 | ⏸ 待裁决（A1 上游 `applicationId` 不能换；A2 与「工具包可见」冲突） |
+| **P1b** | 物料面：SUS_PATH 标记（B1/B3/B5），restore 内重放 | 零 | 现有 SUSFS | 0.5 天 | ❌ 路线作废：真根因是 DAC `0777`，`chmod` 即可；`SUS_PATH` 会把管理器一起隐藏 |
+| **P1c** | 模块面：`susfs_kernfs.c`（C2/C3/C4），三 hook 成对处理 | ~90 行 | 需重编 ko + 重启 | 1 天 | ❌ 路线作废：`/sys/module`、`/proc/modules`、`/proc/kallsyms` 对 app 域本来全 `Permission denied`，这段代码不需要写 |
+| **P1d** | 属性面：D1 使用后清理 + policy 收紧 | 零 | 需验证 | 0.5 天 | ⏸ 待裁决（D1 通道 bootstrap 依赖） |
+| **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | 未开始 |
+| **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 | 未开始 |
 
 **P0 必须先行**：没有基线，"修好了"和"本来就正常"分不清。这也是项目历史上多次"假绿"的根源（verify 被上一轮遗留撑绿）。
 
-### P1c 的接口决策
+### P1c 的接口决策（历史记录，路线已作废）
+
+> **2026-11-03 实测推翻**：app 域 `ls /sys/module`、读 `/proc/modules`、
+> 读 `/proc/kallsyms` 全部被 SELinux 拒（`kernfs` `read` 与 proc 权限），
+> 模块面对普通 app 本来就是不可达的（T2）。**`susfs_kernfs.c` 不需要写**；
+> 只有当检测方换到 `shell`/`system` 域时才需要，而那已不在「普通 app」
+> 威胁模型里。以下为设计期原案，仅作记录。
 
 `/sys/module` 隐藏**不在标准 SUSFS 的 9 个 feature 位里**（本 ABI 无 module hiding）。所以：
 
