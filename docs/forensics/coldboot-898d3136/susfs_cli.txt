@@ -1,0 +1,42 @@
+# SUSFS live state on boot 898d3136 (2026-11-06 20:2x)
+
+Device: PFUM10 (OPPO A96 5G), Android 12, kernel 5.4.254-qgki-g977b99b1fbb9
+SELinux: enforcing (1)
+Manager: BakaSU v4.2.0-rc3 (35252/6), active manager UID 10277
+Driver: v4.2.0-rc3-5b76b884-dirty@BakaSU (35222/6)  -> UAPI 6 == 6
+
+## /product/bin/su -c "ksud susfs show <x>"
+
+    version   -> v2.3.0
+    variant   -> GKI
+    enabled_features:
+      CONFIG_KSU_SUSFS_SUS_PATH
+      CONFIG_KSU_SUSFS_SUS_KSTAT
+      CONFIG_KSU_SUSFS_SPOOF_UNAME
+      CONFIG_KSU_SUSFS_ENABLE_LOG
+      CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+      CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+      CONFIG_KSU_SUSFS_OPEN_REDIRECT
+      CONFIG_KSU_SUSFS_SUS_MAP
+      CONFIG_KSU_SUSFS_SUS_MOUNT
+
+## dmesg (dual evidence chain, both sides ret: 0)
+
+    (7)[13082:libksud.so]susfs:[0][13082][susfs_show_version]           CMD_SUSFS_SHOW_VERSION           -> ret: 0
+    (3)[13089:libksud.so]susfs:[0][13089][susfs_get_enabled_features]   CMD_SUSFS_SHOW_ENABLED_FEATURES  -> ret: 0
+    (2)[13096:libksud.so]susfs:[0][13096][susfs_show_variant]           CMD_SUSFS_SHOW_VARIANT           -> ret: 0
+    (7)[23335:ksud]susfs:[0][23335][susfs_show_version]                 CMD_SUSFS_SHOW_VERSION           -> ret: 0
+    (7)[23342:ksud]susfs:[0][23342][susfs_show_variant]                 CMD_SUSFS_SHOW_VARIANT           -> ret: 0
+    (7)[23347:ksud]susfs:[0][23347][susfs_get_enabled_features]         CMD_SUSFS_SHOW_ENABLED_FEATURES  -> ret: 0
+
+`libksud.so` = the manager APK's bundled ksud (what the SUSFS page itself
+queries). `ksud` = the root CLI. Both hitting the kernel and both returning
+0 is the check that the UI is reading real kernel state, not an app-side value.
+
+## Screenshots
+
+- `ui_main.png` / `ui_main_status.png` — manager home: blue card
+  "工作中 / Built-in / 越狱模式", SELinux 强制执行, active manager UID 10277,
+  hook type "Tracepoint Syscall Redirect", SuSFS version v2.3.0
+- `ui_susfs.png` — SUSFS page: manager toggle on, version v2.3.0, variant GKI,
+  nine supported features listed

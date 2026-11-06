@@ -56,3 +56,26 @@ DEL 命令，**只能靠重启清除**。本轮即为此后的重启 + 冷 boot 
 - `suvtz_scan_898d3136.txt` — suvtz 30 探针原始输出
 - `ui_main.png` — 管理器主页状态卡（蓝卡「工作中 Built-in 越狱模式」、
   驱动 `(35222/6)` ↔ 管理器 `(35252/6)`、SuSFS `v2.3.0`）
+
+## SUSFS 页截图 + 文本证据（20:29）
+
+管理器 SUSFS 页实拍（`ui_susfs.png`）：
+
+| 项 | 值 |
+|---|---|
+| SUSFS 管理器 | 开启（内置） |
+| SUSFS 版本 | `v2.3.0` |
+| 变体 | `GKI` |
+| 支持功能 | 九项全列（SUS_PATH / SUS_KSTAT / SPOOF_UNAME / ENABLE_LOG / HIDE_KSU_SUSFS_SYMBOLS / SPOOF_CMDLINE_OR_BOOTCONFIG / OPEN_REDIRECT / SUS_MAP / SUS_MOUNT） |
+
+主页状态卡（`ui_main_status.png`）：蓝卡「工作中 / Built-in / **越狱模式**」、
+SELinux **强制执行**、活跃管理器 **UID 10277**、钩子类型
+**Tracepoint Syscall Redirect**、SuSFS 版本 `v2.3.0`。
+
+文本证据见 `susfs_cli.txt`：`ksud susfs show version|variant|enabled_features`
+三项输出 + dmesg 双通道（管理器 `libksud.so` 与 root CLI `ksud` 各三条
+`ret: 0`）——两条通道都打到内核，说明 UI 显示的是真实内核状态。
+
+截图前把 `com.resukisu.resukisu` 用 `monkey` 拉起并确认
+`mCurrentFocus` 指向 `org.bakasu.bakasu.ui.MainActivity`，点右上
+SUSFS 配置（1080×2400 下约 `(854, 204)`）进详情页，截完立即 `KEYCODE_HOME`。
