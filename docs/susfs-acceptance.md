@@ -99,3 +99,22 @@ untrusted_app 读 `/proc/cmdline`、`/proc/kallsyms` 抛 `FileNotFoundException`
 `SPOOF bootconfig` 因本内核 `CONFIG_BOOT_CONFIG=n`（无 `/proc/bootconfig`）。
 前两项的钩子**无 uid 门控**（全进程一致），root 侧 PASS 是等价证据；第三项
 能力在本内核上客观不可观测，不算未实现（`set_cmdline` 命令 `ret: 0` 已证受理）。
+
+## r4 之后的收尾：干净重启 + 冷 boot 恢复复验
+
+SUSFS 的 `SUS_PATH` / `SUS_MAP` / `SUS_KSTAT` / `OPEN_REDIRECT` /
+`SPOOF_CMDLINE` 都**没有 DEL 命令**，r4 留下的伪造 `uname -r`、对 app 隐藏的
+`/system/bin/toybox`、被重定向的 `otacerts.zip` 只能靠重启清除。r4 之后做过
+一次干净重启（`1e831bc4` → `898d3136`），判据全绿：
+
+- `uname -r` 回到真实的 `5.4.254-qgki-g977b99b1fbb9`，`/system/bin/toybox`
+  对 app 域重新可见（证明标记确已清除，不是「隐藏恰好失效」）
+- 冷 boot 恢复：链 `pipe-physrw-summary done=1 root=1` ×3 + `CHAIN_EXIT_DONE`
+  + `ks_neutralize ok=1 verified=1`；restore `SELINUX-STRICT-OK` /
+  `POSTLOCK-RESTORE-OK` 双 OK、`enforce=1`；`kernelsu` + `oplus_check_suppress`
+  加载、`kernelsu_hotload_init` 按 legacy 设计不加载
+- suvtz 复测 **6 FAIL / 24 PASS / 0 INFO**（与上一轮同值，无回退；6 个 FAIL
+  全部是设计内暴露面：管理器包、工具包、`/product/bin/su`、`ksu_kaslr`、
+  `persist.adb.tcp.port`、`/product/bin` overlay）
+
+原始数据：`docs/forensics/coldboot-898d3136/`。
