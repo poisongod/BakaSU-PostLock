@@ -594,7 +594,7 @@ for f in ksu_kaslr ksu_payload; do
     chmod $KASLR_MODE $TMP/\$f 2>/dev/null || true
   fi
 done
-log "suvtz-b10: ksu_kaslr mode=$(stat -c %a $TMP/ksu_kaslr 2>/dev/null || echo absent) (want $KASLR_MODE)"
+log "suvtz-b10: ksu_kaslr mode=\$(stat -c %a $TMP/ksu_kaslr 2>/dev/null || echo absent) (want $KASLR_MODE)"
 log "suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)"
 # --- su/fd regression triage (2026-11-03) ------------------------------
 # The host verify's '/product/bin/su -c id' dies with "could not retrieve

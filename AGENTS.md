@@ -3373,6 +3373,12 @@ host 展开、设备变量必须 `\$`；wrapper 段是**第二层 `<<'SUW'`（�
 字面）**，两层语义相反，改路径时第一层写 `$TMP/...`（展开）第二层写
 字面即可。生成物校验法：awk 提取 body + 模拟变量 + `sh -n`（fix76 已
 如此验证，两份 restore 关键行 diff 一致）。
+**已脚本化（2026-11-07）：`tools/check_restore_heredoc.sh`** 专门抓
+「body 里未转义的 `$(` / 反引号」——这类会被 **host** 在执行 postlock.sh
+时就展开（本轮 `suvtz-b10` 取证行就差点这样：host 上 `stat` 不存在的
+`/data/local/tmp/ksu_kaslr` → 日志恒为 `absent`）。`bash -n` 抓不到它
+（生成的脚本语法仍然合法），必须靠这个检查。改动 restore body 后连同
+`bash -n tools/postlock.sh` 一起跑。
 
 ### 新考试轮第 1 轮失败（2026-10-26 redo35, boot 075fb409）→ 维持 0/3——restore 翻转后 kernel:s0 exec 死 + host set -e 死 + fix77 委托架构
 
