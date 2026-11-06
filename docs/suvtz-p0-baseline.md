@@ -609,6 +609,7 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判；「另有已
 | 台账 | `/tmp/opencode/suvtz/history.tsv`（`boot8 <TAB> 日期 <TAB> 汇总`，同一 boot 重跑整行替换） |
 | 失败语义 | 只 `WARN` + 打 `scan:` 原因两行，**不影响恢复脚本退出码** |
 | 耗时 | 实测 71.5s（35 探针，USB，解锁态） |
+| 锁屏补扫 | `SUVTZ_SCAN_DEFER=0` 关闭（默认开）；上限 `SUVTZ_SCAN_DEFER_TIMEOUT`（默认 10800s）、轮询 `SUVTZ_SCAN_DEFER_INTERVAL`（默认 30s） |
 
 **诚实口径（重要）**：这**不是 boot hook**。PostLock-Boot 已于 2026-11-06 冻结，
 设备上没有任何开机自跑通道；这段挂在**恢复流程**上——即「每次冷 boot 跑一次
@@ -619,9 +620,19 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判；「另有已
 台账的用法：跨 boot 看两件事——`FAIL` 计数是否变化（回归）、`INFO` 计数是否变化
 （视角退化，多半是设备锁屏导致载体不可用，不是新泄漏）。**汇总行尾部带
 `runas=ok|no`**：冷 boot 时设备常还在锁屏（`State: RUNNING_LOCKED`），那时
-`runas=no PASS=1 INFO=32` 是**如实记录**（不是回归），`postlock.sh` 会额外打一行
-「解锁屏幕后单跑 `tools/suvtz/scan.sh` 可得完整快照」。同一 boot 解锁后重跑，
+`runas=no PASS=1 INFO=32` 是**如实记录**（不是回归）。同一 boot 解锁后重跑，
 台账同一 boot8 的行会被整行替换为完整快照。
+
+**锁屏补扫（2026-11-07）**：`runas=no` 时 `postlock.sh` 会 `setsid nohup` 拉起
+`tools/suvtz/wait_unlock_scan.sh`——后台轮询直到设备真正解锁（有载体时判据就是
+`run-as <pkg> true` 成功，这正是 app 域测量需要的那项能力；无载体时看
+`dumpsys user` 的 `RUNNING_UNLOCKED`），然后自动补跑一次 `scan.sh -q`、把完整
+快照写进同一 `auto_<boot8>/` 目录（**覆盖前先把锁屏那份另存
+`scan_<boot8>_locked.txt`**）、更新台账，并在 `defer.log` / `defer_status.txt`
+留痕。它不阻塞恢复流程、不写设备（`scan.sh` 全是只读探针），退出码语义：
+`0` 已补跑 / `2` 等解锁超时 / `3` boot 已变（下一轮恢复会覆盖）/ `4` adb 连续
+6 次不可用（拔线/断网）。这样「冷 boot 一次 = 一份快照」在设备锁着时也不会
+只留下 32 条 INFO。
 
 ## 7. X 类：成对交叉验证（2026-11-07 新增）
 

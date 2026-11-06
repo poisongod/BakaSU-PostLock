@@ -1000,6 +1000,8 @@ echo "manual check: BakaSU blue card 工作中 Built-in, driver == manager versi
 #
 #   SUVTZ_SCAN=0        关闭本段
 #   SUVTZ_SCAN_PKG=xxx  指定 runas 载体 (不设 = scan.sh 自动探测已安装载体)
+#   SUVTZ_SCAN_DEFER=0  不挂「等解锁后自动补扫」的后台任务 (默认挂)
+#   SUVTZ_SCAN_DEFER_TIMEOUT / _INTERVAL  补扫等解锁的上限(默认 3h)与轮询间隔(30s)
 #
 # 扫描是旁路观测, 判据全在 scan.sh 里; 这里只在**旁路本身失败**时 WARN,
 # 并且绝不影响本脚本退出码 (恢复成功不该被观测工具判死)。
@@ -1027,9 +1029,28 @@ if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
     info "suvtz: report $SCAN_OUT/scan_$BOOT8.txt"
     # app 域整段没测时给一条可操作提示。冷 boot 后设备常还在锁屏 (CE 存储不可用),
     # 那时 runas 段必然全是 INFO——如实告知, 不要让人对着 32 条 INFO 猜。
+    # 并且默认挂一个后台补扫: 等设备真正解锁 (run-as 可用) 后自动重跑一次，
+    # 把完整快照写进同一目录 + 更新台账 (scan.sh 全是只读探针, 不碰恢复结果)。
     case "$SCAN_SUM" in
       *runas=no*)
-        info "suvtz: app 域本次未测 (设备锁屏未解锁 / 无载体) —— 解锁屏幕后单跑 tools/suvtz/scan.sh 可得完整快照"
+        info "suvtz: app 域本次未测 (设备锁屏未解锁 / 无载体)"
+        if [ "${SUVTZ_SCAN_DEFER:-1}" != "0" ]; then
+          DEFER_ARGS=(--outdir "$SCAN_OUT" --adb "$ADB_BIN" --boot8 "$BOOT8"
+                      --timeout "${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}"
+                      --interval "${SUVTZ_SCAN_DEFER_INTERVAL:-30}"
+                      --ledger "$SUVTZ_SCAN_BASE/history.tsv")
+          [ -n "${SERIAL:-}" ] && DEFER_ARGS+=(--serial "$SERIAL")
+          if [ -n "${SUVTZ_SCAN_PKG+x}" ]; then
+            if [ -n "${SUVTZ_SCAN_PKG:-}" ]; then DEFER_ARGS+=(--pkg "$SUVTZ_SCAN_PKG")
+            else DEFER_ARGS+=(--no-pkg); fi
+          fi
+          # 必须 setsid nohup + </dev/null: 普通 nohup & 会随调用方 shell 收尾被组杀。
+          setsid nohup bash "$REPO/tools/suvtz/wait_unlock_scan.sh" "${DEFER_ARGS[@]}" \
+            </dev/null >/dev/null 2>&1 &
+          info "suvtz: 已挂后台补扫 (解锁后自动重跑, 上限 ${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}s, 日志 $SCAN_OUT/defer.log; SUVTZ_SCAN_DEFER=0 关闭)"
+        else
+          info "suvtz: 解锁屏幕后单跑 tools/suvtz/scan.sh 可得完整快照"
+        fi
         ;;
     esac
     # 台账: 每 boot 一行, 便于跨轮对比 (同一 boot 重跑则整行替换)。

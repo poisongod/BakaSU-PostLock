@@ -50,16 +50,26 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 **探针自己跑不成（exec 被拒、命令缺失）记 `INFO`，绝不记 `PASS`**。
 
 ```bash
-SERIAL=<serial> PKG=<debuggable 包名> tools/suvtz/scan.sh      # 扫描
-SERIAL=<serial> PKG=<包名> OUT=/tmp/suvtz tools/suvtz/scan.sh -q
+tools/suvtz/scan.sh                      # 零参数即可（自动选 adb / 设备 / 载体）
+tools/suvtz/scan.sh -q                   # 只打一行汇总（FAIL=/PASS=/INFO= runas=）
+SERIAL=<serial> PKG=<debuggable 包名> tools/suvtz/scan.sh   # 显式指定
+OUT=/tmp/suvtz tools/suvtz/scan.sh -q
 ```
 
 - 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`
 - 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`
 - 已显式裁决接受、但**仍计 FAIL**（显示 `FAIL*`）的项：`tools/suvtz/accepted.tsv`
 
-2026-11-07 真机基线：`FAIL=5 PASS=30 INFO=0`（A1/A2/B4/B10/D1，均为
-「功能可用性 vs 可检测性」的取舍，尚未全部裁决）。
+2026-11-07 真机基线（boot `a877caaf`，零参数）：`FAIL=0 (另有已接受 4)
+PASS=31  INFO=0  runas=ok`。被接受的 4 项是 A1/A2/B4/D1（「功能可用性 vs
+可检测性」的取舍，仍照实打印 `FAIL*`）。
+
+每份快照的完整口径都要看 `runas=ok|no`：冷 boot 后设备常还在锁屏
+（`State: RUNNING_LOCKED`），CE 存储不可见 → app 域段只能全记 `INFO`
+（`runas=no`）。此时 `tools/postlock.sh` 会在恢复流程尾部旁路跑一次扫描并
+**后台挂一个补扫**（`tools/suvtz/wait_unlock_scan.sh`），等设备解锁后自动重跑，
+把完整快照写进 `/tmp/opencode/suvtz/auto_<boot8>/` 并更新
+`/tmp/opencode/suvtz/history.tsv`。
 
 ## 目录结构
 

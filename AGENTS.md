@@ -5199,8 +5199,17 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   按 `run-as` 错误串归因 `RUNAS_WHY`（设备未解锁 / 载体无数据目录 / 不可调试 / 无载体 /
   run-as 失败），报告头打 `device_locked=` + 解锁提示行，逐条 reason 用 `$RUNAS_WHY`
   而非笼统的「runas 域不可用」，汇总行尾部追加 `runas=ok|no`，`postlock.sh` 见
-  `runas=no` 再补一条「解锁后单跑 scan.sh」提示。**判据**
+  `runas=no` 打一条「app 域本次未测」并挂后台补扫（见下条）。**判据**
   `dumpsys user | grep "State:"` 比任何间接观测都可靠。
+- **锁屏补扫 `tools/suvtz/wait_unlock_scan.sh`（2026-11-07）**：`postlock.sh` 见
+  `runas=no` 就 `setsid nohup` 拉起它（`SUVTZ_SCAN_DEFER=0` 关闭，上限
+  `SUVTZ_SCAN_DEFER_TIMEOUT` 默认 3h、轮询 30s），后台等到**真正可以用 run-as**
+  （有载体时判据 = `run-as <pkg> true` 成功，无载体时看 `dumpsys user` 的
+  `RUNNING_UNLOCKED`）再补跑一次 `scan.sh -q`，覆盖前把锁屏快照另存
+  `scan_<boot8>_locked.txt`，然后更新台账 + 写 `defer.log`/`defer_status.txt`。
+  退出码：`0` 补跑完成 / `2` 等解锁超时 / `3` boot 已变 / `4` adb 连续 6 次不可用。
+  **必须 `setsid nohup … </dev/null`**（普通 `nohup &` 会随调用方 shell 收尾被组杀）。
+  目的 = 「冷 boot 一次 = 一份快照」在设备锁着时不至于只留 32 条 INFO。
 - **诚实口径**：这不是 boot hook——PostLock-Boot 已冻结、设备无开机自跑通道；
   它挂在**恢复流程**上，即「每次冷 boot 跑一次 `postlock.sh`」= 「一份快照」。
   设计期 P2 的终局形态（app 自身代码自跑同一套探针）未做，判据仍是 `runas_app`
