@@ -86,9 +86,19 @@ host 侧 `/tmp/opencode` 轮次日志归档到 `exam/` 后同样及时清。**�
 对照，禁误删）**：链物料全套（finitmod/kernelsu.ko/hotload/ksud/oplus_check_suppress.ko/
 preload.so/su）、`ksu_boot/` stage、`ksud_dbg`（插桩诊断）、`postlock_adbkey.pub`
 （keypair 永久沿用）、tailscaled 通道件、`home/`（裸链默认路径）、诊断数据
-（pstore_dump/rc_syms/kheaders）、`/data/misc/adb/adb_keys`（红线永不碰）。
+（pstore_dump/rc_syms/kheaders）、`/data/misc/adb/adb_keys`（红线永不碰）、
+**用户模块备份 `modules_off_*/` + `modules_backup_*.tar.gz`**——见下条。
 SELinux 标签拒 unlink 的文件（dontaudit 报 Permission denied，如旧 ko/socket）留待
 root 窗口删，不强攻。
+
+**`/data/adb/modules` 为空 ≠ 正常**（2026-11-06 差点误删的坑）：2026-11-05 21:10
+为隔离 su 驱动 fd 回归的变量，把用户 5 个功能模块（YH_YC 月虹隐藏 / hma_oss_zygisk /
+oh_my_keymint / playintegrityfix / zygisksu）整体 `mv` 到
+`/data/local/tmp/modules_off_20261105_211036/` 并打了 tar 包，排查闭环后未恢复。
+2026-11-06 已 `cp -a` 复制回 `/data/adb/modules`（文件数逐一核对一致、
+`restorecon -RF` 后 context = `adb_data_file`），**但当前 boot 仍未加载（需 reboot 才
+生效）**。→ ① 该备份在下次 reboot 确认模块真的加载成功之前**禁止删除**；
+② 以后见到 `/data/adb/modules` 空目录，先查 `modules_off_*` 再判断，不要当垃圾处理。
 
 ```bash
 # temp 目录默认 label 是 system_data_file，shell 无法读写；每次 reboot 后须重新改：
