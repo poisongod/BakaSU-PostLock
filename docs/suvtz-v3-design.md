@@ -490,7 +490,7 @@ Keeper(root, ksu 域)
 | **P1b** | 物料面：SUS_PATH 标记（B1/B3/B5），restore 内重放 | 零 | 现有 SUSFS | 0.5 天 | ❌ 路线作废：真根因是 DAC `0777`，`chmod` 即可；`SUS_PATH` 会把管理器一起隐藏 |
 | **P1c** | 模块面：`susfs_kernfs.c`（C2/C3/C4），三 hook 成对处理 | ~90 行 | 需重编 ko + 重启 | 1 天 | ❌ 路线作废：`/sys/module`、`/proc/modules`、`/proc/kallsyms` 对 app 域本来全 `Permission denied`，这段代码不需要写 |
 | **P1d** | 属性面：D1 使用后清理 + policy 收紧 | 零 | 需验证 | 0.5 天 | ⏸ 待裁决（D1 通道 bootstrap 依赖） |
-| **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | 未开始 |
+| **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | ⚠ 部分落地（2026-11-07）：**每 boot 自跑已挂在 `tools/postlock.sh` 尾部**（旁路、WARN-only、`SUVTZ_SCAN=0` 关闭、台账 `history.tsv`）；「app 自身代码自跑同一套探针」随 PostLock-Boot 冻结而未做，判据仍是 `runas_app` 近似 |
 | **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 | 未开始 |
 
 **P0 必须先行**：没有基线，"修好了"和"本来就正常"分不清。这也是项目历史上多次"假绿"的根源（verify 被上一轮遗留撑绿）。

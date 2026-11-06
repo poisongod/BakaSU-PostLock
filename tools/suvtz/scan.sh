@@ -20,8 +20,11 @@
 #   tools/suvtz/scan.sh -q               # 只写文件, 打印汇总
 #   SERIAL=1.2.3.4:5555 tools/suvtz/scan.sh
 #   PKG=<包名> tools/suvtz/scan.sh       # runas 近似域的载体（需 debuggable）
-#                                        # 不设则跳过 runas 视角、整段记 INFO
-#                                        # （PostLock-Boot 已冻结，不再默认绑定）
+#                                        # 不设 = 自动取已安装的验收载体
+#                                        # （com.postlock.boot > com.postlock.privateapp）
+#                                        # PKG= (空串) = 强制不用载体、runas 段记 INFO
+#                                        # （PostLock-Boot 已冻结，但仍是 SUSFS
+#                                        #  app 域自检载体，装了就默认用它）
 #
 # 退出码: 0 = 无 FAIL; 1 = 有 FAIL; 2 = 设备不可用
 
@@ -30,6 +33,10 @@ set -u
 ADB="${ADB_BIN:-/mnt/c/WINDOWS/system32/adb.exe}"
 # PostLock-Boot 自 2026-11-06 冻结为 legacy，不再作为默认载体。
 # runas 视角只是 app uid 的 DAC 近似，载体可以是任何 debuggable app。
+# PKG 未设置 => 自动探测已安装的验收载体 (见 pick_carrier);
+# PKG= (空串) => 强制不用载体, runas 视角整段记 INFO。
+PKG_AUTO=0
+[ -z "${PKG+x}" ] && PKG_AUTO=1
 PKG="${PKG:-}"
 OUT="${OUT:-/tmp/opencode/suvtz}"
 SERIAL="${SERIAL:-}"
@@ -82,6 +89,25 @@ pick_device() {
 
 S=$(pick_device) || { echo "scan: 无可用目标设备 (错设备 401e909a 已排除)" >&2; exit 2; }
 echo "device: $S" >&2
+
+# ---------------------------------------------------------------- 载体选择
+# runas 视角需要一个 debuggable 载体（app uid 的 DAC 近似）。PKG 未设置时
+# 自动取第一个**已安装**的验收载体；都没有就退化成「无载体」(整段 INFO)。
+# 注意 run-as 依赖 CE 存储：锁屏/休眠时即使装了也会失败，这是环境限制不是缺陷。
+if [ "$PKG_AUTO" = 1 ]; then
+	for c in com.postlock.boot com.postlock.privateapp; do
+		if "$ADB" -s "$S" shell "pm list packages" 2>/dev/null \
+			| tr -d '\r' | grep -qx "package:$c"; then
+			PKG=$c
+			break
+		fi
+	done
+	if [ -n "$PKG" ]; then
+		echo "carrier: $PKG (auto)" >&2
+	else
+		echo "carrier: 无已安装载体 (PKG=<pkg> 可指定; runas 段将记 INFO)" >&2
+	fi
+fi
 
 # ---------------------------------------------------------------- 基础信息
 BOOT=$("$ADB" -s "$S" shell 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null | tr -d '\r\n')
@@ -405,13 +431,15 @@ for p in "${PAIRS[@]}"; do
 	fi
 done
 
+SUM=""
 {
 	echo "------------------------------------------------------------------"
 	if [ "$nacc" -gt 0 ]; then
-		echo "FAIL=$nfail (另有已接受 $nacc)  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo+nacc))"
+		SUM="FAIL=$nfail (另有已接受 $nacc)  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo+nacc))"
 	else
-		echo "FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))"
+		SUM="FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))"
 	fi
+	echo "$SUM"
 	echo
 	if [ "$nfail" -gt 0 ]; then
 		echo "FAIL 项 (检测方可直接观测到的 root 证据, 未裁决):"
@@ -432,7 +460,12 @@ done
 } > /tmp/.suvtz_tail.$$
 
 cat /tmp/.suvtz_tail.$$ >> "$REPORT"
-if [ "$QUIET" = 0 ]; then cat /tmp/.suvtz_tail.$$ >&2; fi
+if [ "$QUIET" = 0 ]; then
+	cat /tmp/.suvtz_tail.$$ >&2
+else
+	# -q 只打一行汇总到 stdout, 方便调用方 (如 postlock.sh 台账) 直接取用。
+	echo "$SUM"
+fi
 rm -f /tmp/.suvtz_tail.$$
 
 # 持久性判据的雏形: 换 boot 后与同设备历史结果比对

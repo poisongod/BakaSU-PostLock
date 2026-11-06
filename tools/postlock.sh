@@ -968,3 +968,52 @@ DRV=$(ab shell "/product/bin/su -c 'dmesg | grep -m1 \"Initialized with driver v
 echo "  driver: $DRV"
 echo
 echo "manual check: BakaSU blue card 工作中 Built-in, driver == manager version (v4.2.0-rc3 / 35252 / UAPI 6), 越狱模式 badge expected (真 late load), enforce=1"
+
+# ---------------------------------------------------------------------------
+# P2: SUVTZ 观测面回归 (T0 命题 Obs(W) ⊆ Trusted(W) 的持续取证)
+#
+# 诚实口径: 这**不是** boot hook。PostLock-Boot 已于 2026-11-06 冻结为 legacy,
+# 设备上没有任何开机自跑通道; 本段挂在**恢复流程**尾部 —— 本轮 postlock.sh 跑到
+# 这里 (即恢复成功) 就顺带产出一份真机观测面快照 + 台账, 让「一次 boot 一次
+# 恢复」= 「一次观测面回归」。
+#
+#   SUVTZ_SCAN=0        关闭本段
+#   SUVTZ_SCAN_PKG=xxx  指定 runas 载体 (不设 = scan.sh 自动探测已安装载体)
+#
+# 扫描是旁路观测, 判据全在 scan.sh 里; 这里只在**旁路本身失败**时 WARN,
+# 并且绝不影响本脚本退出码 (恢复成功不该被观测工具判死)。
+SUVTZ_SCAN_BASE=${SUVTZ_SCAN_BASE:-/tmp/opencode/suvtz}
+if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
+  step "SUVTZ scan (观测面回归)"
+  SCAN_OUT="$SUVTZ_SCAN_BASE/auto_$BOOT8"
+  mkdir -p "$SCAN_OUT" 2>/dev/null || true
+  # 注意: 不能用 "${ARR[@]}" 直接当前缀 —— bash 只在**解析期**识别 VAR=val 前缀,
+  # 展开出来的词会被当成命令名 (实测: "ADB_BIN=/...: 没有那个文件或目录")。
+  # 所以显式走 env。
+  SCAN_ENV=(env ADB_BIN="$ADB_BIN" OUT="$SCAN_OUT")
+  [ -n "${SUVTZ_SCAN_PKG+x}" ] && SCAN_ENV+=(PKG="$SUVTZ_SCAN_PKG")
+  # 不依赖 pipefail: rc 与最后一行分别从文件取, 旁路失败也能给出原因。
+  if "${SCAN_ENV[@]}" bash "$REPO/tools/suvtz/scan.sh" -q \
+       > "$SCAN_OUT/stdout.txt" 2> "$SCAN_OUT/stderr.txt"; then
+    SCAN_RC=0
+  else
+    SCAN_RC=$?
+  fi
+  SCAN_SUM=$(tail -1 "$SCAN_OUT/stdout.txt" 2>/dev/null | tr -d '\r')
+  if [ "$SCAN_RC" = 0 ] && [ -n "$SCAN_SUM" ]; then
+    info "suvtz: $SCAN_SUM"
+    info "suvtz: report $SCAN_OUT/scan_$BOOT8.txt"
+    # 台账: 每 boot 一行, 便于跨轮对比 (同一 boot 重跑则整行替换)。
+    LEDGER="$SUVTZ_SCAN_BASE/history.tsv"
+    if [ -f "$LEDGER" ]; then
+      grep -v "^$BOOT8"$'\t' "$LEDGER" > "$LEDGER.tmp" 2>/dev/null || true
+      mv -f "$LEDGER.tmp" "$LEDGER" 2>/dev/null || true
+    else
+      printf '# boot8\tdate\tfail/pass/info\tsummary\n' > "$LEDGER"
+    fi
+    printf '%s\t%s\t%s\n' "$BOOT8" "$(date +%F' '%T)" "$SCAN_SUM" >> "$LEDGER"
+  else
+    echo "WARN: suvtz scan 未产出结果 (rc=$SCAN_RC) —— 旁路观测失败, 恢复结果不受影响"
+    tail -2 "$SCAN_OUT/stderr.txt" 2>/dev/null | sed 's/^/  scan: /' || true
+  fi
+fi

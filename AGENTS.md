@@ -5171,3 +5171,27 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   （无 Wi-Fi 时只剩 USB，且属性只能预写 + 下次 boot 生效，无法按需临时开）。
   裁决是当时判断，不是永久结论——登记项数值一变（D1 换端口 / A2 多包）必须
   重新裁决。
+
+### SUVTZ P2：零参数可用 + 挂在恢复流程上的每 boot 扫描（2026-11-07）
+
+- **载体自动探测**（`tools/suvtz/scan.sh`）：`PKG` **不设** ⇒ 自动取第一个已安装的
+  验收载体（`com.postlock.boot` > `com.postlock.privateapp`），打
+  `carrier: <pkg> (auto)`；`PKG=`（空串）⇒ 强制不用载体、runas 段全 `INFO`。
+  此前默认「不设 = 不用载体」，零参数跑出来 32 `INFO`（等于不可用）。冻结
+  PostLock-Boot ≠ 不能用它当载体——它是 A2 裁决保留的验收基础设施。
+- **`-q` 现在把汇总行打到 stdout**（`FAIL=... PASS=... INFO=...`），方便调用方取用；
+  完整报告仍落 `$OUT/scan_<boot8>.{txt,tsv}`。
+- **`tools/postlock.sh` 尾部 P2 段**：verify 之后旁路跑一次扫描
+  （`SUVTZ_SCAN=0` 关闭；`SUVTZ_SCAN_PKG=` 指定载体；`SUVTZ_SCAN_BASE` 默认
+  `/tmp/opencode/suvtz`），产出 `auto_<boot8>/scan_<boot8>.{txt,tsv}` +
+  `stdout.txt`/`stderr.txt`，并写台账 `history.tsv`（`boot8<TAB>日期<TAB>汇总`，
+  同一 boot 重跑整行替换）。失败只 `WARN` + 两行 `scan:` 原因，**不影响脚本退出码**。
+  实测 71.5s/35 探针。
+- **两个 bash 坑（都踩过）**：① `VAR=val` 前缀只有**解析期字面量**才认，用数组展开
+  `"${ENV[@]}" bash ...` 会把 `ADB_BIN=/path` 当命令名（`没有那个文件或目录`）——
+  改 `env`；② 别用 `SCAN_SUM=$(... | tail -1)` 判成败（`tail` 的 rc 掩盖上游失败），
+  改「重定向到文件 + 取 rc + 读最后一行」。
+- **诚实口径**：这不是 boot hook——PostLock-Boot 已冻结、设备无开机自跑通道；
+  它挂在**恢复流程**上，即「每次冷 boot 跑一次 `postlock.sh`」= 「一份快照」。
+  设计期 P2 的终局形态（app 自身代码自跑同一套探针）未做，判据仍是 `runas_app`
+  近似。文档：`docs/suvtz-p0-baseline.md` §6.1。

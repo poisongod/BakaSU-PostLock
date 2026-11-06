@@ -550,10 +550,19 @@ A1/A2/B4/D1  FAIL*  (已接受, 理由随行打印)
 ## 6. 复跑方法
 
 ```bash
-tools/suvtz/scan.sh                    # 完整输出
-tools/suvtz/scan.sh -q                 # 只出汇总
+tools/suvtz/scan.sh                    # 完整输出（载体自动探测）
+tools/suvtz/scan.sh -q                 # 只出汇总（一行 FAIL=/PASS=，落盘同名 .txt/.tsv）
 SERIAL=<ip>:5555 tools/suvtz/scan.sh
+PKG=com.postlock.boot tools/suvtz/scan.sh   # 显式指定 runas 载体
+PKG= tools/suvtz/scan.sh                    # 强制不用载体（runas 段全 INFO）
 ```
+
+**载体自动探测（2026-11-07 起）**：`PKG` 不设时，扫描器自己取第一个**已安装**的
+验收载体（顺序 `com.postlock.boot` > `com.postlock.privateapp`，都会打一行
+`carrier: <pkg> (auto)`）；一个都没装才退化成「无载体」（runas 段全 `INFO`）。
+此前默认是「不设 = 不用载体」，等于零参数跑出来 32 项 `INFO`——那不算「能用」。
+两个候选包是 §5.1.3 裁决保留的验收基础设施（A2 行），PostLock-Boot 冻结只是
+「不再演进/不再同步 assets」，不是「不能用」。
 
 **锁屏/休眠限制（2026-11-06 实测）**：`run-as` 依赖 CE 存储，设备锁屏休眠时
 报 `couldn't stat /data/user/0/<pkg>`（对 `com.postlock.boot`、`com.termux`、
@@ -568,8 +577,28 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判）。**app 域
   还是"一次性"）
 - **回归**：原本 PASS 的项是否变 FAIL（改动引入的新泄漏）
 
-注意：本表的 PASS 是 `runas_app` 视角的必要条件，不是 `untrusted_app` 的充分条件。
-真正的终局判据在 P2——app 自身代码跑同一套探针。
+### 6.1 每 boot 自动跑（P2 落地部分，2026-11-07）
+
+`tools/postlock.sh` 尾部（verify 之后）新增一段旁路扫描，**恢复流程跑到尾就自动
+产出一份观测面快照 + 台账**：
+
+| 项 | 值 |
+|---|---|
+| 开关 | `SUVTZ_SCAN=0` 关闭（默认开） |
+| 载体 | `SUVTZ_SCAN_PKG=<pkg>` 指定；不设则扫描器自动探测 |
+| 输出 | `/tmp/opencode/suvtz/auto_<boot8>/scan_<boot8>.{txt,tsv}` + `stdout.txt` / `stderr.txt` |
+| 台账 | `/tmp/opencode/suvtz/history.tsv`（`boot8 <TAB> 日期 <TAB> 汇总`，同一 boot 重跑整行替换） |
+| 失败语义 | 只 `WARN` + 打 `scan:` 原因两行，**不影响恢复脚本退出码** |
+| 耗时 | 实测 71.5s（35 探针，USB，解锁态） |
+
+**诚实口径（重要）**：这**不是 boot hook**。PostLock-Boot 已于 2026-11-06 冻结，
+设备上没有任何开机自跑通道；这段挂在**恢复流程**上——即「每次冷 boot 跑一次
+`tools/postlock.sh`」= 「每次产出一份快照」。真正的「app 自身代码自跑同一套探针」
+（设计期 P2 的终局形态）随该 app 冻结而未做，现行判据仍是 `runas_app` 视角的
+必要条件，不是 `untrusted_app` 的充分条件。
+
+台账的用法：跨 boot 看两件事——`FAIL` 计数是否变化（回归）、`INFO` 计数是否变化
+（视角退化，多半是设备锁屏导致载体不可用，不是新泄漏）。
 
 ## 7. X 类：成对交叉验证（2026-11-07 新增）
 
