@@ -265,7 +265,7 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
 
 按实测重排（原 P1a/P1b/P1c/P1d 作废）：
 
-- **P1-1（零内核，已落地 `ec7f6194`，待 reboot 验收）**：DAC 收敛，见 §3
+- **P1-1（零内核，已落地 `ec7f6194`，boot `4c069829` 验收）**：DAC 收敛，见 §3
   B1/B6 小节的清单。插入点 = overlay 建好、ksud 拷完之后（root/kernel:s0 上下文）。
   **只改 `tools/postlock.sh` 一处**——原计划要同步 app `assets/postlock/restore.sh`
   （"两份必须一致"），但 `PostLock-Boot` 已于 2026-11-06 冻结为 legacy
@@ -273,9 +273,16 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
   就是 host 侧 `tools/postlock.sh`。以后改恢复语义不必再动 app。
   **验收**：B1/B6/B7/B8/B9/B11 转 PASS、`/data/local/tmp` 保持可穿越、
   触发链与 restore 全链无回归（这是关键——不能为了隐藏把链弄坏）。
+  **shell 侧已验收（boot `4c069829`）**：restore.log `suvtz-p1-1: dac hardened
+  (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)`；实测
+  `/data/local/tmp` = `711 shell:shell`、`/data/local/tmp/ksu_boot` =
+  `700 shell:shell`、`/data/local/tmp/ksud` = `700`，链与 `su -c id` 无回归。
+  **app 侧（B1/B6…B11）待解锁复测**——`run-as` 在锁屏休眠下
+  `couldn't stat /data/user/0/<pkg>`（CE 存储不可用），扫描器只能记 INFO，
+  见 §6「锁屏限制」。
 - **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效
   （可顺带验证 SUS_MOUNT，一石二鸟）。
-  **已实现（2026-11-06，`tools/postlock.sh`），待 reboot 验收**。落地方式与实测依据：
+  **已实现并验收（2026-11-06，`92ad9a2a` + 竞态修复 `14391245`，boot `4c069829`）**：
   - `runcon u:r:ksu:s0 true` 探针成功才把 `OVLMNT="runcon u:r:ksu:s0"` 作为三个
     mount（lower bind / tmpfs upper / overlay）的命令前缀，任一 mount 失败回落
     kernel 域原行为（P1-2 是加固，不是启动前置条件）。
@@ -296,9 +303,40 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
     /proc/self/{mounts,mountinfo,mountstat} 视图」。
   - **排障注意**：开关打开后 shell 域也看不到伪 id 挂载行；临时排查用
     `ksud susfs hide_sus_mnts_for_non_su_procs 0` 关掉再看。
+  - **⚠ 首轮踩到的坑 = restore 与 `module_init()` 的竞态（`14391245` 修）**：
+    链在**同一秒**fork 出 insmod helper 与 coldstart restore，而
+    `/proc/modules` 在 `module_init()` 跑完**之前**就已经列出 `kernelsu` →
+    restore 的 `driver-already-loaded` 判定毫无意义。boot `acdebd41` 实测：
+    overlay 在 kernel t+204s 挂上，`susfs_mount_init()` 到 t+213s 才 ready →
+    `alloc_vfsmnt()` 打标探针还不存在 → 拿到真实 `mnt_id=5361`，且 hide 命令
+    回 `-EOPNOTSUPP`（dmesg 里连一条 susfs 行都没有）。修法 = 在 mount 之前
+    轮询 `$STAGE/ksud susfs show enabled_features` 直到出现
+    `CONFIG_KSU_SUSFS_SUS_MOUNT`（该位由 `susfs_mount_available()` 门控，
+    等价于「全部 `susfs_*_init()` 已跑完、mount 探针已装」），上限 45s，
+    超时只打日志降级、不 die。顺带给 hide 命令加 3 次重试 + 一条独立回读
+    `hide-view-check kernel-domain-sees=` —— restore 自己就是 `u:r:kernel:s0`
+    （非 ksu 域），打标+隐藏成功时它必须看不见那行挂载。
   - **验收判据**：restore.log 出现 `suvtz-p1-2: product-bin-mnt-id=2xxxxxxxxx`
     （≥2000000000）+ `suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1`；
     `tools/suvtz/scan.sh` 的 E2/E3 转 PASS；触发链 + `su -c id` 无回归。
+  - **实测结果（boot `4c069829`，全绿）**：
+    ```
+    suvtz-p1-2: susfs-ready=1 after 6s          <- 就绪门（模块 init 确实滞后 6s）
+    suvtz-p1-2: ovl mounts built in ksu domain
+    suvtz-p1-2: product-bin-mnt-id=2000000088   <- 假 id，已在 ksu 域打标
+    suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1
+    suvtz-p1-2: hide-view-check kernel-domain-sees=0 (expect 0)
+    ```
+    shell(2000) 域 `grep -e product/bin -e /ovl/ -e 2000000088
+    /proc/self/mountinfo` → 无匹配（rc=1）；ksu 域仍见
+    `2000000088 ... / /product/bin ... lowerdir=/data/local/tmp/ovl/lower`；
+    `/product/bin/su -c id` → `uid=0 ... u:r:ksu:s0`（路径解析不受影响）。
+    **注意**：shell 域 `grep -c overlay` 仍是 7——那是 OPPO 系统自带的
+    `product/app`、`product/priv-app` 等 overlay，不是我们的，别误判成泄漏。
+  - **探针坑**：`su 2000 -c ...` **不能**当「非 su 进程」可见性探针——
+    KernelSU 的 su 会进独立 mount namespace（umount-modules 语义），它看到的
+    永远是自己那份 ns；app 域可见性只能用真实 `adb shell`(uid 2000) 或
+    `run-as` 测量。
 - **P1-3（需决策，见 §5.1）**：B4 / B8 / B10 / D1 四项冲突点，不擅自取舍。
 - **P1-4（后）**：A2 包名。
 
@@ -318,6 +356,13 @@ tools/suvtz/scan.sh                    # 完整输出
 tools/suvtz/scan.sh -q                 # 只出汇总
 SERIAL=<ip>:5555 tools/suvtz/scan.sh
 ```
+
+**锁屏/休眠限制（2026-11-06 实测）**：`run-as` 依赖 CE 存储，设备锁屏休眠时
+报 `couldn't stat /data/user/0/<pkg>`（对 `com.postlock.boot`、`com.termux`、
+`com.postlock.privateapp` 全都一样）→ 扫描器 `runas_ok=0 runas_exec=0`，
+A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判）。**app 域测量必须
+先解锁**，而这恰恰是最需要 app 域的那批判据（B1/B6/E2/E3 的隐藏语义都门控在
+`TIF_PROC_UMOUNTED && uid>=10000`，shell 域永远看不到被隐藏的世界）。
 
 输出落 `/tmp/opencode/suvtz/scan_<boot8>.{txt,tsv}`。**换 boot 后重跑**即可验证：
 
