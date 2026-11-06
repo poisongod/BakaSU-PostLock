@@ -358,6 +358,13 @@ FAIL=5  PASS=30  INFO=0  总计=35        # P0 同口径 30 项时为 12 FAIL / 
 > 现口径是 **`FAIL=0 (另有已接受 4) PASS=31 INFO=0`**，输出存
 > `/tmp/opencode/suvtz-p1verify/rooted3/`。
 
+**零参数复现（2026-11-07，boot `a877caaf`，解锁态）**：`tools/suvtz/scan.sh -q`
+→ `FAIL=0 (另有已接受 4)  PASS=31  INFO=0  总计=35  runas=ok`（72s，自动选 adb /
+设备 / 载体）。**同一 boot 冷 boot 后仍锁屏时的自动 P2 快照是
+`runas=no  PASS=1  INFO=32`**——那是如实记录（CE 存储不可见，`dumpsys user` =
+`RUNNING_LOCKED`），不是回归，解锁后重跑即恢复 31 PASS。输出
+`/tmp/opencode/suvtz/scan_a877caaf.txt`，台账 `/tmp/opencode/suvtz/history.tsv`。
+
 **转 PASS 的 7 项**（P0 FAIL → 现 PASS），全部落在 P1-1 / P1-2 的设计目标上：
 
 | 项 | P0 实测 | 现实测（app 域代理） | 由谁解决 |
