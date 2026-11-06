@@ -356,6 +356,33 @@ if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x $STAGE/ksud ]; then
   timeout 30 $STAGE/ksud boot-completed > /dev/null 2>&1 || log WARN-ksud-bootcomp
 fi
 if [ ! -x /product/bin/su ]; then
+  # --- SUVTZ P1-2 readiness gate (2026-11-06) ---
+  # The chain forks the insmod helper and this script in the SAME second
+  # (chain log: "root child insmod helper forked" / "root child coldstart
+  # forked"), and /proc/modules already lists kernelsu while module_init()
+  # is still running -- so "driver-already-loaded" does NOT mean SUSFS is
+  # up.  Measured on boot acdebd41: the overlay was mounted at kernel
+  # t+204s, susfs_mount_init() only reported ready at t+213s, the
+  # alloc_vfsmnt() marking probe therefore did not exist yet (mnt_id 5361 =
+  # real ida value, not the 2000000000 tag) and the hide switch answered
+  # -EOPNOTSUPP.  The SUSFS command channel replying with its feature list
+  # is exactly the "every susfs_*_init() has run" signal, and SUS_MOUNT only
+  # appears in that list when its own probes registered
+  # (susfs_get_enabled_features() is gated on susfs_mount_available()).
+  # $STAGE/ksud, not $TMP/ksud: the temp copy is only made AFTER this block.
+  susfs_ready=0
+  i=0
+  if [ -x $STAGE/ksud ]; then
+    while [ \$i -lt 45 ]; do
+      if feat=\$(timeout 10 $STAGE/ksud susfs show enabled_features 2>/dev/null); then
+        case "\$feat" in
+        *CONFIG_KSU_SUSFS_SUS_MOUNT*) susfs_ready=1; break ;;
+        esac
+      fi
+      i=\$((i+1)); sleep 1
+    done
+  fi
+  log "suvtz-p1-2: susfs-ready=\$susfs_ready after \${i}s (expect 1 soon after module init)"
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
   # --- SUVTZ P1-2 (2026-11-06): build every ovl mount in the ksu domain ---
   # SUS_MOUNT's marking probe runs from alloc_vfsmnt()/clone_mnt() and only
@@ -464,9 +491,25 @@ fi
 # empty for shell too; run "ksud susfs hide_sus_mnts_for_non_su_procs 0"
 # to see it again.
 if [ -x $TMP/ksud ]; then
-  $TMP/ksud susfs hide_sus_mnts_for_non_su_procs 1 >/dev/null 2>&1 \
-    && log "suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1" \
-    || log "WARN-suvtz-p1-2: hide_sus_mnts_for_non_su_procs failed"
+  hide_ok=0
+  i=0
+  while [ \$i -lt 3 ]; do
+    if $TMP/ksud susfs hide_sus_mnts_for_non_su_procs 1 >/dev/null 2>&1; then
+      hide_ok=1; break
+    fi
+    i=\$((i+1)); sleep 2
+  done
+  if [ \$hide_ok = 1 ]; then
+    log "suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1"
+  else
+    log "WARN-suvtz-p1-2: hide_sus_mnts_for_non_su_procs failed"
+  fi
+  # Independent read-back: this script runs as u:r:kernel:s0, i.e. a NON-ksu
+  # domain, so the hiding side must already drop the tagged line from our own
+  # view.  "1" here means the mount was never tagged (the readiness gate above
+  # timed out, or this boot reused an overlay built by an older run).
+  ovl_vis=\$(awk '\$5=="/product/bin"' /proc/self/mountinfo 2>/dev/null | wc -l)
+  log "suvtz-p1-2: hide-view-check kernel-domain-sees=\$ovl_vis (expect 0)"
 fi
 # v27 (2026-11-05): sucompat's KSUD_PATH is a compile-time
 # /data/adb/ksud -- the execve rewrite opens exactly that file.  The
