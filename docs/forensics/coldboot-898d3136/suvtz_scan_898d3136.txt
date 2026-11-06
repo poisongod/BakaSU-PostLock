@@ -1,0 +1,55 @@
+==================================================================
+SUVTZ 观测面扫描  boot=898d3136-64fb-4946-aae4-74959e4a04ce  device=192.168.137.10:5555
+app 域代理包=com.postlock.boot  runas_ok=1  runas_exec=1
+时间: 2026-11-06T20:05:50+08:00
+------------------------------------------------------------------
+视角说明: shell = 对照 (能力远超检测方);
+          runas = app uid + runas_app 域 (DAC 精确, SELinux 域不等价于
+          untrusted_app) => runas 的 PASS 是必要条件, 不是充分条件,
+          真正判据需 app 自身代码复测。
+期望值来源: docs/suvtz-v3-design.md §5.3 定义的 stock 期望 (非实测对照机)。
+==================================================================
+ID    类 观测面                                判定 实测/原因
+------------------------------------------------------------------
+A1    A   管理器包可枚举                    FAIL   package:com.resukisu.resukisu  (可见)
+A2    A   工具包可枚举                       FAIL   package:com.postlock.boot;package:com.postlock.privateapp  (可见)
+A3    A   其它 root 工具包                    PASS   -  (不可见(rc=1))
+A4    A   app 可见 ksud 进程                   PASS   0  (0)
+A5    A   app 可见 tailscaled                    PASS   0  (0)
+B1    B   物料目录 /data/local/tmp/ksu_boot    PASS   ls: /data/local/tmp/ksu_boot: Permission denied  (拒绝/不存在)
+B2    B   /data/local/tmp 可枚举                PASS   ls: /data/local/tmp: Permission denied  (拒绝/不存在)
+B3    B   /data/adb 可枚举                      PASS   ls: /data/adb: Permission denied  (拒绝/不存在)
+B4    B   /product/bin/su 存在                   FAIL   -rwxr-xr-x 1 root root 412 2026-11-06 13:00 /product/bin/su  (可见)
+B5    B   /system/bin/su 存在                    PASS   ls: /system/bin/su: No such file or directory  (拒绝/不存在)
+B6    B   物料 ko 可读                         PASS   ls: /data/local/tmp/ksu_boot/kernelsu.ko: Permission denied  (拒绝/不存在)
+B7    B   ksud 二进制可读                     PASS   sh: can't open /data/local/tmp/ksud: Permission denied  (拒绝/不存在)
+B8    B   链日志可读                          PASS   head: /data/local/tmp/postlock_chain.log: Permission denied  (拒绝/不存在)
+B9    B   overlay upper 可列                     PASS   ls: /data/local/tmp/ovl/tmp/upper: Permission denied  (拒绝/不存在)
+B10   B   KASLR 参考可读                       FAIL   kaslr boot=898d3136-64fb-4946-aae4-74959e4a04ce text=ffffffd807880000 slide=00000017f78000  (可见)
+B11   B   restore.sh 可读                        PASS   head: /data/local/tmp/ksu_boot/restore.sh: Permission denied  (拒绝/不存在)
+C1    C   /sys/module/kernelsu                     PASS   ls: /sys/module/kernelsu: Permission denied  (拒绝/不存在)
+C2    C   /sys/module/oplus_check_suppress         PASS   ls: /sys/module/oplus_check_suppress: Permission denied  (拒绝/不存在)
+C3    C   /proc/modules 含 kernelsu               PASS   grep: /proc/modules: Permission denied  (源不可读(拒绝))
+C4    C   /proc/kallsyms 含 ksu_/susfs_           PASS   grep: /proc/kallsyms: Permission denied  (源不可读(拒绝))
+C5    C   ksu 参数文件可读                   PASS   ls: /sys/module/kernelsu/parameters: Permission denied  (拒绝/不存在)
+D1    D   persist.adb.tcp.port                     FAIL   5555  (有值)
+D2    D   wrap.* 注入属性                      PASS   0  (0)
+D3    D   ro.debuggable                            PASS   0  (0)
+D4    D   ro.build.type                            PASS   user  (user)
+D5    D   verifiedbootstate                        PASS   green  (green)
+D6    D   sys.oem_unlock_allowed                   PASS   0  (0)
+E1    E   SELinux enforce 可读                   PASS   cat: /sys/fs/selinux/enforce: Permission denied  (拒绝/不存在)
+E2    E   mountinfo 暴露 overlay                 FAIL   1  (1)
+E3    E   mountinfo 暴露 tmpfs upper             PASS   0  (0)
+------------------------------------------------------------------
+FAIL=6  PASS=24  INFO=0  总计=30
+
+FAIL 项 (检测方可直接观测到的 root 证据):
+  A1    package:com.resukisu.resukisu  (可见)
+  A2    package:com.postlock.boot;package:com.postlock.privateapp  (可见)
+  B4    -rwxr-xr-x 1 root root 412 2026-11-06 13:00 /product/bin/su  (可见)
+  B10   kaslr boot=898d3136-64fb-4946-aae4-74959e4a04ce text=ffffffd807880000 slide=00000017f78000  (可见)
+  D1    5555  (有值)
+  E2    1  (1)
+
+结果: /tmp/opencode/suvtz2/scan_898d3136.txt
