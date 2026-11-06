@@ -275,6 +275,30 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
   触发链与 restore 全链无回归（这是关键——不能为了隐藏把链弄坏）。
 - **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效
   （可顺带验证 SUS_MOUNT，一石二鸟）。
+  **已实现（2026-11-06，`tools/postlock.sh`），待 reboot 验收**。落地方式与实测依据：
+  - `runcon u:r:ksu:s0 true` 探针成功才把 `OVLMNT="runcon u:r:ksu:s0"` 作为三个
+    mount（lower bind / tmpfs upper / overlay）的命令前缀，任一 mount 失败回落
+    kernel 域原行为（P1-2 是加固，不是启动前置条件）。
+    restore 此时仍在 Permissive 窗口（fix81 的 flip 是最后一步），所以
+    `setcurrent` 不需要额外策略。
+  - **打标机制实测（boot 898d3136）**：ksu 域 `mount --bind` 得到
+    `mnt_id=2000000000`（=`DEFAULT_KSU_MNT_ID`）；当轮 restore 以 kernel:s0 建的
+    `/product/bin` overlay 是 `mnt_id=12520`（真实 ida 值）——这就是 E2 仍 FAIL
+    的物理原因。
+  - **隐藏开关实测（同一 boot）**：`susfs_mount_hide_enabled` 内核默认 0
+    （`susfs_mount.hide_sus_mnts_for_non_su_procs` 未开时伪 id 是惰性的）。
+    对同一条 ksu 域 bind mount：开关 0 → shell 域 `grep`=1（可见）；开关 1 →
+    shell 域 `grep`=0（隐藏）。所以 restore 在 overlay 建好后显式调用
+    `ksud susfs hide_sus_mnts_for_non_su_procs 1`。
+  - **不影响 su**：隐藏判据只排除 ksu 域进程，路径解析不受影响；shell(2000)
+    与「被授予 su 的 app」都不带 `TIF_PROC_UMOUNTED`，`__lookup_mnt` 那半边
+    不会拦住它们，`/product/bin/su` 照常可 exec。被隐藏的只是「普通 app 的
+    /proc/self/{mounts,mountinfo,mountstat} 视图」。
+  - **排障注意**：开关打开后 shell 域也看不到伪 id 挂载行；临时排查用
+    `ksud susfs hide_sus_mnts_for_non_su_procs 0` 关掉再看。
+  - **验收判据**：restore.log 出现 `suvtz-p1-2: product-bin-mnt-id=2xxxxxxxxx`
+    （≥2000000000）+ `suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1`；
+    `tools/suvtz/scan.sh` 的 E2/E3 转 PASS；触发链 + `su -c id` 无回归。
 - **P1-3（需决策，见 §5.1）**：B4 / B8 / B10 / D1 四项冲突点，不擅自取舍。
 - **P1-4（后）**：A2 包名。
 

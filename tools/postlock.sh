@@ -357,13 +357,34 @@ if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x $STAGE/ksud ]; then
 fi
 if [ ! -x /product/bin/su ]; then
   mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
-  mountpoint -q $TMP/ovl/lower || mount --bind /product/bin $TMP/ovl/lower
+  # --- SUVTZ P1-2 (2026-11-06): build every ovl mount in the ksu domain ---
+  # SUS_MOUNT's marking probe runs from alloc_vfsmnt()/clone_mnt() and only
+  # tags a vfsmount when security_task_getsecid(current) == u:r:ksu:s0; the
+  # tag is the fake mnt_id (>= DEFAULT_KSU_MNT_ID = 2000000000) that the
+  # hiding side later keys on.  restore runs as u:r:kernel:s0, and a
+  # kernel-domain overlay kept mnt_id 12520 (real ida value) -- measured on
+  # boot 898d3136, which is exactly why the P0 scan's E2 probe still saw the
+  # overlay in the app-domain /proc/self/mountinfo and leaked the whole
+  # material layout (ovl path, upper dir, overlay mechanics).
+  # A ksu-domain bind test on the same boot landed as mnt_id 2000000000, so
+  # wrapping the three mounts in runcon is enough.  restore is still in the
+  # Permissive window here (the fix81 flip is the very last step), so
+  # setcurrent from kernel needs no extra policy; if either the probe or a
+  # mount fails we fall through to the old kernel-domain behaviour rather
+  # than dying -- P1-2 is hardening, not a boot prerequisite.
+  OVLMNT=""
+  if runcon u:r:ksu:s0 true 2>/dev/null; then OVLMNT="runcon u:r:ksu:s0"; fi
+  if [ -n "\$OVLMNT" ]; then log "suvtz-p1-2: ovl mounts built in ksu domain"; \
+  else log "WARN-suvtz-p1-2: runcon ksu unavailable, ovl mounts stay kernel-domain"; fi
+  mountpoint -q $TMP/ovl/lower || \$OVLMNT mount --bind /product/bin $TMP/ovl/lower \
+    || mount --bind /product/bin $TMP/ovl/lower || log WARN-ovl-bind
   # tmpfs sb context (2026-10-25 strict-mode root fix): upper inodes inherit
   # the tmpfs sb label, so without context= su/ksud land as shell_data_file
   # and shell loses exec of them the moment enforcing flips (measured:
   # DAC 777 passes, MAC denies, avc dontaudit-silent).  Fallback keeps the
   # old behaviour if this kernel rejects context= on tmpfs.
-  mountpoint -q $TMP/ovl/tmp || mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
+  mountpoint -q $TMP/ovl/tmp || \$OVLMNT mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
+    || mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
     || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp || log WARN-tmpfs-mount
   mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
   rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
@@ -402,7 +423,15 @@ SUW
     cp $STAGE/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
     chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
   fi
-  mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin || log WARN-overlay-mount
+  \$OVLMNT mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin \
+    || mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin \
+    || log WARN-overlay-mount
+  # P1-2 evidence: a tagged overlay reads back as >= 2000000000, an untagged
+  # one as the real ida value (measured 12520).  Recorded before the hide
+  # switch below is turned on, because after that only ksu-domain processes
+  # can see the line at all.
+  ovl_id=\$(awk '\$5=="/product/bin"{id=\$1} END{print id}' /proc/self/mountinfo 2>/dev/null)
+  log "suvtz-p1-2: product-bin-mnt-id=\${ovl_id:-none} (tagged when >=2000000000)"
   # belt+braces: force the visible labels too (no-op when tmpfs sb context
   # already covers them; ENOTSUP on xattr-less tmpfs is tolerated)
   chcon u:object_r:system_file:s0 /product/bin/su /product/bin/ksud 2>/dev/null || true
@@ -418,6 +447,26 @@ if [ -x $STAGE/ksud ]; then
   cp -f $STAGE/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
+fi
+# --- SUVTZ P1-2: turn on SUS_MOUNT hiding (2026-11-06) ---------------------
+# susfs_mount_hide_enabled is a kernel variable that starts at 0 every boot
+# (susfs_mount.c: static bool susfs_mount_hide_enabled;), so the fake mnt_id
+# assigned above is inert until this switch is flipped.  With it on, every
+# non-ksu process stops seeing any mount whose mnt_id >= 2000000000 in
+# /proc/self/{mounts,mountinfo,mountstat} -- which is exactly the P0 scan's
+# E2/E3 probes (app-domain mountinfo leaking the overlay and the tmpfs upper).
+# Path resolution is deliberately untouched for shell (uid 2000 < 10000) and
+# for su-granted apps (they carry no TIF_PROC_UMOUNTED), so /product/bin/su
+# keeps working for both; only plain apps lose the map, which is the point.
+# Measured on boot 898d3136: switch 0 -> shell grep=1, switch 1 -> shell
+# grep=0 against a ksu-domain bind mount (mnt_id 2000000000).
+# Triage note: from now on a plain "grep overlay /proc/self/mountinfo" is
+# empty for shell too; run "ksud susfs hide_sus_mnts_for_non_su_procs 0"
+# to see it again.
+if [ -x $TMP/ksud ]; then
+  $TMP/ksud susfs hide_sus_mnts_for_non_su_procs 1 >/dev/null 2>&1 \
+    && log "suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1" \
+    || log "WARN-suvtz-p1-2: hide_sus_mnts_for_non_su_procs failed"
 fi
 # v27 (2026-11-05): sucompat's KSUD_PATH is a compile-time
 # /data/adb/ksud -- the execve rewrite opens exactly that file.  The
