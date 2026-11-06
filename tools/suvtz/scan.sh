@@ -117,12 +117,37 @@ SUMMARY="$OUT/scan_${BOOT8}.tsv"
 REPORT="$OUT/scan_${BOOT8}.txt"
 : > "$SUMMARY"
 
-# runas 视角是否可用 (需 PKG 非空 + debuggable + run-as)
+# 设备是否锁屏未解锁。CE (credential encrypted) 存储在解锁前不可用，此时
+# run-as 会报 "couldn't stat /data/user/0/<pkg>"，runas 段只能记 INFO。
+# 这条**不是扫描失败**，但必须在报告里写明白，否则读者只会看到几十条一模一样
+# 的「runas 域不可用」而无从下手（实测踩过：设备重启后锁屏，快照 32/35 全 INFO）。
+DEV_LOCKED=0
+_userstate=$("$ADB" -s "$S" shell 'dumpsys user 2>/dev/null | grep -m1 -E "State:"' 2>/dev/null | tr -d '\r')
+case "$_userstate" in *RUNNING_LOCKED*) DEV_LOCKED=1 ;; esac
+
+# runas 视角是否可用 (需 PKG 非空 + debuggable + run-as)，并给出**具体原因**
 RUNAS_OK=1
+RUNAS_ERR=""
+RUNAS_WHY="runas 域不可用"
 if [ -z "$PKG" ]; then
 	RUNAS_OK=0
+	RUNAS_WHY="无 app 域载体(载体未安装 / 或 PKG= 被强制置空)"
 else
-	"$ADB" -s "$S" shell "run-as $PKG true" >/dev/null 2>&1 || RUNAS_OK=0
+	RUNAS_ERR=$("$ADB" -s "$S" shell "run-as $PKG true" 2>&1 | tr -d '\r' | head -1)
+	if [ -n "$RUNAS_ERR" ]; then
+		RUNAS_OK=0
+		case "$RUNAS_ERR" in
+			*"couldn't stat"*|*"No such file"*)
+				if [ "$DEV_LOCKED" = 1 ]; then
+					RUNAS_WHY="设备未解锁(CE 存储不可用, State: RUNNING_LOCKED)"
+				else
+					RUNAS_WHY="载体 $PKG 无数据目录(从未启动过?)"
+				fi
+				;;
+			*"not debuggable"*) RUNAS_WHY="载体 $PKG 不可调试" ;;
+			*)                  RUNAS_WHY="run-as 失败(${RUNAS_ERR})" ;;
+		esac
+	fi
 fi
 
 # runas 域的命令执行能力自检: 若连 getprop 都 exec 不了, 该视角所有探针记 INFO,
@@ -295,7 +320,7 @@ PAIRS=(
 pair_side() {
 	local view="$1" cmd="$2" expect="$3" h raw
 	if [ "$view" = runas ] && [ "$RUNAS_EXEC" = 0 ]; then
-		printf '255\t%s' "runas 域不可用"
+		printf '255\t%s' "$RUNAS_WHY"
 		return
 	fi
 	exec_v "$view" "$cmd"
@@ -324,7 +349,7 @@ npass=0; nfail=0; ninfo=0; nacc=0
 {
 	echo "=================================================================="
 	echo "SUVTZ 观测面扫描  boot=$BOOT  device=$S"
-	echo "app 域代理包=$PKG  runas_ok=$RUNAS_OK  runas_exec=$RUNAS_EXEC"
+	echo "app 域代理包=$PKG  runas_ok=$RUNAS_OK  runas_exec=$RUNAS_EXEC  device_locked=$DEV_LOCKED"
 	echo "时间: $(date -Is)"
 	echo "------------------------------------------------------------------"
 	echo "视角说明: shell = 对照 (能力远超检测方);"
@@ -337,6 +362,14 @@ npass=0; nfail=0; ninfo=0; nacc=0
 	echo "判定: PASS / FAIL / INFO ; FAIL* = 已显式裁决接受的 FAIL (仍计 FAIL, 单独列出)"
 	echo "      接受表: ${ACCEPTED_FILE:-<disabled>}"
 	echo "=================================================================="
+	if [ "$DEV_LOCKED" = 1 ]; then
+		echo "提示: 设备锁屏未解锁 (dumpsys user: RUNNING_LOCKED) — CE 存储不可见,"
+		echo "      app 域(runas) 段必然全部 INFO。这不是扫描失败; 解锁屏幕后重跑"
+		echo "      同一命令即可得到完整快照。"
+	fi
+	if [ "$RUNAS_OK" = 0 ] && [ "$DEV_LOCKED" = 0 ]; then
+		echo "提示: runas 视角不可用 — $RUNAS_WHY"
+	fi
 	printf '%-5s %-3s %-40s %-6s %s\n' ID 类 观测面 判定 实测/原因
 	echo "------------------------------------------------------------------"
 } > "$REPORT"
@@ -346,7 +379,7 @@ for p in "${PROBES[@]}"; do
 
 	if [ "$view" = runas ] && [ "$RUNAS_EXEC" = 0 ]; then
 		LAST_RC=255; LAST_OUT=""
-		VERDICT="INFO"; REASON="runas 域不可用(exec 被拒/run-as 失败)"
+		VERDICT="INFO"; REASON="$RUNAS_WHY"
 	else
 		exec_v "$view" "$cmd"
 		judge "$expect"
@@ -434,10 +467,13 @@ done
 SUM=""
 {
 	echo "------------------------------------------------------------------"
+	# 汇总里带上 runas 状态: PASS/INFO 的构成取决于它, 台账只看这一行时
+	# 必须能区分「真的全测了」与「app 域整段没测」(锁屏/无载体)。
+	if [ "$RUNAS_OK" = 1 ] && [ "$RUNAS_EXEC" = 1 ]; then RUNAS_TAG=ok; else RUNAS_TAG=no; fi
 	if [ "$nacc" -gt 0 ]; then
-		SUM="FAIL=$nfail (另有已接受 $nacc)  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo+nacc))"
+		SUM="FAIL=$nfail (另有已接受 $nacc)  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo+nacc))  runas=$RUNAS_TAG"
 	else
-		SUM="FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))"
+		SUM="FAIL=$nfail  PASS=$npass  INFO=$ninfo  总计=$((nfail+npass+ninfo))  runas=$RUNAS_TAG"
 	fi
 	echo "$SUM"
 	echo

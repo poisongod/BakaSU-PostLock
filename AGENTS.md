@@ -5191,6 +5191,16 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   `"${ENV[@]}" bash ...` 会把 `ADB_BIN=/path` 当命令名（`没有那个文件或目录`）——
   改 `env`；② 别用 `SCAN_SUM=$(... | tail -1)` 判成败（`tail` 的 rc 掩盖上游失败），
   改「重定向到文件 + 取 rc + 读最后一行」。
+- **锁屏态必须写明原因（2026-11-07 实测踩坑）**：冷 boot 后设备常停在
+  `State: RUNNING_LOCKED`（有锁屏凭据），此时 `/data/data/*` 是密文名、CE 存储不可见
+  → `run-as` 一律 `couldn't stat /data/user/0/<pkg>`，runas 段**必然全 `INFO`**
+  （实测 32/35，且「另有已接受」从 4 降到 2——B4/D1 落进 runas 段）。这不是扫描失败，
+  但报告必须说清楚：`scan.sh` 现按 `dumpsys user | grep -m1 "State:"` 判 `DEV_LOCKED`、
+  按 `run-as` 错误串归因 `RUNAS_WHY`（设备未解锁 / 载体无数据目录 / 不可调试 / 无载体 /
+  run-as 失败），报告头打 `device_locked=` + 解锁提示行，逐条 reason 用 `$RUNAS_WHY`
+  而非笼统的「runas 域不可用」，汇总行尾部追加 `runas=ok|no`，`postlock.sh` 见
+  `runas=no` 再补一条「解锁后单跑 scan.sh」提示。**判据**
+  `dumpsys user | grep "State:"` 比任何间接观测都可靠。
 - **诚实口径**：这不是 boot hook——PostLock-Boot 已冻结、设备无开机自跑通道；
   它挂在**恢复流程**上，即「每次冷 boot 跑一次 `postlock.sh`」= 「一份快照」。
   设计期 P2 的终局形态（app 自身代码自跑同一套探针）未做，判据仍是 `runas_app`

@@ -564,12 +564,24 @@ PKG= tools/suvtz/scan.sh                    # 强制不用载体（runas 段全 
 两个候选包是 §5.1.3 裁决保留的验收基础设施（A2 行），PostLock-Boot 冻结只是
 「不再演进/不再同步 assets」，不是「不能用」。
 
-**锁屏/休眠限制（2026-11-06 实测）**：`run-as` 依赖 CE 存储，设备锁屏休眠时
-报 `couldn't stat /data/user/0/<pkg>`（对 `com.postlock.boot`、`com.termux`、
+**锁屏/休眠限制（2026-11-06 实测，2026-11-07 补原因归因）**：`run-as` 依赖 CE 存储，
+设备锁屏休眠时 `dumpsys user` 报 `State: RUNNING_LOCKED`、`/data/data/*` 全是密文名，
+`run-as` 一律 `couldn't stat /data/user/0/<pkg>`（对 `com.postlock.boot`、`com.termux`、
 `com.postlock.privateapp` 全都一样）→ 扫描器 `runas_ok=0 runas_exec=0`，
-A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判）。**app 域测量必须
-先解锁**，而这恰恰是最需要 app 域的那批判据（B1/B6/E2/E3 的隐藏语义都门控在
-`TIF_PROC_UMOUNTED && uid>=10000`，shell 域永远看不到被隐藏的世界）。
+A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判；「另有已接受」也会从 4 掉到
+2，因为 B4/D1 落在 runas 段）。**app 域测量必须先解锁**，而这恰恰是最需要 app 域的那批
+判据（B1/B6/E2/E3 的隐藏语义都门控在 `TIF_PROC_UMOUNTED && uid>=10000`，shell 域永远
+看不到被隐藏的世界）。
+
+为了让「锁屏」不被误读成「扫描器坏了」，报告现在自带归因：
+
+| 字段 | 含义 |
+|---|---|
+| `device_locked=0/1` | `dumpsys user \| grep -m1 "State:"` 命中 `RUNNING_LOCKED` |
+| `runas_ok=0/1` `runas_exec=0/1` | runas 通道可用 / 可 exec |
+| 提示行 | `device_locked=1` ⇒ 「设备锁屏未解锁…解锁屏幕后重跑同一命令即可」 |
+| 逐条 reason | `$RUNAS_WHY`：设备未解锁(CE 存储不可用) / 载体无数据目录 / 载体不可调试 / 无 app 域载体 / run-as 失败(<原始错误>) |
+| 汇总 `runas=ok\|no` | 台账一行看不出来时才最要命——`INFO` 多到底是视角退化还是新泄漏 |
 
 输出落 `/tmp/opencode/suvtz/scan_<boot8>.{txt,tsv}`。**换 boot 后重跑**即可验证：
 
@@ -598,7 +610,11 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判）。**app 域
 必要条件，不是 `untrusted_app` 的充分条件。
 
 台账的用法：跨 boot 看两件事——`FAIL` 计数是否变化（回归）、`INFO` 计数是否变化
-（视角退化，多半是设备锁屏导致载体不可用，不是新泄漏）。
+（视角退化，多半是设备锁屏导致载体不可用，不是新泄漏）。**汇总行尾部带
+`runas=ok|no`**：冷 boot 时设备常还在锁屏（`State: RUNNING_LOCKED`），那时
+`runas=no PASS=1 INFO=32` 是**如实记录**（不是回归），`postlock.sh` 会额外打一行
+「解锁屏幕后单跑 `tools/suvtz/scan.sh` 可得完整快照」。同一 boot 解锁后重跑，
+台账同一 boot8 的行会被整行替换为完整快照。
 
 ## 7. X 类：成对交叉验证（2026-11-07 新增）
 

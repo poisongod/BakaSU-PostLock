@@ -1025,6 +1025,13 @@ if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
   if [ "$SCAN_RC" = 0 ] && [ -n "$SCAN_SUM" ]; then
     info "suvtz: $SCAN_SUM"
     info "suvtz: report $SCAN_OUT/scan_$BOOT8.txt"
+    # app 域整段没测时给一条可操作提示。冷 boot 后设备常还在锁屏 (CE 存储不可用),
+    # 那时 runas 段必然全是 INFO——如实告知, 不要让人对着 32 条 INFO 猜。
+    case "$SCAN_SUM" in
+      *runas=no*)
+        info "suvtz: app 域本次未测 (设备锁屏未解锁 / 无载体) —— 解锁屏幕后单跑 tools/suvtz/scan.sh 可得完整快照"
+        ;;
+    esac
     # 台账: 每 boot 一行, 便于跨轮对比 (同一 boot 重跑则整行替换)。
     LEDGER="$SUVTZ_SCAN_BASE/history.tsv"
     if [ -f "$LEDGER" ]; then
