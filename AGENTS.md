@@ -5134,3 +5134,26 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
 **不要做的**：不要删仓（`poisongod/PostLock-Boot` 保持私有、只读参考）、
 不要删设备上的 `com.postlock.boot`（SUSFS 自检仍靠它）、不要重新 bump app 版本
 或同步 assets。
+
+### SUVTZ 收尾机制：accepted.tsv 与 SUVTZ_KASLR_MODE（2026-11-07）
+
+- **`tools/suvtz/accepted.tsv`** = 「已显式裁决接受」的暴露面登记表（3 列
+  `ID<TAB>日期<TAB>理由`）。`scan.sh` 读它后把该项标 `FAIL*`、汇总写
+  `FAIL=N (另有已接受 M)`、单列「已接受暴露面」段落——**判定仍是 FAIL，
+  绝不改判 PASS**（接受是威胁模型取舍，不是事实改变）。默认文件全注释 ⇒
+  输出与引入前逐字一致；`ACCEPTED_FILE=`（空串）禁用；`ACCEPTED_FILE=/p` 换表。
+  ID 写错静默不命中（防止误吞真回归）；理由列原样回显所以别写敏感信息。
+- **`SUVTZ_KASLR_MODE`**（`tools/postlock.sh`，默认 `0644` = 今日行为）：
+  restore 尾部（kernel:s0）对 `ksu_kaslr`/`ksu_payload` 做 `chown 2000:2000`
+  + `chmod $KASLR_MODE`，并打 `suvtz-b10: ksu_kaslr mode=<实测> (want <期望>)`
+  取证行。`0600` 即消 B10（app 域 `cat` 从可读 93 字节变 Permission denied），
+  代价 = 失去 app 自派发的 KASLR 输入（该路径已随 PostLock-Boot 冻结）。
+  owner 保持 shell，下一轮链 `O_TRUNC` 重写不改权限。
+- `scan.sh` 曾因 `set -u` 在 PASS/INFO 分支读未绑定的 `acc` 崩溃（只有启用
+  登记表才会显形）——已改为每轮循环前 `acc=""`。**改这类计数器分支后务必用
+  `bash -n` + 假 adb 三态（默认/接受/禁用）跑一遍**，`-n` 抓不到 set -u 运行时错。
+- 三项待裁现状（成本见 `docs/suvtz-p0-baseline.md` §5.1.2）：**B4** `/product/bin/su`
+  三选项都不免费（属主只能是 root；SUS_PATH 会连带影响被授予 app；弃 overlay
+  改走 `ksud debug su` 会放大 execve 上报面）→ 倾向①接受；**D1**
+  `persist.adb.tcp.port=5555` 实测本机无 Wi-Fi（只有 rmnet 数据），清空后
+  冷启动将失去唯一网络救回通道 → 倾向①保持；**B10** 已可一键消，待裁决。
