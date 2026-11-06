@@ -86,19 +86,38 @@ host 侧 `/tmp/opencode` 轮次日志归档到 `exam/` 后同样及时清。**�
 对照，禁误删）**：链物料全套（finitmod/kernelsu.ko/hotload/ksud/oplus_check_suppress.ko/
 preload.so/su）、`ksu_boot/` stage、`ksud_dbg`（插桩诊断）、`postlock_adbkey.pub`
 （keypair 永久沿用）、tailscaled 通道件、`home/`（裸链默认路径）、诊断数据
-（pstore_dump/rc_syms/kheaders）、`/data/misc/adb/adb_keys`（红线永不碰）、
-**用户模块备份 `modules_off_*/` + `modules_backup_*.tar.gz`**——见下条。
+（pstore_dump/rc_syms/kheaders）、`/data/misc/adb/adb_keys`（红线永不碰）。
 SELinux 标签拒 unlink 的文件（dontaudit 报 Permission denied，如旧 ko/socket）留待
 root 窗口删，不强攻。
 
-**`/data/adb/modules` 为空 ≠ 正常**（2026-11-06 差点误删的坑）：2026-11-05 21:10
-为隔离 su 驱动 fd 回归的变量，把用户 5 个功能模块（YH_YC 月虹隐藏 / hma_oss_zygisk /
-oh_my_keymint / playintegrityfix / zygisksu）整体 `mv` 到
-`/data/local/tmp/modules_off_20261105_211036/` 并打了 tar 包，排查闭环后未恢复。
-2026-11-06 已 `cp -a` 复制回 `/data/adb/modules`（文件数逐一核对一致、
-`restorecon -RF` 后 context = `adb_data_file`），**但当前 boot 仍未加载（需 reboot 才
-生效）**。→ ① 该备份在下次 reboot 确认模块真的加载成功之前**禁止删除**；
-② 以后见到 `/data/adb/modules` 空目录，先查 `modules_off_*` 再判断，不要当垃圾处理。
+**用户 5 个功能模块已彻底卸载（2026-11-06 用户裁决，别再「恢复」它们）**：
+2026-11-05 21:10 为隔离 su 驱动 fd 回归的变量，把 YH_YC 月虹隐藏 / hma_oss_zygisk /
+oh_my_keymint / playintegrityfix / zygisksu 整体 `mv` 到
+`/data/local/tmp/modules_off_20261105_211036/`（+ tar 包）；2026-11-06 曾 `cp -a`
+复制回 `/data/adb/modules` 待 reboot 验证，但用户随即裁决「这些模块应该彻底卸载」
+→ **已按正规卸载语义全量移除，备份也删了（不可恢复，模块可从网络重装）**。
+
+清理清单（照 `uninstall.sh` 语义执行，供将来复现/复核）：
+- 模块本体：`rm -rf /data/adb/modules/{YH_YC,hma_oss_zygisk,oh_my_keymint,playintegrityfix,zygisksu}`
+- 模块数据根：`/data/adb/YH`（YH_YC，19M，**注意含子目录 `YH_YC/`**）、
+  `/data/adb/omk` + `/data/misc/keystore/omk`（oh_my_keymint）、
+  `/data/adb/zygisksu`（Zygisk Next）
+- KSU 挂载点脚本：`/data/adb/boot-completed.d/hmaoss.sh`、
+  `/data/adb/service.d/.zn_cleanup.sh`、`/data/adb/ksu/bin/znctl`
+- Zygisk Next 元数据缓存：`/data/adb/ksu/log/{modules_info,modules_info.old,znctx,znctx.old}`
+- `oh_my_keymint` 的 `uninstall.sh` 需 `KSU=true` 才有动作（否则直接 `exit 0`），
+  它会 `soterta.sh disable` 释放 `vendor.soter` 服务名再删两个数据根
+- `playintegrityfix` 的 `uninstall.sh` 全是 `resetprop` 操作——**模块本 boot 未运行时
+  跳过**（没有它设的 spoof 属性，跑 `resetprop -c` 反而会清掉别人的属性覆盖）
+- **无需 reboot**：模块本 boot 从未加载（无 zygisk 注入、无 daemon 进程），删目录后
+  当前 boot 已是干净态
+
+**遗留物（用户未表态，勿擅自处理）**：配套前端 app `org.frknkrc44.hma_oss`
+（HMA-OSS UI，模块没了就是空壳）及其 ART profile 缓存
+`/data/misc/profiles/{cur,ref}/org.frknkrc44.hma_oss`。
+
+**通用判据**：以后见到 `/data/adb/modules` 空目录 + 未见 `modules_off_*` 备份，
+先查是否有 `remove` 标记 / 用户裁决记录，不要当垃圾处理，也不要擅自「恢复」。
 
 ```bash
 # temp 目录默认 label 是 system_data_file，shell 无法读写；每次 reboot 后须重新改：
