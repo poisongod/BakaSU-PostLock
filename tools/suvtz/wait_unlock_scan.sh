@@ -63,7 +63,19 @@ mkdir -p "$OUTDIR" 2>/dev/null || true
 
 LOG="$OUTDIR/defer.log"
 STATUS="$OUTDIR/defer_status.txt"
+PIDFILE="$OUTDIR/defer.pid"
 log() { printf '[%s] %s\n' "$(date +%F' '%T)" "$*" >> "$LOG"; }
+
+# 同一输出目录只允许一个补扫（postlock.sh 重复跑会重复拉起，白跑两次 70s 扫描）。
+if [ -f "$PIDFILE" ]; then
+	old=$(cat "$PIDFILE" 2>/dev/null)
+	if [ -n "$old" ] && kill -0 "$old" 2>/dev/null; then
+		log "已有补扫在跑 (pid $old), 本次退出"
+		exit 0
+	fi
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
 
 # ab: 统一走 -s 指定设备（WSL 调 adb.exe 时 ANDROID_SERIAL 不生效）
 ab() {
@@ -137,6 +149,11 @@ if [ "$scan_rc" != 0 ] || [ -z "$sum" ]; then
 	exit 5
 fi
 log "scan ok: $sum"
+case "$sum" in
+	*runas=no*)
+		log "注意: 本次补扫 app 域仍未测 (runas=no) —— 载体/解锁状态仍有问题, 快照已照实保存"
+		;;
+esac
 
 # 台账：与 postlock.sh P2 段同款（每 boot 一行，同一 boot 整行替换）。
 if [ -f "$LEDGER" ]; then
