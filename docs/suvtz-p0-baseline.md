@@ -354,6 +354,10 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
 FAIL=5  PASS=30  INFO=0  总计=35        # P0 同口径 30 项时为 12 FAIL / 18 PASS
 ```
 
+> 这是**裁决前**的差分结果。同 boot 完成 §5.1.3 的裁决后（B10 收 + 四项登记），
+> 现口径是 **`FAIL=0 (另有已接受 4) PASS=31 INFO=0`**，输出存
+> `/tmp/opencode/suvtz-p1verify/rooted3/`。
+
 **转 PASS 的 7 项**（P0 FAIL → 现 PASS），全部落在 P1-1 / P1-2 的设计目标上：
 
 | 项 | P0 实测 | 现实测（app 域代理） | 由谁解决 |
@@ -366,15 +370,16 @@ FAIL=5  PASS=30  INFO=0  总计=35        # P0 同口径 30 项时为 12 FAIL / 
 | B11 `restore.sh` 可读 | `#!/system/bin/sh（整套流程明文）` | `head: .../restore.sh: Permission denied` | P1-1 |
 | E2 mountinfo 暴露 overlay | `1` | `0` | P1-2（ksu 域建 + 伪 id + hide 开关） |
 
-**剩余 5 项 FAIL**（全部是「已知取舍待裁决」或「名字层不可免」）：
+**剩余 5 项 FAIL**（裁决前口径；其中 4 项已于 2026-11-07 登记为「已接受」，
+B10 已收 —— 见 §5.1.3）：
 
 | 项 | 实测 | 归属 |
 |---|---|---|
-| A1 管理器包可枚举 | `package:com.resukisu.resukisu` | 待立项（套壳 `KSU_PACKAGE_NAME`，见 §5.1 注） |
-| A2 工具包可枚举 | `package:com.postlock.boot; package:com.postlock.privateapp` | P1-4 / P1-3 裁决 |
-| B4 `/product/bin/su` 存在 | `-rwxr-xr-x root root 412B` | §5.1 B4 三选项 |
-| B10 `ksu_kaslr` 可读 | `kaslr boot=4c069829... text=ffffffed22a80000 slide=0000002d12a000` | §5.1 B10 / §5.1.2（`SUVTZ_KASLR_MODE=0600` 已实现，默认 0644） |
-| D1 `persist.adb.tcp.port` | `5555` | §5.1 D1 三选项 |
+| A1 管理器包可枚举 | `package:com.resukisu.resukisu` | **已接受**（不立项，见 §5.1.3） |
+| A2 工具包可枚举 | `package:com.postlock.boot; package:com.postlock.privateapp` | **已接受**（保留两包为验收基础设施） |
+| B4 `/product/bin/su` 存在 | `-rwxr-xr-x root root 412B` | **已接受**（§5.1 B4 三选项均不免费） |
+| B10 `ksu_kaslr` 可读 | `kaslr boot=4c069829... text=ffffffed22a80000 slide=0000002d12a000` | **已收**：`SUVTZ_KASLR_MODE` 默认 `0600` |
+| D1 `persist.adb.tcp.port` | `5555` | **已接受**（唯一救回通道，§5.1.3） |
 
 **X 类五对全同向**（无一例通道分歧），说明当前没有「某条读取路径漏堵」：
 
@@ -415,13 +420,13 @@ X5 PASS  A=0 | B=0                      (ps 与直接枚举 /proc/*/comm 都找�
 > 属可读噪音而非检测信号，暂留待用户处置。**`ovl/`（0700 root）与 `ksu_boot/`
 > （0700 shell）才是敏感面，均已不可穿越**。
 
-### 5.1 待决策的冲突（B8 已落地，剩 B4 / B10 / D1 + A1 / A2）
+### 5.1 待决策的冲突（B8/B10 已落地，A1/A2/B4/D1 已接受 —— 见 §5.1.3）
 
 | 项 | 冲突 | 三个选项 |
 |---|---|---|
 | **B4** `/product/bin/su` | su 要给**任意**被授予的 app exec，属主不能是某个 app uid | ① 接受"名字可见、内容不可读"（现状）② SUS_PATH 打标（被授予的 app 也一起被隐藏，su 坏）③ 放弃 `/product/bin` 载体，su 只经 ksud wrapper |
 | ~~**B8** 链日志~~ | ~~431KB 含 KASLR/pvo 明文；但 PostLock 面板要 tail 它做实时日志~~ **已按选项①落地（P1-1，logs 0600），app 域实测 PASS** | ① 默认 0600（已实现，`SUVTZ_CHAIN_LOG_MODE=0644` 可回退）→ 面板只见 app 域链 ② 0644 保留面板，接受泄漏 ③ 日志脱敏（打码 text/slide 字段）后 0644 |
-| **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644（现状，默认）② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）**已实现：`SUVTZ_KASLR_MODE=0600`** ③ 只在考试轮临时放宽 |
+| **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644 ② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）**已落地为默认：`SUVTZ_KASLR_MODE` 默认 `0600`，`0644` 可回退** ③ 只在考试轮临时放宽 |
 | **D1** `persist.adb.tcp.port=5555` | WAN 通道 bootstrap 需要 adbd 常驻监听 5555 | ① 保持常驻 ② 通道建立后清空（下次冷启动断链，需重新写）③ 换非持久通道（每 boot host/链写一次） |
 
 #### 5.1.1 裁决登记机制：`tools/suvtz/accepted.tsv`
@@ -458,7 +463,10 @@ B10	2026-11-07	生产路径改由 host 触发，app 自派发已随 PostLock-Boo
 
 #### 5.1.2 三个待裁项的落地成本实测（2026-11-07）
 
-**B10 `ksu_kaslr` — 选项② 已实现，可一键开启（默认不动）**
+> 本节是**裁决前的成本实测**记录，保留原样。裁决结论见 §5.1.3（B10 已翻默认，
+> A1/A2/B4/D1 已登记为「已接受」）。
+
+**B10 `ksu_kaslr` — 选项② 已实现（2026-11-07 裁决后已是默认）**
 
 - 现状：文件由链（`src/main.c` 的 `ks_persist_kaslr_file`）以 **shell uid + umask 022**
   写出 = `0644`；`/data/local/tmp` 是 `0711 shell:shell`（other 可穿越）→ app uid
@@ -468,12 +476,12 @@ B10	2026-11-07	生产路径改由 host 触发，app 自派发已随 PostLock-Boo
   （实测后已 `chmod 644` 回滚，设备状态复原）。整轮扫描实测
   **`FAIL=4 PASS=31 INFO=0`，B10 转 PASS**（其余四项不变；
   输出存 `/tmp/opencode/suvtz-p1verify/rooted2_b10off/`）。
-- `tools/postlock.sh` 新增 `SUVTZ_KASLR_MODE`（默认 `0644` = 今日行为）：
+- `tools/postlock.sh` 的 `SUVTZ_KASLR_MODE` 当时默认 `0644`（= 裁决前行为）；
   restore 尾部（`kernel:s0`）对 `ksu_kaslr`/`ksu_payload` 做 `chown 2000:2000` +
   `chmod $KASLR_MODE`。owner 仍是 shell，下一轮链重写不受影响（`O_TRUNC` 不改权限）。
 - **唯一代价**：app 自派发路径失去 KASLR 输入。该路径已随 PostLock-Boot 冻结
   （生产恢复走 host `postlock.sh`），所以代价 ≈ 0；但这仍是**威胁模型决定**，
-  不是 bug 修复，故默认不改，等裁决。
+  不是 bug 修复 —— 裁决结果见 §5.1.3（已翻为默认 `0600`）。
 
 **D1 `persist.adb.tcp.port=5555` — 选项② 的代价是「冷启动失去网络通道」**
 
@@ -505,6 +513,39 @@ B10	2026-11-07	生产路径改由 host 触发，app 自派发已随 PostLock-Boo
   （YH_YC WebUI 等）都要改，且 `ksud` 的 execve 本身是 OPPO `oplus_exec_block`
   的上报源（会触发安全弹窗，靠 `oplus_check_suppress` 拦）。
   这是「用一个更大的可检测面换一个小名字」，不做。
+
+#### 5.1.3 裁决落地（2026-11-07）
+
+裁决口径：**B10 收（改默认）**，**A1 / A2 / B4 / D1 接受**（登记进
+`tools/suvtz/accepted.tsv`，判定仍是 `FAIL*`，不伪造 PASS）。
+
+| 项 | 裁决 | 落地 |
+|---|---|---|
+| B10 `ksu_kaslr` | **收** | `tools/postlock.sh` 的 `SUVTZ_KASLR_MODE` 默认 `0644` → **`0600`**；`0644` 可回退 |
+| A1 管理器包名 | 接受（不立项） | `accepted.tsv` A1 行：套壳需换证书重签 + `manager_sign.h` 加自签 hash+size 重编 ko + ksud 带 `KSU_PACKAGE_NAME` 重编，且此后不能覆盖安装上游新版 |
+| A2 工具包 | 接受（保留两个包） | `accepted.tsv` A2 行：`com.postlock.boot` 是 SUSFS app 域自检唯一载体（隐藏门控 `TIF_PROC_UMOUNTED && uid>=10000`，只有 zygote fork 的真 app 进程可观测），`com.postlock.privateapp` 是私有包对照组，都是验收基础设施 |
+| B4 `/product/bin/su` | 接受 | `accepted.tsv` B4 行：属主只能 root；`SUS_PATH` 会把被授予 app 一起隐藏（su 直接失效）；改走 `ksud debug su` 会放大 execve 上报面 |
+| D1 `persist.adb.tcp.port` | 接受（保持） | `accepted.tsv` D1 行：属性服务拒 `setprop`（即使 Permissive），只能预写 `/data/property` 且下次 boot 生效 → 不可「按需临时开」；当前无 Wi-Fi，USB 是唯一通道 |
+
+**真机复测（同一 boot `4c069829`，仅 `chmod 600 ksu_kaslr` + 换表，无 reboot）**：
+
+```
+FAIL=0 (另有已接受 4)  PASS=31  INFO=0  总计=35     # rc=0
+B10   PASS   cat: /data/local/tmp/ksu_kaslr: Permission denied
+A1/A2/B4/D1  FAIL*  (已接受, 理由随行打印)
+```
+
+输出存 `/tmp/opencode/suvtz-p1verify/rooted3/`。收敛后的口径：
+**未裁决 FAIL = 0**；剩余 4 项全部是显式裁决过的威胁模型取舍，
+且每一项都保留可撤销路径（B10 换 env；其余删 `accepted.tsv` 对应行）。
+
+**注意两点**：
+
+1. B10 的代码改动要**下一轮 `tools/postlock.sh` / restore** 才会自动生效
+   （restore 尾部 chmod）。本轮是手工 `chmod 600` 让设备状态与默认值一致。
+2. 裁决是**当时的威胁模型判断**，不是永久结论。`accepted.tsv` 头部已写明：
+   若登记项的实际数值变了（如 D1 换成别的端口、A2 多了第三个包），
+   必须重新裁决而不是沿用旧理由。
 
 ## 6. 复跑方法
 

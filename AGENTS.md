@@ -5149,17 +5149,25 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   绝不改判 PASS**（接受是威胁模型取舍，不是事实改变）。默认文件全注释 ⇒
   输出与引入前逐字一致；`ACCEPTED_FILE=`（空串）禁用；`ACCEPTED_FILE=/p` 换表。
   ID 写错静默不命中（防止误吞真回归）；理由列原样回显所以别写敏感信息。
-- **`SUVTZ_KASLR_MODE`**（`tools/postlock.sh`，默认 `0644` = 今日行为）：
-  restore 尾部（kernel:s0）对 `ksu_kaslr`/`ksu_payload` 做 `chown 2000:2000`
-  + `chmod $KASLR_MODE`，并打 `suvtz-b10: ksu_kaslr mode=<实测> (want <期望>)`
-  取证行。`0600` 即消 B10（app 域 `cat` 从可读 93 字节变 Permission denied），
-  代价 = 失去 app 自派发的 KASLR 输入（该路径已随 PostLock-Boot 冻结）。
-  owner 保持 shell，下一轮链 `O_TRUNC` 重写不改权限。
+- **`SUVTZ_KASLR_MODE`**（`tools/postlock.sh`，**2026-11-07 裁决后默认 `0600`**；
+  `0644` 可回退）：restore 尾部（kernel:s0）对 `ksu_kaslr`/`ksu_payload` 做
+  `chown 2000:2000` + `chmod $KASLR_MODE`，并打
+  `suvtz-b10: ksu_kaslr mode=<实测> (want <期望>)` 取证行。`0600` 即消 B10
+  （app 域 `cat` 从可读 93 字节变 Permission denied），代价 = 失去 app 自派发的
+  KASLR 输入（该路径已随 PostLock-Boot 冻结）。owner 保持 shell，下一轮链
+  `O_TRUNC` 重写不改权限。
 - `scan.sh` 曾因 `set -u` 在 PASS/INFO 分支读未绑定的 `acc` 崩溃（只有启用
   登记表才会显形）——已改为每轮循环前 `acc=""`。**改这类计数器分支后务必用
   `bash -n` + 假 adb 三态（默认/接受/禁用）跑一遍**，`-n` 抓不到 set -u 运行时错。
-- 三项待裁现状（成本见 `docs/suvtz-p0-baseline.md` §5.1.2）：**B4** `/product/bin/su`
-  三选项都不免费（属主只能是 root；SUS_PATH 会连带影响被授予 app；弃 overlay
-  改走 `ksud debug su` 会放大 execve 上报面）→ 倾向①接受；**D1**
-  `persist.adb.tcp.port=5555` 实测本机无 Wi-Fi（只有 rmnet 数据），清空后
-  冷启动将失去唯一网络救回通道 → 倾向①保持；**B10** 已可一键消，待裁决。
+- **2026-11-07 裁决批次（已落地）**：B10 **收**（默认翻 0600）；A1 / A2 / B4 / D1
+  登记为「已接受」（`accepted.tsv` 四行，理由原文见文件与
+  `docs/suvtz-p0-baseline.md` §5.1.3）。收敛后的真机口径 = **`FAIL=0
+  (另有已接受 4) PASS=31 INFO=0`**（同 boot `4c069829`，仅 `chmod 600 ksu_kaslr`
+  + 换表、无 reboot；输出 `/tmp/opencode/suvtz-p1verify/rooted3/`）。
+  要点：A1 不立项（套壳要换证书重签 + `manager_sign.h` 加自签 hash+size 重编 ko
+  + ksud 带 `KSU_PACKAGE_NAME`，且此后不能覆盖安装上游新版）；A2 两个包都**留着**
+  （`com.postlock.boot` = SUSFS app 域自检唯一载体，`com.postlock.privateapp` =
+  私有包对照组，都是验收基础设施）；B4 三选项均不免费；D1 是唯一救回通道
+  （无 Wi-Fi 时只剩 USB，且属性只能预写 + 下次 boot 生效，无法按需临时开）。
+  裁决是当时判断，不是永久结论——登记项数值一变（D1 换端口 / A2 多包）必须
+  重新裁决。
