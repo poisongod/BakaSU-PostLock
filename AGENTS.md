@@ -4980,11 +4980,45 @@ shell（uid 2000）直接跑 `/data/local/tmp/ksud susfs show version` 会打印
 `kernelsu`/`oplus_check_suppress` 加载 + `hotload` 不加载（legacy 按设计）+
 ocsk v14 `rep armed=2` + su `uid=0 … u:r:ksu:s0`，suvtz **6 FAIL / 24 PASS**。
 
-**suvtz 的 6 个 FAIL 全部是设计内暴露面**（不要当回归去「修」）：
+**suvtz 的 6 个 FAIL 里 5 个是设计内暴露面**（不要当回归去「修」）：
 A1 管理器包可见、A2 工具包可见（`com.postlock.boot` = SUSFS 自检载体，
 `com.postlock.privateapp` = suvtz 私有包对照组，两者都别删）、
 B4 `/product/bin/su` 存在、B10 `ksu_kaslr` 可读（app 域 gate 输入）、
-D1 `persist.adb.tcp.port=5555`、E2 `/product/bin` overlay 出现在 mountinfo。
+D1 `persist.adb.tcp.port=5555`——这五项都是「功能可用性 vs 可检测性」的
+取舍，待用户裁决（P1-3）。**E2（overlay 出现在 app 域 mountinfo）不是设计内，
+是缺陷，P1-2 修，见下。**
+
+### SUVTZ P1-2：overlay 必须在 ksu 域建，且要显式打开隐藏开关（2026-11-06）
+
+链路的 `SUS_MOUNT` 打标有两道闸，少一道 E2 就照旧泄漏：
+
+1. **打标只在 `u:r:ksu:s0` 发生**：探针挂在 `alloc_vfsmnt()`/`clone_mnt()` 里，
+   判据是 `security_task_getsecid(current)` == `u:r:ksu:s0`。restore 是
+   `u:r:kernel:s0`，所以它建的 `/product/bin` overlay 拿的是**真实 ida 值**
+   （实测 `mnt_id=12520`）。同一 boot 用 `runcon u:r:ksu:s0 mount --bind`
+   建测试挂载 → `mnt_id=2000000000`（=`DEFAULT_KSU_MNT_ID`）。**这就是 E2 FAIL
+   的物理原因**，与「SUS_MOUNT 没实现」无关。
+2. **`susfs_mount_hide_enabled` 每 boot 默认 0**（`susfs_mount.c` 的静态 bool），
+   伪 id 在开关打开前是**惰性**的（只写进 `mnt_id`，没人按它过滤）。同一条
+   ksu 域 bind mount 实测：开关 0 → shell 域 `grep`=1；开关 1 → `grep`=0。
+
+实现（`tools/postlock.sh`，P1-2）：`runcon u:r:ksu:s0 true` 探针成功才把
+`OVLMNT="runcon u:r:ksu:s0"` 当前缀加到三个 mount（lower bind / tmpfs upper /
+overlay）上，任一失败回落 kernel 域原行为（**P1-2 是加固，不是启动前置**）；
+overlay 建好后先打 `suvtz-p1-2: product-bin-mnt-id=` 取证行，再
+`ksud susfs hide_sus_mnts_for_non_su_procs 1`。
+
+**隐藏语义边界**：隐藏对**所有非 ksu 域进程**生效——**shell 也会看不到**
+（排查时先 `ksud susfs hide_sus_mnts_for_non_su_procs 0` 关掉再看，
+所以取证行必须在开关之前打）。但**路径解析不受影响**：`__lookup_mnt` 那半边
+门控在 `TIF_PROC_UMOUNTED && uid>=10000`，shell(2000) 与被授予 su 的 app
+都不带该标记 → `/product/bin/su` 照常可 exec，只丢 `/proc/self/{mounts,
+mountinfo,mountstat}` 视图。
+
+**仍未验证**：`kernel:s0` 在 Permissive 窗口内能否 `runcon u:r:ksu:s0`
+（理论上 `setcurrent` 在 permissive 下可行，探针失败会自动回落）。需一次
+冷 boot + `tools/postlock.sh` 验收：`product-bin-mnt-id` ≥ 2000000000 +
+hide 行 + E2/E3 转 PASS + 链与 `su -c id` 无回归。
 
 **两个操作坑（本轮踩到）**：
 1. **`postlock.sh` 的 900s 超时在 tailnet 通道下不够**——stage 要 push 15MB
