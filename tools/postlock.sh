@@ -31,14 +31,16 @@ TMP=/data/local/tmp
 # of any app's reach; the PostLock log panel then only shows app-domain
 # chains.  SUVTZ_CHAIN_LOG_MODE=0644 restores the old cross-uid readability.
 CHAIN_LOG_MODE=${SUVTZ_CHAIN_LOG_MODE:-0600}
-# SUVTZ B10: ksu_kaslr is written by the chain (shell umask -> 0644) and is the
-# only input the app-domain gate ever read.  That self-dispatch path is frozen
-# with PostLock-Boot, so 0644 is no longer required -- but flipping the default
-# is a threat-model decision, not a bug fix.  Default stays at today's 0644;
-# SUVTZ_KASLR_MODE=0600 closes the exposure (measured: runas read goes from
-# a readable 93-byte line to "Permission denied", see docs/suvtz-p0-baseline
-# §5.1.2).  Applied from restore (kernel:s0) so the chmod always sticks.
-KASLR_MODE=${SUVTZ_KASLR_MODE:-0644}
+# SUVTZ B10: ksu_kaslr is written by the chain (shell umask -> 0644) and used to
+# be the only input the app-domain gate read.  That self-dispatch path is frozen
+# with PostLock-Boot, so nothing outside the shell/ksu domain needs to read it.
+# 2026-11-07 裁决: 默认改 0600 -- the file carries the real KASLR base and slide
+# of the current boot, i.e. a full exploit prerequisite handed to any app that
+# can reach /data/local/tmp (measured: runas read goes from a readable 93-byte
+# line to "Permission denied", docs/suvtz-p0-baseline §5.1.2).
+# SUVTZ_KASLR_MODE=0644 restores the old behaviour if the app-domain gate is
+# ever revived.  Applied from restore (kernel:s0) so the chmod always sticks.
+KASLR_MODE=${SUVTZ_KASLR_MODE:-0600}
 
 die() { echo "postlock: ERROR: $*" >&2; exit 1; }
 # unified log line prefix, same shape as chain/restore/receiver logs
@@ -586,8 +588,9 @@ if [ -f $TMP/postlock_chain.log ]; then
   chmod $CHAIN_LOG_MODE $TMP/postlock_chain.log 2>/dev/null || true
 fi
 # B10: the app-domain gate input (written by the chain as shell, umask 0644).
-# 0644 = today's behaviour; SUVTZ_KASLR_MODE=0600 makes it unreadable to any
-# app uid.  Owner stays shell so the chain can rewrite it next round.
+# 0600 = default since 2026-11-07, i.e. unreadable to any app uid;
+# SUVTZ_KASLR_MODE=0644 re-opens it.  Owner stays shell so the chain can
+# rewrite it next round with O_TRUNC (which does not reset the mode).
 for f in ksu_kaslr ksu_payload; do
   if [ -f $TMP/\$f ]; then
     chown 2000:2000 $TMP/\$f 2>/dev/null || true
