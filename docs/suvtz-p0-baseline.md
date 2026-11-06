@@ -465,7 +465,9 @@ B10	2026-11-07	生产路径改由 host 触发，app 自派发已随 PostLock-Boo
   按名字直接可读。实测 app 域（`run-as com.postlock.boot`）读到
   `kaslr boot=4c069829… text=ffffffed22a80000 slide=0000002d12a00000`。
 - 收 0600 后同一命令：`cat: /data/local/tmp/ksu_kaslr: Permission denied`，rc=1
-  （实测后已 `chmod 644` 回滚，设备状态复原）。**此时 B10 探针即转 PASS**。
+  （实测后已 `chmod 644` 回滚，设备状态复原）。整轮扫描实测
+  **`FAIL=4 PASS=31 INFO=0`，B10 转 PASS**（其余四项不变；
+  输出存 `/tmp/opencode/suvtz-p1verify/rooted2_b10off/`）。
 - `tools/postlock.sh` 新增 `SUVTZ_KASLR_MODE`（默认 `0644` = 今日行为）：
   restore 尾部（`kernel:s0`）对 `ksu_kaslr`/`ksu_payload` 做 `chown 2000:2000` +
   `chmod $KASLR_MODE`。owner 仍是 shell，下一轮链重写不受影响（`O_TRUNC` 不改权限）。
