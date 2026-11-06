@@ -5207,7 +5207,10 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   （有载体时判据 = `run-as <pkg> true` 成功，无载体时看 `dumpsys user` 的
   `RUNNING_UNLOCKED`）再补跑一次 `scan.sh -q`，覆盖前把锁屏快照另存
   `scan_<boot8>_locked.txt`，然后更新台账 + 写 `defer.log`/`defer_status.txt`。
-  退出码：`0` 补跑完成 / `2` 等解锁超时 / `3` boot 已变 / `4` adb 连续 6 次不可用。
+  退出码：`0` 补跑完成（`OK`）/ `2` 等解锁超时（`TIMEOUT`）/ `3` boot 已变
+  （`BOOT_CHANGED`）/ `4` adb 连续 6 次不可用（`ADB_LOST`）/ `5` 补跑失败
+  （`SCAN_FAILED`）。**只在报告头 `device_locked=1` 时才挂**——已解锁却仍
+  `runas=no` 是「没有可调试载体」，等也等不来。
   **必须 `setsid nohup … </dev/null`**（普通 `nohup &` 会随调用方 shell 收尾被组杀）。
   目的 = 「冷 boot 一次 = 一份快照」在设备锁着时不至于只留 32 条 INFO。
 - **诚实口径**：这不是 boot hook——PostLock-Boot 已冻结、设备无开机自跑通道；
