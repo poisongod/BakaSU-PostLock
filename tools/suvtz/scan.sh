@@ -118,13 +118,21 @@ exec_v() {
 judge() {
 	local expect="$1" v
 	VERDICT="INFO"; REASON=""
-	local denied=0
+	local denied=0 broken=0
 	printf '%s' "$LAST_OUT" | grep -qiE 'permission denied|operation not permitted|eacces' && denied=1
 	printf '%s' "$LAST_OUT" | grep -qiE 'no such file|does not exist' && denied=1
+	# 工具能力不足 ≠ 观测不到。toybox ps 的 -o 支持随版本变化, 用法文本里
+	# 也带数字 (实测 "Try 'ps --help simple|list'"), 不拦住会被 zero 判成
+	# FAIL 假阳性。命令能跑但参数不被支持, 属于"没法观测", 记 INFO。
+	printf '%s' "$LAST_OUT" \
+		| grep -qiE "unknown (user-defined )?format specifier|try '[^']*--help|usage:|^用法" \
+		&& broken=1
 
 	case "$expect" in
 	absent)
-		if [ "$LAST_RC" != 0 ] || [ -z "$LAST_OUT" ] || [ "$denied" = 1 ]; then
+		if [ "$broken" = 1 ]; then
+			VERDICT="INFO"; REASON="命令能力不足(参数/工具不支持)"
+		elif [ "$LAST_RC" != 0 ] || [ -z "$LAST_OUT" ] || [ "$denied" = 1 ]; then
 			VERDICT="PASS"
 			[ "$LAST_RC" != 0 ] && REASON="不可见(rc=$LAST_RC)"
 			[ "$denied" = 1 ] && REASON="拒绝/不存在"
@@ -133,7 +141,9 @@ judge() {
 		fi
 		;;
 	empty)
-		if [ "$LAST_RC" != 0 ]; then
+		if [ "$broken" = 1 ]; then
+			VERDICT="INFO"; REASON="命令能力不足(参数/工具不支持)"
+		elif [ "$LAST_RC" != 0 ]; then
 			VERDICT="INFO"; REASON="命令未能执行(rc=$LAST_RC)"
 		elif [ -z "$LAST_OUT" ]; then
 			VERDICT="PASS"; REASON="空"
@@ -142,7 +152,9 @@ judge() {
 		fi
 		;;
 	zero)
-		if [ "$LAST_RC" = 255 ] || [ "$LAST_RC" = 126 ] || [ "$LAST_RC" = 127 ]; then
+		if [ "$broken" = 1 ]; then
+			VERDICT="INFO"; REASON="命令能力不足(参数/工具不支持)"
+		elif [ "$LAST_RC" = 255 ] || [ "$LAST_RC" = 126 ] || [ "$LAST_RC" = 127 ]; then
 			VERDICT="INFO"; REASON="命令未能执行(rc=$LAST_RC)"
 		elif [ "$denied" = 1 ]; then
 			# 读不到源文件 = 检测方同样看不到 = 等价于 0 命中
@@ -157,7 +169,9 @@ judge() {
 		;;
 	value:*)
 		local want="${expect#value:}"
-		if [ "$LAST_RC" != 0 ]; then
+		if [ "$broken" = 1 ]; then
+			VERDICT="INFO"; REASON="命令能力不足(参数/工具不支持)"
+		elif [ "$LAST_RC" != 0 ]; then
 			VERDICT="INFO"; REASON="命令未能执行(rc=$LAST_RC)"
 		elif [ "$LAST_OUT" = "$want" ]; then
 			VERDICT="PASS"; REASON="$want"
@@ -212,6 +226,51 @@ PROBES=(
 "E3${T}E${T}mountinfo 暴露 tmpfs upper${T}runas${T}grep -c ksu_boot /proc/self/mountinfo${T}zero"
 )
 
+# ---------------------------------------------------------------- X 类: 成对交叉验证
+# 同一个事实经两条**独立通道**测量, 要求同向:
+#   两通道都不可见 -> PASS; 两通道都可见 -> FAIL; 只有一条可见 -> FAIL(分歧);
+#   任一侧测不出来(rc 语义丢失/命令缺失) -> INFO。
+# 为什么需要: 单点探针的 PASS 可能来自"这条通道恰好被挡住", 而不是"对象真的
+# 不可见"。分歧是最有价值的信号 —— 说明存在一条我们没建模的读取路径, 必须
+# 定案(要么补实现, 要么在文档里记为已接受的暴露面)。
+# 字段(Tab 分隔): ID 类 描述 视角 命令A 期望A 命令B 期望B
+PAIRS=(
+"X1${T}X${T}模块面双通道(/proc/modules vs /sys/module)${T}runas${T}grep -c kernelsu /proc/modules${T}zero${T}ls /sys/module/kernelsu${T}absent"
+"X2${T}X${T}符号面双通道(/proc/kallsyms vs /proc/modules)${T}runas${T}grep -c -e ksu_ -e susfs_ /proc/kallsyms${T}zero${T}grep -c kernelsu /proc/modules${T}zero"
+"X3${T}X${T}挂载视图双通道(mountinfo vs mounts)${T}runas${T}grep product/bin /proc/self/mountinfo | grep -c overlay${T}zero${T}grep -c product/bin /proc/self/mounts${T}zero"
+"X4${T}X${T}物料目录双通道(父目录 vs 物料目录)${T}runas${T}ls /data/local/tmp${T}absent${T}ls /data/local/tmp/ksu_boot${T}absent"
+"X5${T}X${T}进程面双通道(ps vs 直接枚举 /proc)${T}runas${T}ps -A -o NAME | grep -c -e ksud${T}zero${T}for f in /proc/[0-9]*/comm; do cat \$f 2>/dev/null; done | grep -c -e ksud${T}zero"
+)
+
+# pair_side <view> <cmd> <expect> -> "<1|0|255>\t<实测值>"
+#   1 = 按该期望判 PASS(不可见/为 0), 0 = FAIL(可见), 255 = 测不出(INFO)
+pair_side() {
+	local view="$1" cmd="$2" expect="$3" h raw
+	if [ "$view" = runas ] && [ "$RUNAS_EXEC" = 0 ]; then
+		printf '255\t%s' "runas 域不可用"
+		return
+	fi
+	exec_v "$view" "$cmd"
+	judge "$expect"
+	case "$VERDICT" in
+		PASS) h=1 ;;
+		FAIL) h=0 ;;
+		*)    h=255 ;;
+	esac
+	raw=$(printf '%s' "$LAST_OUT" | tr '\n' ';' | cut -c1-40)
+	[ -n "$raw" ] || raw="-"
+	printf '%s\t%s' "$h" "$raw"
+}
+
+# <hidden> -> 人话
+side_word() {
+	case "$1" in
+		1)   printf '不可见' ;;
+		0)   printf '可见' ;;
+		*)   printf '测不出' ;;
+	esac
+}
+
 # ---------------------------------------------------------------- 主循环
 npass=0; nfail=0; ninfo=0
 {
@@ -225,6 +284,8 @@ npass=0; nfail=0; ninfo=0
 	echo "          untrusted_app) => runas 的 PASS 是必要条件, 不是充分条件,"
 	echo "          真正判据需 app 自身代码复测。"
 	echo "期望值来源: docs/suvtz-v3-design.md §5.3 定义的 stock 期望 (非实测对照机)。"
+	echo "类别: A 包与进程  B 文件系统  C 内核符号与模块  D 系统属性  E SELinux 与挂载"
+	echo "      X 成对交叉验证 (同一事实两条独立通道, 要求同向; 分歧=FAIL)"
 	echo "=================================================================="
 	printf '%-5s %-3s %-40s %-6s %s\n' ID 类 观测面 判定 实测/原因
 	echo "------------------------------------------------------------------"
@@ -253,6 +314,44 @@ for p in "${PROBES[@]}"; do
 	[ -n "$REASON" ] && act="$act  ($REASON)"
 
 	printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "$expect" "$act" >> "$SUMMARY"
+	if [ "$QUIET" = 0 ]; then
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" | tee -a "$REPORT" >&2
+	else
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" >> "$REPORT"
+	fi
+done
+
+# X 类: 成对交叉验证(同一事实两条通道, 要求同向)
+for p in "${PAIRS[@]}"; do
+	IFS="$T" read -r id cls desc view ca ea cb eb <<< "$p"
+
+	ra=$(pair_side "$view" "$ca" "$ea"); ha=${ra%%$T*}; va=${ra#*$T}
+	rb=$(pair_side "$view" "$cb" "$eb"); hb=${rb%%$T*}; vb=${rb#*$T}
+
+	if [ "$ha" = 255 ] || [ "$hb" = 255 ]; then
+		VERDICT="INFO"
+		REASON="至少一侧测不出(A=$(side_word "$ha") B=$(side_word "$hb"))"
+	elif [ "$ha" = 1 ] && [ "$hb" = 1 ]; then
+		VERDICT="PASS"
+		REASON="两通道同为不可见"
+	elif [ "$ha" = 0 ] && [ "$hb" = 0 ]; then
+		VERDICT="FAIL"
+		REASON="两通道同为可见"
+	else
+		VERDICT="FAIL"
+		REASON="通道分歧 A=$(side_word "$ha") B=$(side_word "$hb")"
+	fi
+
+	case "$VERDICT" in
+		PASS) npass=$((npass+1));;
+		FAIL) nfail=$((nfail+1));;
+		*)    ninfo=$((ninfo+1));;
+	esac
+
+	act="A=$va | B=$vb"
+	[ -n "$REASON" ] && act="$act  ($REASON)"
+
+	printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$id" "$cls" "$view" "$VERDICT" "same-direction" "$act" >> "$SUMMARY"
 	if [ "$QUIET" = 0 ]; then
 		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$VERDICT" "$act" | tee -a "$REPORT" >&2
 	else

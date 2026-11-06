@@ -336,6 +336,63 @@ Dev_rooted = 本项目的设备状态
 | G3 | 银行/反作弊私有风控 | 🚫 |
 | G4 | 硬件序列号与设备指纹比对 | 🚫 |
 
+#### X. 成对交叉验证（方法，不是新观测面）
+
+单点探针的 PASS 可能来自「这条通道恰好被挡住」，而不是「对象真的不可见」。
+所以每个可多路读取的事实用**两条独立通道**各测一次，要求同向：
+
+| 组合 | 通道 A | 通道 B | 同向含义 |
+|---|---|---|---|
+| 模块面 | `grep -c kernelsu /proc/modules` | `ls /sys/module/kernelsu` | 两者都不可见 = 一致 |
+| 符号面 | `grep -c -e ksu_ -e susfs_ /proc/kallsyms` | `grep -c kernelsu /proc/modules` | 同上 |
+| 挂载视图 | `grep product/bin /proc/self/mountinfo` | `grep -c product/bin /proc/self/mounts` | 同上 |
+| 物料目录 | `ls /data/local/tmp` | `ls /data/local/tmp/ksu_boot` | 同上 |
+| 进程面 | `ps -A -o NAME` | 直接枚举 `/proc/*/comm` | 同上 |
+
+判据：两通道同向 = PASS；**分歧 = FAIL**（存在未建模的读取路径，必须定案）；
+任一侧测不出 = INFO。分歧是最有价值的信号——它比单项 FAIL 更能指出「哪条路
+没堵住」。
+
+#### 5.3.1 编号对照（**以扫描器为准**）
+
+上面的 A/B/C/D/E 表是**设计意图清单**（写于 2026-11-03，含当时未验证的手段），
+`tools/suvtz/scan.sh` 里的 ID 是**可执行探针**。两者编号已漂移，以扫描器为准；
+下表给出对照，未列出者表示该设计项没有独立探针（原因见表后）。
+
+| 设计项 | 扫描器 ID | 说明 |
+|---|---|---|
+| A1 管理器包 | A1 | 同义 |
+| A2 工具包 / A3 私有包 | A2 | 合并为一条 `grep -i postlock` |
+| A4 `getPackageInfo` 反查 | — | 需在 app 内跑，扫描器只测 `pm list` |
+| A5 `ps`/`cmdline` | A4 + A5 + X5 | 拆成 ksud / tailscaled 两条，并加进程面双通道 |
+| A6 `dumpsys package` | — | 普通 app 无 DUMP 权限，恒 ✅ |
+| B1 `/data/local/tmp/ksu_boot` | B1 + X4 | 加物料目录双通道 |
+| B2 `/data/adb/ksu` | B3 | `/data/adb` 整体测 |
+| B3 `/product/bin/su` | B4 | 同义 |
+| B4 `/sdcard/chain*.log` | — | 已清理，属纪律项不设探针 |
+| B5 `/data/local/tmp/ksud`、`preload.so` | B2 + B7 | 目录可枚举 + 单文件可读 |
+| — | B5 / B6 / B8 / B9 / B10 / B11 | 设计里没有的补充面（`/system/bin/su`、物料 ko、链日志、overlay upper、`ksu_kaslr`、`restore.sh`） |
+| C1 `/proc/modules` | C3 + X1 | 同义 + 双通道 |
+| C2 `/sys/module/kernelsu` | C1 + C5 | 同义（C5 测 `parameters` 子目录） |
+| C3 `/sys/module/oplus_check_suppress` | C2 | 同义 |
+| C4 `parameters/ksu_debug_manager_appid` | C5 | 同义 |
+| C5 `/proc/kallsyms` 符号名 | C4 + X2 | 同义 + 双通道 |
+| C6 `kprobe_events` | — | app 域天然拒，恒 ✅ |
+| D1 `persist.adb.tcp.port` | D1 | 同义 |
+| D2 `wrap.*` | D2 | 同义（扩展到任意 `wrap` 属性） |
+| D3 `ro.debuggable`/`ro.secure`/`ro.build.type` | D3 + D4 | 拆两条 |
+| D4 `verifiedbootstate` | D5 | 同义 |
+| D5 `sys.oem_unlock_allowed` | D6 | 同义 |
+| E1 `/sys/fs/selinux/enforce` | E1 | 同义 |
+| E2 `getenforce` | — | 与 E1 同源（同一份 selinuxfs 值），不重复测 |
+| E3 mountinfo overlay | E2 + X3 | 同义 + 双通道 |
+| E4 mounts tmpfs upper | E3 + X3 | 同义 + 双通道 |
+
+> 设计表里 C2/C3/C4/C5 的「覆盖手段」写着「需新增 kernfs hook」——**该结论已被
+> P0 实测推翻**（见 `docs/suvtz-p0-baseline.md` §4.1：`/sys/module/*` 由
+> `module_kobj` 的 sysfs 属性暴露，不在 kernfs 目录项层可控，且实际泄漏路径
+> 是 DAC/SELinux 而非 kernfs）。表里保留原文只作历史记录，**不要照它去写代码**。
+
 ### 5.4 不可覆盖清单（写死在设计里）
 
 1. **T1b / T2 对手**（§2.2.1 的 `Obs(W) ⊄ Trusted(W)`，§2.4）

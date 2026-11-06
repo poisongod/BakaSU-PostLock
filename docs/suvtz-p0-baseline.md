@@ -46,6 +46,10 @@ P0 的产出就是这份可执行基线：7 类观测面收敛成 30 条探针�
 
 ## 2. 结果：30 项，12 FAIL / 18 PASS / 0 INFO
 
+> 本节的 30 项是 P0 的**单点探针基线**。扫描器在 2026-11-07 追加了 5 条 X 类
+> 成对交叉验证（见 §7），因此当前 `scan.sh` 一次跑出 **35 项**（30 + 5）。
+> 下表的编号与数值保持 P0 原样不改，便于与本文档其它章节和历史归档对照。
+
 ```
 A1  FAIL  管理器包可枚举          package:com.resukisu.resukisu
 A2  FAIL  工具包可枚举            package:com.postlock.boot; package:com.postlock.privateapp
@@ -277,9 +281,8 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
   (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)`；实测
   `/data/local/tmp` = `711 shell:shell`、`/data/local/tmp/ksu_boot` =
   `700 shell:shell`、`/data/local/tmp/ksud` = `700`，链与 `su -c id` 无回归。
-  **app 侧（B1/B6…B11）待解锁复测**——`run-as` 在锁屏休眠下
-  `couldn't stat /data/user/0/<pkg>`（CE 存储不可用），扫描器只能记 INFO，
-  见 §6「锁屏限制」。
+  **app 侧已复测（2026-11-07，同一 boot `4c069829`，解锁态）**：B1/B6/B7/B8/
+  B9/B11 六项全部 **PASS**（逐项实测值见 §5.2）。
 - **P1-2（中）**：overlay 改在 ksu 域建 → E2 转 PASS 且 SUS_MOUNT 打标生效
   （可顺带验证 SUS_MOUNT，一石二鸟）。
   **已实现并验收（2026-11-06，`92ad9a2a` + 竞态修复 `14391245`，boot `4c069829`）**：
@@ -337,15 +340,87 @@ app 主进程根本不读 `/data/local/tmp/ksu_boot`——
     KernelSU 的 su 会进独立 mount namespace（umount-modules 语义），它看到的
     永远是自己那份 ns；app 域可见性只能用真实 `adb shell`(uid 2000) 或
     `run-as` 测量。
-- **P1-3（需决策，见 §5.1）**：B4 / B8 / B10 / D1 四项冲突点，不擅自取舍。
-- **P1-4（后）**：A2 包名。
+- **P1-3（需决策，见 §5.1）**：B4 / B10 / D1 三项冲突点，不擅自取舍。
+  （**B8 已由 P1-1 落地并实测转 PASS**：链日志 0600，app 域 `head` 直接
+  `Permission denied`。副作用 = PostLock 面板只能看 app 域链日志，不再是判据项。）
+- **P1-4（后）**：A1 / A2 包名。
 
-### 5.1 待决策的四项冲突
+### 5.2 P1 后差分复测（2026-11-07，boot `4c069829`，解锁态）
+
+条件：`SERIAL=5bf5bf85 PKG=com.postlock.boot tools/suvtz/scan.sh -q`，
+`runas_ok=1 runas_exec=1`，35 项（30 单点 + 5 X 类）。
+
+```
+FAIL=5  PASS=30  INFO=0  总计=35        # P0 同口径 30 项时为 12 FAIL / 18 PASS
+```
+
+**转 PASS 的 7 项**（P0 FAIL → 现 PASS），全部落在 P1-1 / P1-2 的设计目标上：
+
+| 项 | P0 实测 | 现实测（app 域代理） | 由谁解决 |
+|---|---|---|---|
+| B1 物料目录可列 | `finitmod; kernelsu.ko; ...` | `ls: /data/local/tmp/ksu_boot: Permission denied` | P1-1（stage 0700） |
+| B6 物料 ko 可读 | `-rw-rw-rw- ... 13759256B` | `ls: .../kernelsu.ko: Permission denied` | P1-1（0600） |
+| B7 ksud 可读 | `4107512B 全文可读` | `can't open /data/local/tmp/ksud: Permission denied` | P1-1（0700） |
+| B8 链日志可读 | `431002B（KASLR/pvo 明文）` | `head: .../postlock_chain.log: Permission denied` | P1-1（logs 0600） |
+| B9 overlay upper 可列 | `ksud;su` | `ls: .../ovl/tmp/upper: Permission denied` | P1-1 |
+| B11 `restore.sh` 可读 | `#!/system/bin/sh（整套流程明文）` | `head: .../restore.sh: Permission denied` | P1-1 |
+| E2 mountinfo 暴露 overlay | `1` | `0` | P1-2（ksu 域建 + 伪 id + hide 开关） |
+
+**剩余 5 项 FAIL**（全部是「已知取舍待裁决」或「名字层不可免」）：
+
+| 项 | 实测 | 归属 |
+|---|---|---|
+| A1 管理器包可枚举 | `package:com.resukisu.resukisu` | 待立项（套壳 `KSU_PACKAGE_NAME`，见 §5.1 注） |
+| A2 工具包可枚举 | `package:com.postlock.boot; package:com.postlock.privateapp` | P1-4 / P1-3 裁决 |
+| B4 `/product/bin/su` 存在 | `-rwxr-xr-x root root 412B` | §5.1 B4 三选项 |
+| B10 `ksu_kaslr` 可读 | `kaslr boot=4c069829... text=ffffffed22a80000 slide=0000002d12a000` | §5.1 B10 三选项 |
+| D1 `persist.adb.tcp.port` | `5555` | §5.1 D1 三选项 |
+
+**X 类五对全同向**（无一例通道分歧），说明当前没有「某条读取路径漏堵」：
+
+```
+X1 PASS  A=grep /proc/modules: Permission denied | B=ls /sys/module/kernelsu: Permission denied
+X2 PASS  A=grep /proc/kallsyms: Permission denied | B=grep /proc/modules: Permission denied
+X3 PASS  A=0 | B=0                      (mountinfo vs mounts 都看不到 product/bin)
+X4 PASS  A=ls /data/local/tmp: Permission denied | B=ls .../ksu_boot: Permission denied
+X5 PASS  A=0 | B=0                      (ps 与直接枚举 /proc/*/comm 都找不到 ksud)
+```
+
+原始输出：`/tmp/opencode/suvtz-p1verify/rooted/scan_4c069829.{txt,tsv}`；
+同 boot 的 stock 参照 `/tmp/opencode/suvtz-p1verify/stock/`（未解锁/未 P1 时）。
+
+### 5.3 P1-1 盖不住的那一类：`/data/local/tmp` 的历史遗留文件
+
+复核权限时发现（同一 boot）：`0700`/`0600` 只覆盖了**本轮恢复流程自己写的**文件，
+`/data/local/tmp` 里还躺着几十个历史调试产物，其中一批是 `0644 root`：
+
+```
+-rw-r--r--  root root  2787  r2.log            <- 上一轮 restore.log 的副本（整套恢复流程）
+-rw-r--r--  root root  3090  ksu_dbg_params.txt <- ksu_dbg_* 参数名与命中计数
+-rw-r--r--  root root    96  ksu_su_asroot.txt
+-rw-r--r--  root root  ...    agent.log / probe*.log / listen.log / abs.log / scrcpy.log
+```
+
+目录是 `0711`（`--x` 只给穿越、不给枚举），所以 app **列不出来**，但只要知道名字
+就能读——这正是 P0 §2 里 B2 PASS / B7 FAIL 的那对矛盾。已清理（`rm` 掉 13 个
+调试日志 + 2 个空测试目录 + 2 个自建 APK；Termux 遗留 `app.apk`/`dryrun.sh`/
+`install-tekl2.sh` 按约定保留）。
+
+**结论写进纪律**：P1-1 的 DAC 收敛只在「每轮结束清场」的前提下成立。遗留文件不
+是代码问题，是卫生问题——扫描器也测不出来（它不知道有哪些名字）。复跑前若发现
+`/data/local/tmp` 有新的 `0644` 调试文件，先当成泄漏处理。
+
+> 附：`/data/local/tmp/dalvik-cache`（`0777` shell）与 `d5s`/`dh153`/`nr`/`hls`
+> 等 11-03/11-04 的网页与截图调试目录仍在。它们不含 root 证据（截图/HTML/MP4），
+> 属可读噪音而非检测信号，暂留待用户处置。**`ovl/`（0700 root）与 `ksu_boot/`
+> （0700 shell）才是敏感面，均已不可穿越**。
+
+### 5.1 待决策的冲突（B8 已落地，剩 B4 / B10 / D1 + A1 / A2）
 
 | 项 | 冲突 | 三个选项 |
 |---|---|---|
 | **B4** `/product/bin/su` | su 要给**任意**被授予的 app exec，属主不能是某个 app uid | ① 接受"名字可见、内容不可读"（现状）② SUS_PATH 打标（被授予的 app 也一起被隐藏，su 坏）③ 放弃 `/product/bin` 载体，su 只经 ksud wrapper |
-| **B8** 链日志 | 431KB 含 KASLR/pvo 明文；但 PostLock 面板要 tail 它做实时日志 | ① 默认 0600（已实现，`SUVTZ_CHAIN_LOG_MODE=0644` 可回退）→ 面板只见 app 域链 ② 0644 保留面板，接受泄漏 ③ 日志脱敏（打码 text/slide 字段）后 0644 |
+| ~~**B8** 链日志~~ | ~~431KB 含 KASLR/pvo 明文；但 PostLock 面板要 tail 它做实时日志~~ **已按选项①落地（P1-1，logs 0600），app 域实测 PASS** | ① 默认 0600（已实现，`SUVTZ_CHAIN_LOG_MODE=0644` 可回退）→ 面板只见 app 域链 ② 0644 保留面板，接受泄漏 ③ 日志脱敏（打码 text/slide 字段）后 0644 |
 | **B10** `ksu_kaslr`/`ksu_payload` | app 域自己跑链的唯一输入端；无法由 app 自行计算 | ① 保持 0644（现状）② 收 0600 = 放弃 app 自派发（生产路径本来就是 host 触发）③ 只在考试轮临时放宽 |
 | **D1** `persist.adb.tcp.port=5555` | WAN 通道 bootstrap 需要 adbd 常驻监听 5555 | ① 保持常驻 ② 通道建立后清空（下次冷启动断链，需重新写）③ 换非持久通道（每 boot host/链写一次） |
 
@@ -372,3 +447,59 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判）。**app 域
 
 注意：本表的 PASS 是 `runas_app` 视角的必要条件，不是 `untrusted_app` 的充分条件。
 真正的终局判据在 P2——app 自身代码跑同一套探针。
+
+## 7. X 类：成对交叉验证（2026-11-07 新增）
+
+单点探针的 PASS 有可能来自「这条读取通道恰好被挡住」，而不是「对象真的不可见」——
+例如 `ls /data/local/tmp` 被 0711 挡住，但 `cat /data/local/tmp/ksud` 按名字直接能读
+（P0 里 B2 PASS / B7 FAIL 就是这一对）。单点探针看不出这种不一致。
+
+所以追加 **5 条成对探针（X1–X5）**：同一个事实用两条**独立通道**各测一次，要求同向。
+
+| ID | 事实 | 通道 A | 通道 B |
+|---|---|---|---|
+| X1 | 模块是否可被枚举 | `grep -c kernelsu /proc/modules` | `ls /sys/module/kernelsu` |
+| X2 | 内核符号面 | `grep -c -e ksu_ -e susfs_ /proc/kallsyms` | `grep -c kernelsu /proc/modules` |
+| X3 | 挂载视图 | `grep product/bin /proc/self/mountinfo` | `grep -c product/bin /proc/self/mounts` |
+| X4 | 物料面 | `ls /data/local/tmp`（父目录可枚举） | `ls /data/local/tmp/ksu_boot`（子目录可列） |
+| X5 | 进程面 | `ps -A -o NAME`（工具抽象） | 直接枚举 `/proc/*/comm`（原语通道） |
+
+判定规则（`pair_side` + 主循环）：
+
+| A | B | 判定 | 含义 |
+|---|---|---|---|
+| 都不可见 | | PASS | 两条通道一致，可信 |
+| 都可见 | | FAIL | 一致泄漏（单项探针也会报，X 不给更宽松的结论） |
+| 一可见一不可见 | | **FAIL** | **通道分歧**：存在未建模的读取路径，必须定案 |
+| 任一侧测不出 | | INFO | 不猜 |
+
+分歧比单项 FAIL 更有信息量：它指出「哪条路没堵住」，而不是「某个对象能看见」。
+
+### 7.1 顺带修掉的一个假阳性
+
+X5 的通道 A 用 `ps -A -o NAME`，而 toybox `ps` 的 `-o` 支持随版本变化。实测
+（host 版 toybox）不支持的写法会返回**用法文本**，文本里带数字（`Try 'ps --help
+simple|list'`）→ `judge zero` 数到数字 → 判成 **FAIL（假泄漏）**。
+
+这是诚实性缺陷：命令**跑起来了但参数不被支持**，属于「没法观测」，不是「观测到了」。
+已在 `judge()` 增加 `broken` 识别（`unknown .*format specifier` / `try '...--help` /
+`usage:` / `^用法`），命中后在 `absent` / `empty` / `zero` / `value:*` 四个分支一律记
+`INFO`（原因「命令能力不足(参数/工具不支持)」）。这条对 A4/A5 同样生效。
+
+### 7.2 离线验证（无设备时先跑通链路）
+
+用假 adb（把 `shell` 的实参交给本机 `sh -c`，并补 `getprop` stub）跑完整扫描：
+
+```
+FAIL=2  PASS=30  INFO=3  总计=35          # 假环境里 D1/D6 值不对属预期
+A4/A5  INFO  (命令能力不足)                # broken 识别生效
+```
+
+三个判定分支逐一验证过：
+
+- 同向不可见 → `X3 PASS A=0 | B=0 (两通道同为不可见)`
+- 通道分歧 → `X3 FAIL A=1 | B=0 (通道分歧 A=可见 B=不可见)`（注入一条假
+  `mountinfo` overlay 行触发）
+- 一侧测不出 → `X5 INFO (至少一侧测不出(A=测不出 B=不可见))`
+
+真机结果待解锁后重跑补齐（锁屏时 runas 段全 INFO，见 §6）。
