@@ -94,12 +94,31 @@ fi
 # --- stage payloads (shell-writable, NO root needed) --------------------
 step "stage payloads at $STAGE"
 ab shell "mkdir -p $STAGE" || die "cannot create $STAGE (is /data/local/tmp gone?)"
-ab push "$PRELOAD_SRC" "$STAGE/preload.so" >/dev/null
-ab push "$KO_SRC" "$STAGE/kernelsu.ko" >/dev/null
-ab push "$FIN_SRC" "$STAGE/finitmod" >/dev/null
-ab push "$OCSK_SRC" "$STAGE/oplus_check_suppress.ko" >/dev/null
+
+# Skip any file whose sha1 already matches on device (measured 2026-11-06:
+# the 15.5MB kernelsu.ko takes 0.42s over USB at 35MB/s but ~14 minutes over
+# a tailnet relay; an unchanged stage is the common case on a re-run).  A
+# handful of extra shell round-trips is always cheaper than one relayed push.
+push_if_changed() {  # <local-path> <stage-basename>
+  local src=$1 name=$2 want got
+  [ -f "$src" ] || return 0
+  want=$(sha1sum "$src" | cut -d' ' -f1)
+  got=$(ab shell "sha1sum $STAGE/$name 2>/dev/null" 2>/dev/null | tr -d '\r' \
+        | cut -d' ' -f1 || true)
+  if [ "$want" = "$got" ] && [ -n "$got" ]; then
+    info "stage-unchanged $name"
+    return 0
+  fi
+  ab push "$src" "$STAGE/$name" >/dev/null || die "push failed: $name"
+  info "stage-pushed $name"
+}
+
+push_if_changed "$PRELOAD_SRC" preload.so
+push_if_changed "$KO_SRC" kernelsu.ko
+push_if_changed "$FIN_SRC" finitmod
+push_if_changed "$OCSK_SRC" oplus_check_suppress.ko
 if [ -f "$HOTLOAD_SRC" ]; then
-  ab push "$HOTLOAD_SRC" "$STAGE/kernelsu_hotload_init.ko" >/dev/null
+  push_if_changed "$HOTLOAD_SRC" kernelsu_hotload_init.ko
 fi
 # ksud blob (2026-10-30, fresh-boot first-run gap): the restore script and
 # the su wrapper exec ksud from $TMP, and restore used to source it from
@@ -112,9 +131,9 @@ fi
 # restore now sources ksud from $STAGE exclusively.
 KSUD_SRC="$REPO/build/embed/ksud"
 [ -f "$KSUD_SRC" ] || die "missing $KSUD_SRC (embedded ksud blob)"
-ab push "$KSUD_SRC" "$STAGE/ksud" >/dev/null
+push_if_changed "$KSUD_SRC" ksud
 ab shell "chmod 755 $STAGE/ksud" >/dev/null || true
-ab push "$REPO/tools/sepolicy_enforce1.txt" "$STAGE/sep_enforce1.txt" >/dev/null
+push_if_changed "$REPO/tools/sepolicy_enforce1.txt" sep_enforce1.txt
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
 #      setprop is SELinux-denied (default_prop), so the value goes into
