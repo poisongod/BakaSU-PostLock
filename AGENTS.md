@@ -112,9 +112,10 @@ oh_my_keymint / playintegrityfix / zygisksu 整体 `mv` 到
 - **无需 reboot**：模块本 boot 从未加载（无 zygisk 注入、无 daemon 进程），删目录后
   当前 boot 已是干净态
 
-**遗留物（用户未表态，勿擅自处理）**：配套前端 app `org.frknkrc44.hma_oss`
-（HMA-OSS UI，模块没了就是空壳）及其 ART profile 缓存
-`/data/misc/profiles/{cur,ref}/org.frknkrc44.hma_oss`。
+**配套前端 app 也已卸载**：`org.frknkrc44.hma_oss`（HMA-OSS UI，模块没了只是空壳）
+→ `pm uninstall`（`Success`），ART profile 缓存 `/data/misc/profiles/{cur,ref}/` 与
+`/data/{data,user/0}/` 数据目录随之清除。全盘复扫（`*YH_YC*|*hmaoss*|*hma_oss*|*omk*|
+*zygisk*|*yhyc*|*keymint*|*soterta*|*playintegrity*|*pif*`）零命中。
 
 **通用判据**：以后见到 `/data/adb/modules` 空目录 + 未见 `modules_off_*` 备份，
 先查是否有 `remove` 标记 / 用户裁决记录，不要当垃圾处理，也不要擅自「恢复」。
