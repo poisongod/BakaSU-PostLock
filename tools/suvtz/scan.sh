@@ -507,8 +507,8 @@ rm -f /tmp/.suvtz_tail.$$
 # 持久性判据的雏形: 换 boot 后与同设备历史结果比对
 PREV=$(ls -1 "$OUT"/scan_*.tsv 2>/dev/null | grep -v "scan_${BOOT8}\.tsv" | tail -1)
 if [ -n "$PREV" ]; then
-	echo
-	echo "(历史基线: $PREV —— 换 boot 后可用它验证「持久性」判据)"
+	echo >&2
+	echo "(历史基线: $PREV —— 换 boot 后可用它验证「持久性」判据)" >&2
 fi
 
 [ "$nfail" -gt 0 ] && exit 1

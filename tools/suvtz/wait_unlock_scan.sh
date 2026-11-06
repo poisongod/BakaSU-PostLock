@@ -142,9 +142,16 @@ if "${SCAN_ENV[@]}" bash "$SCAN" -q > "$OUTDIR/deferred_stdout.txt" 2> "$OUTDIR/
 else
 	scan_rc=$?
 fi
-sum=$(tail -1 "$OUTDIR/deferred_stdout.txt" 2>/dev/null | tr -d '\r')
-if [ "$scan_rc" != 0 ] || [ -z "$sum" ]; then
-	log "scan 失败 rc=$scan_rc"
+sum=$(grep -a '^FAIL=' "$OUTDIR/deferred_stdout.txt" 2>/dev/null | tail -1 | tr -d '\r')
+# scan.sh 用 rc=1 表示「跑完了但真有未裁决 FAIL」——那是**扫描成功、结果不好**，
+# 不是失败，必须照常写台账（有回归的那一 boot 恰恰是最该留下记录的）。
+if [ -z "$sum" ]; then
+	log "scan 失败 rc=$scan_rc (没有汇总行)"
+	echo "SCAN_FAILED" > "$STATUS"
+	exit 5
+fi
+if [ "$scan_rc" != 0 ] && [ "$scan_rc" != 1 ]; then
+	log "scan 异常退出 rc=$scan_rc, 汇总=[$sum]"
 	echo "SCAN_FAILED" > "$STATUS"
 	exit 5
 fi

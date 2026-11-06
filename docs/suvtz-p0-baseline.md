@@ -607,7 +607,7 @@ A4/A5/B*/C*/D*/E* 全部记 `INFO`（30 项里只剩 A1~A3 能判；「另有已
 | 载体 | `SUVTZ_SCAN_PKG=<pkg>` 指定；不设则扫描器自动探测 |
 | 输出 | `/tmp/opencode/suvtz/auto_<boot8>/scan_<boot8>.{txt,tsv}` + `stdout.txt` / `stderr.txt` |
 | 台账 | `/tmp/opencode/suvtz/history.tsv`（`boot8 <TAB> 日期 <TAB> 汇总`，同一 boot 重跑整行替换） |
-| 失败语义 | 只 `WARN` + 打 `scan:` 原因两行，**不影响恢复脚本退出码** |
+| 失败语义 | 只 `WARN` + 打 `scan:` 原因两行，**不影响恢复脚本退出码**；注意 `scan.sh` 的 `rc=1` 是「跑完了但有未裁决 FAIL」（扫描成功、结果不好），照样记账，只有拿不到汇总行才算失败 |
 | 耗时 | 实测 71.5s（35 探针，USB，解锁态） |
 | 锁屏补扫 | `SUVTZ_SCAN_DEFER=0` 关闭（默认开）；上限 `SUVTZ_SCAN_DEFER_TIMEOUT`（默认 10800s）、轮询 `SUVTZ_SCAN_DEFER_INTERVAL`（默认 30s） |
 

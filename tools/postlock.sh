@@ -1023,8 +1023,10 @@ if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
   else
     SCAN_RC=$?
   fi
-  SCAN_SUM=$(tail -1 "$SCAN_OUT/stdout.txt" 2>/dev/null | tr -d '\r')
-  if [ "$SCAN_RC" = 0 ] && [ -n "$SCAN_SUM" ]; then
+  SCAN_SUM=$(grep -a '^FAIL=' "$SCAN_OUT/stdout.txt" 2>/dev/null | tail -1 | tr -d '\r')
+  # scan.sh 用 rc=1 表示「跑完了但有未裁决 FAIL」——扫描成功、结果不好，
+  # 台账必须照实记下来（有回归的 boot 恰恰是最该留记录的那一轮）。
+  if [ -n "$SCAN_SUM" ] && { [ "$SCAN_RC" = 0 ] || [ "$SCAN_RC" = 1 ]; }; then
     info "suvtz: $SCAN_SUM"
     info "suvtz: report $SCAN_OUT/scan_$BOOT8.txt"
     # app 域整段没测时给一条可操作提示。冷 boot 后设备常还在锁屏 (CE 存储不可用),
