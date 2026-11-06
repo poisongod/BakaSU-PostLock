@@ -1033,31 +1033,45 @@ if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
     # 那时 runas 段必然全是 INFO——如实告知, 不要让人对着 32 条 INFO 猜。
     # 并且默认挂一个后台补扫: 等设备真正解锁 (run-as 可用) 后自动重跑一次，
     # 把完整快照写进同一目录 + 更新台账 (scan.sh 全是只读探针, 不碰恢复结果)。
-    # 只在**设备确实锁着**时挂: 已经解锁却仍然 runas=no ⇒ 是「没有可调试载体」,
-    # 再等也等不来, 补扫纯属白跑 70 秒。
+    # 只在**确实锁着**时挂: 已经解锁却仍然 runas=no ⇒ 是「没有可调试载体」,
+    # 再等也等不来, 补扫纯属白跑。报告头没有该字段(旧版 scan.sh 产物)时按
+    # 「可能锁着」处理——后台补扫是无害的, 漏挂才会留下一份只测了 3 项的废快照。
     case "$SCAN_SUM" in
       *runas=no*)
         if grep -q 'device_locked=1' "$SCAN_OUT/scan_$BOOT8.txt" 2>/dev/null; then
-          info "suvtz: app 域本次未测 (设备锁屏未解锁) —— runas 段全 INFO 属预期, 不是扫描器坏了"
-          if [ "${SUVTZ_SCAN_DEFER:-1}" != "0" ]; then
-            DEFER_ARGS=(--outdir "$SCAN_OUT" --adb "$ADB_BIN" --boot8 "$BOOT8"
-                        --timeout "${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}"
-                        --interval "${SUVTZ_SCAN_DEFER_INTERVAL:-30}"
-                        --ledger "$SUVTZ_SCAN_BASE/history.tsv")
-            [ -n "${SERIAL:-}" ] && DEFER_ARGS+=(--serial "$SERIAL")
-            if [ -n "${SUVTZ_SCAN_PKG+x}" ]; then
-              if [ -n "${SUVTZ_SCAN_PKG:-}" ]; then DEFER_ARGS+=(--pkg "$SUVTZ_SCAN_PKG")
-              else DEFER_ARGS+=(--no-pkg); fi
-            fi
-            # 必须 setsid nohup + </dev/null: 普通 nohup & 会随调用方 shell 收尾被组杀。
-            setsid nohup bash "$REPO/tools/suvtz/wait_unlock_scan.sh" "${DEFER_ARGS[@]}" \
-              </dev/null >/dev/null 2>&1 &
-            info "suvtz: 已挂后台补扫 (解锁后自动重跑, 上限 ${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}s, 日志 $SCAN_OUT/defer.log; SUVTZ_SCAN_DEFER=0 关闭)"
-          else
-            info "suvtz: 解锁屏幕后单跑 tools/suvtz/scan.sh 可得完整快照"
-          fi
+          LOCK_STATE=locked
+        elif grep -q 'device_locked=0' "$SCAN_OUT/scan_$BOOT8.txt" 2>/dev/null; then
+          LOCK_STATE=unlocked
         else
-          info "suvtz: app 域本次未测 —— 设备已解锁但没有可调试载体 (runas 段记 INFO); 装一个 debuggable 包或用 SUVTZ_SCAN_PKG= 指定"
+          LOCK_STATE=unknown
+        fi
+        case "$LOCK_STATE" in
+          locked)
+            info "suvtz: app 域本次未测 (设备锁屏未解锁) —— runas 段全 INFO 属预期, 不是扫描器坏了"
+            ;;
+          unknown)
+            info "suvtz: app 域本次未测 —— 报告未标明锁屏状态 (疑似旧版产物), 按可能锁屏处理"
+            ;;
+          *)
+            info "suvtz: app 域本次未测 —— 设备已解锁但没有可调试载体 (runas 段记 INFO); 装一个 debuggable 包或用 SUVTZ_SCAN_PKG= 指定"
+            ;;
+        esac
+        if [ "$LOCK_STATE" != unlocked ] && [ "${SUVTZ_SCAN_DEFER:-1}" != "0" ]; then
+          DEFER_ARGS=(--outdir "$SCAN_OUT" --adb "$ADB_BIN" --boot8 "$BOOT8"
+                      --timeout "${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}"
+                      --interval "${SUVTZ_SCAN_DEFER_INTERVAL:-30}"
+                      --ledger "$SUVTZ_SCAN_BASE/history.tsv")
+          [ -n "${SERIAL:-}" ] && DEFER_ARGS+=(--serial "$SERIAL")
+          if [ -n "${SUVTZ_SCAN_PKG+x}" ]; then
+            if [ -n "${SUVTZ_SCAN_PKG:-}" ]; then DEFER_ARGS+=(--pkg "$SUVTZ_SCAN_PKG")
+            else DEFER_ARGS+=(--no-pkg); fi
+          fi
+          # 必须 setsid nohup + </dev/null: 普通 nohup & 会随调用方 shell 收尾被组杀。
+          setsid nohup bash "$REPO/tools/suvtz/wait_unlock_scan.sh" "${DEFER_ARGS[@]}" \
+            </dev/null >/dev/null 2>&1 &
+          info "suvtz: 已挂后台补扫 (解锁后自动重跑, 上限 ${SUVTZ_SCAN_DEFER_TIMEOUT:-10800}s, 日志 $SCAN_OUT/defer.log; SUVTZ_SCAN_DEFER=0 关闭)"
+        elif [ "$LOCK_STATE" != unlocked ]; then
+          info "suvtz: 解锁屏幕后单跑 tools/suvtz/scan.sh 可得完整快照"
         fi
         ;;
     esac
