@@ -49,16 +49,37 @@ step() { echo; echo "[$BOOT8 $(date +%T)] ==> $*"; }
 info() { echo "[$BOOT8 $(date +%T)] $*"; }
 
 # --- adb ---------------------------------------------------------------
-if [ -n "${ADB:-}" ]; then
-  ADB_BIN=$ADB
-elif command -v adb >/dev/null 2>&1; then
-  ADB_BIN=$(command -v adb)
-elif [ -x /mnt/c/WINDOWS/system32/adb.exe ]; then
-  ADB_BIN=/mnt/c/WINDOWS/system32/adb.exe
-else
-  die "adb not found (set \$ADB)"
+# 选择顺序：显式 $ADB > 真正**能看到设备**的那个 adb。
+# WSL 里常同时存在 /usr/bin/adb（Linux server，看不到 Windows adb.exe 的设备）
+# 与 /mnt/c/WINDOWS/system32/adb.exe；原先是「谁先找到用谁」，于是脚本会选到
+# Linux adb 然后死在 `no device`（实测）。现在按「列得到设备」来判，两者都能用
+# 时仍优先 PATH 里的那个。
+pick_adb() {
+  local cand="" c
+  if [ -n "${ADB:-}" ]; then printf '%s' "$ADB"; return 0; fi
+  for c in "$(command -v adb 2>/dev/null || true)" /mnt/c/WINDOWS/system32/adb.exe; do
+    [ -n "$c" ] && [ -x "$c" ] || continue
+    if "$c" devices 2>/dev/null | tr -d '\r' | awk 'NR>1 && $2=="device"' | grep -q .; then
+      printf '%s' "$c"; return 0
+    fi
+    [ -z "$cand" ] && cand=$c
+  done
+  printf '%s' "$cand"
+}
+ADB_BIN=$(pick_adb)
+[ -n "$ADB_BIN" ] || die "adb not found (set \$ADB)"
+ab() {
+  if [ -n "${SERIAL:-}" ]; then "$ADB_BIN" -s "$SERIAL" "$@"; else "$ADB_BIN" "$@"; fi
+}
+# 多设备时必须显式指定：WSL 里跑 Windows 的 adb.exe，ANDROID_SERIAL 不会被
+# 传进去（实测仍报 more than one device），只能靠 ab() 加 -s。
+# 本机常连着另一台 401e909a（PD2020，非本项目，勿动）——所以这条不是可选优化。
+if [ -z "${SERIAL:-}" ]; then
+  NDEV=$(ab devices 2>/dev/null | tr -d '\r' | awk 'NR>1 && $2=="device"' | grep -c . || true)
+  if [ "$NDEV" -gt 1 ]; then
+    die "检测到 $NDEV 台设备，请用 SERIAL=<序列号> 指定目标（错设备 401e909a 勿动）"
+  fi
 fi
-ab() { "$ADB_BIN" "$@"; }
 [ "$(ab get-state 2>/dev/null | tr -d '\r')" = device ] || die "no device"
 BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | cut -c1-8)
 [ -n "$BOOT8" ] || BOOT8='????????'
@@ -991,6 +1012,7 @@ if [ "${SUVTZ_SCAN:-1}" != "0" ]; then
   # 展开出来的词会被当成命令名 (实测: "ADB_BIN=/...: 没有那个文件或目录")。
   # 所以显式走 env。
   SCAN_ENV=(env ADB_BIN="$ADB_BIN" OUT="$SCAN_OUT")
+  [ -n "${SERIAL:-}" ] && SCAN_ENV+=(SERIAL="$SERIAL")
   [ -n "${SUVTZ_SCAN_PKG+x}" ] && SCAN_ENV+=(PKG="$SUVTZ_SCAN_PKG")
   # 不依赖 pipefail: rc 与最后一行分别从文件取, 旁路失败也能给出原因。
   if "${SCAN_ENV[@]}" bash "$REPO/tools/suvtz/scan.sh" -q \

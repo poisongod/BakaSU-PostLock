@@ -5195,3 +5195,19 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
   它挂在**恢复流程**上，即「每次冷 boot 跑一次 `postlock.sh`」= 「一份快照」。
   设计期 P2 的终局形态（app 自身代码自跑同一套探针）未做，判据仍是 `runas_app`
   近似。文档：`docs/suvtz-p0-baseline.md` §6.1。
+
+### 多设备与 adb 选择（2026-11-07，两台设备常同时在线的现实）
+
+- **本机常年挂着第二台设备 `401e909a`（PD2020，非本项目，勿动）**，于是裸
+  `adb` 一律报 `more than one device/emulator`。`tools/postlock.sh` 现支持
+  `SERIAL=<序列号>`（注入到 `ab()` 的 `-s`），不设且检测到 >1 台设备时直接
+  `die` 并提示——不再靠运气。
+- **`ANDROID_SERIAL=... <adb.exe>` 在 WSL 里不生效**（实测仍报多设备）：
+  WSL 调 Windows 二进制时不保证传环境变量，只能显式 `-s`。`tools/suvtz/scan.sh`
+  的 `pick_device` 一直走枚举 + 排除 `401e909a`，不受影响。
+- **adb 选择改为「能列出设备的那个」**（`pick_adb`）:原先 `command -v adb` 优先，
+  WSL 的 `/usr/bin/adb`（Linux server，看不到 adb.exe 的设备）会被选中 →
+  脚本死在 `no device`。现在按 `adb devices` 是否列出设备来判定，两者都能用时
+  仍优先 PATH；`ADB=<path>` 依旧覆盖一切。
+- 手动排障时注意 `adb.exe devices` 输出是 CRLF：`awk '$2=="device"'` 必须
+  先 `tr -d '\r'`，否则计数恒 0（本例假 0 已踩过一次）。
