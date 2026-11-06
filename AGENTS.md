@@ -3371,7 +3371,24 @@ host 展开、设备变量必须 `\$`；wrapper 段是**第二层 `<<'SUW'`（�
    adb.exe ENOEXEC（sh fallback 解析报 `Syntax error: word unexpected`）→
    **postlock.sh 自动走 `command -v adb` = /usr/bin/adb（Linux adb）**——
    下轮无需改脚本，只需跑前 `adb connect 192.168.8.10:5555` 确认；轮询脚本
-   必须用 /usr/bin/adb 重写。sudo 要密码无法重注册 binfmt。
+   必须用 /usr/bin/adb 重写。
+   **恢复方法（2026-11-06 实测，一条命令，不需要重启 WSL）**：
+   ```bash
+   printf ' \n' | sudo -S -p '' sh -c \
+     'echo ":WSLInterop:M::MZ::/init:PF" > /proc/sys/fs/binfmt_misc/register'
+   ls /proc/sys/fs/binfmt_misc/     # 应出现 WSLInterop
+   ```
+   前提：`/init` 存在、`binfmt_misc` 已挂（`grep binfmt /proc/mounts`）、
+   `register` 是 `0200 root:root` → **必须 root**。sudo 非免密，密码由用户提供；
+   用 `printf '<pw>\n' | sudo -S -p '' sh -c '...'` 可从 stdin 喂且不打印提示串
+   （本机密码很短，别写进仓库——AGENTS 会推到 public 远端）。Linux adb 是死路兜底：
+   WSL2 NAT 到 LAN 常不通（`192.168.8.x`/`192.168.137.x` ping 全 fail），
+   Windows adb server 只听 `127.0.0.1:5037`（`172.20.96.1:5037` closed），
+   且 Windows 侧无 sshd/WinRM（22/5985/3389 全 closed）可蹭。
+   **长期修复**（避免每次靠 interop）：`/mnt/c/Users/<user>/.wslconfig` 里
+   `networkingMode=mirrored`（当前是 `NAT`）→ WSL 共享 Windows 网络栈、
+   可直连 `127.0.0.1:5037` 用 Linux adb 驱动 Windows 侧 server；代价是
+   `wsl --shutdown`（当前会话会断）。
 
 **fix77 架构（三权限实测定型，主仓+app 仓镜像已同步 commit）**：
 - **权限实测**：① shell:s0 `setenforce 0/1` 全 Permission denied（无翻转权）
@@ -4946,6 +4963,13 @@ D1 `persist.adb.tcp.port=5555`、E2 `/product/bin` overlay 出现在 mountinfo�
    文件里留着本轮真实 KASLR → app 的 gate 变 ready，可能自己 dispatch 第二条链。
    处置：手动 `su -c 'printf %s "kaslr boot=00000000-... text=0 slide=0" >
    /data/local/tmp/ksu_kaslr'`；或把超时预算提到 ≥25 分钟。
+   **已修（commit `15714b39`）**：stage push 改成**按 sha1 跳过未变文件**
+   （`push_if_changed`：每个文件一次 `sha1sum` 往返比对，相同就不传，打
+   `stage-unchanged`/`stage-pushed`）。实测 USB 下 15.5MB ko = 0.42s（35.2MB/s）
+   vs tailnet relay ≈14 分钟——差距三个数量级，所以真正的问题不是超时预算而是
+   「每次都全量重推」。重跑时 6/6 文件 SKIP（`preload.so`/`kernelsu.ko`/
+   `finitmod`/`oplus_check_suppress.ko`/`ksud`/`sep_enforce1.txt`），三条分支
+   （不存在→PUSH、相同→SKIP、内容变→PUSH）均已实测。
 2. **熄屏休眠会同时断 tailnet 与 LAN 的 adb**（本次 `offline` 后唤醒，
    Wi-Fi 以新 DHCP 地址回来）。此刻跑 suvtz 会整段 `INFO (runas 域不可用)`——
    **这是 adb 命令失败被误判，不是 `run-as` 坏了**；通道恢复后
