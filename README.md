@@ -42,6 +42,25 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 > app 域自检这一个验收载体能力。恢复流程统一由 `tools/postlock.sh` 在冷 boot
 > 完成。详见 `AGENTS.md` 的「PostLock-Boot 冻结为 legacy」一节。
 
+### 观测面等价（SUVTZ，独立主题）
+
+提权成功之后，本机对第三方 app 的观测面应当与未提权的同型号设备等价。
+`tools/suvtz/scan.sh` 把这件事故成 35 条可执行探针（每条一次独立 adb 往返，
+保留 rc 语义），判定只有三种：`PASS` / `FAIL` / `INFO`——
+**探针自己跑不成（exec 被拒、命令缺失）记 `INFO`，绝不记 `PASS`**。
+
+```bash
+SERIAL=<serial> PKG=<debuggable 包名> tools/suvtz/scan.sh      # 扫描
+SERIAL=<serial> PKG=<包名> OUT=/tmp/suvtz tools/suvtz/scan.sh -q
+```
+
+- 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`
+- 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`
+- 已显式裁决接受、但**仍计 FAIL**（显示 `FAIL*`）的项：`tools/suvtz/accepted.tsv`
+
+2026-11-07 真机基线：`FAIL=5 PASS=30 INFO=0`（A1/A2/B4/B10/D1，均为
+「功能可用性 vs 可检测性」的取舍，尚未全部裁决）。
+
 ## 目录结构
 
 ```text
@@ -52,6 +71,8 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 │       └── ksud                 # 被嵌入 preload.so 的 KernelSU userspace binary
 ├── tools/
 │   ├── generate_target.py       # 本仓库统一 target.h 生成入口
+│   ├── postlock.sh              # 冷 boot 一键恢复（stage → 链 → restore → verify）
+│   ├── suvtz/                   # 观测面探针 + 已接受暴露面登记表
 │   └── vendor/                  # 从父目录同步的原始生成辅助脚本
 └── src/
     ├── main.c                   # exploit 主流程
