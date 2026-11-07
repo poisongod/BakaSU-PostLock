@@ -5161,6 +5161,11 @@ Tailscale 组件「安装 / 卸载」与实测安装态）。仍冻结的只有�
   共用同一 `body`）；Tailscale（登录 / **安装** / **卸载** / 立即重建通道）、
   adbd 实况（**系统组件，无安装/卸载**，只反映 `persist.adb.tcp.port`）、
   调试与诊断（导出链/接收器日志、pstore、panic 探针）。
+- **「不是控件、只是事实」的状态位用胶囊不用 Switch**（app 仓 `5892e01`）：
+  adbd 卡原先是 `Switch(enabled = false, checked = true)`，Material3 会把已开态
+  渲染成灰暗色 → 用户读到「文字说已启用，开关看着像关的」。改为只读
+  `StatusPill(ON/OFF)`（绿/灰胶囊 + 同色 15% 底）。教训：**状态指示一旦长得像
+  控件，视觉歧义是必然的**，且 `enabled=false` 无法表达「这是事实」。
 - **Tailscale 安装 / 卸载语义**：安装 = 把 `jniLibs/arm64-v8a/libtailscaled.so`
   （35MB，`packaging { jniLibs { useLegacyPackaging = true } }` 保证解压到
   nativeLibraryDir）+ 登录态 `files/ts.state` 铺到 `/data/local/tmp`，**不启动**；
