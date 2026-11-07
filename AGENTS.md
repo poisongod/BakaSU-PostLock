@@ -5336,10 +5336,11 @@ Direct Boot 改造后 `LOCKED_BOOT_COMPLETED` 即点火，**无需解锁**。
 `oppo-a96-5g`(100.94.61.56, offline) —— 删除需在 tailscale 管理台网页操作（无 CLI
 凭证），留待用户处理。
 
-### Direct Boot：锁屏不解锁也能上线（2026-11-07 晚，boot `630d58c4` / `887586cd`）
+### Direct Boot：锁屏不解锁也能上线（2026-11-07 晚，boot `630d58c4` / `887586cd` / `ca0bb40d`）
 
 **目标**：冷 boot 后不碰手机（保持 `RUNNING_LOCKED`）也能起 tailscaled、tailnet
-在线、tailnet adb 可达。**已达成**，两次独立 boot 实测。
+在线、tailnet adb 可达。**已达成**，三次独立 boot 实测（第三次 = 出货版
+vc80/1.80 APK 端到端）。
 
 **改法（app 仓 `2fdadf1` + `22e8f29`）**：
 
@@ -5401,3 +5402,16 @@ Direct Boot 改造后 `LOCKED_BOOT_COMPLETED` 即点火，**无需解锁**。
 「锁屏安装 → reboot → 锁屏验证」全程不打扰用户。锁屏态 `screencap` 返回 0 字节、
 `run-as` 不可用，诊断只能靠 `logcat`；`dumpsys user | grep -m1 "State:"` 是判断
 `RUNNING_LOCKED` 最可靠手段。
+
+**`pm install -r` 不会把包置为 stopped**（实测 `dumpsys package` → `stopped=false`
+`notLaunched=false`）——与 `am force-stop` 是两回事，所以**锁屏态升级 APK 安全**：
+装完 app 进程被 kill，但 `tailscaled` 是 shell 域进程（PPID 1）不受影响、通道不断，
+下次 `LOCKED_BOOT_COMPLETED` 照常投递。红线仍然只有 `am force-stop`。
+
+**出货版端到端（boot `ca0bb40d`，vc80/1.80，`RUNNING_LOCKED` 全程未解锁）**：
+`LOCKED_BOOT_COMPLETED` → app 进程 uid 10286 → `wan hosts: [240a:42cd:…,
+240e:57f:…]`（纯 IPv6，零 IPv4）→ `adb connected via 240a:…` →
+`wan attempt=1 -> ALIVE`（**首试即通**）→ `tailscaled 4920 2000 1`、
+`cgroup 5:freezer:/`、`wchan futex_wait_queue_me` → host status
+`100.112.16.16 boot android active; relay "lax"` → tailnet adb `uid=2000(shell)`
+`Enforcing`。
