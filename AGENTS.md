@@ -5415,3 +5415,75 @@ vc80/1.80 APK 端到端）。
 `cgroup 5:freezer:/`、`wchan futex_wait_queue_me` → host status
 `100.112.16.16 boot android active; relay "lax"` → tailnet adb `uid=2000(shell)`
 `Enforcing`。
+
+### 解锁后 CE→DE 迁移与「Tailscale 卡永远显示未运行」的根因修复（2026-11-08，boot `ca0bb40d`）
+
+**CE→DE 迁移验证通过**（direct-boot 改造欠的最后一笔，用户解锁一次后自查）：
+
+| 判据 | 实测 |
+|---|---|
+| DE prefs | `/data/user_de/0/com.postlock/shared_prefs/services.xml` = `postlock=false` + `tailscale=true`；`chain_params.xml` 同时迁到（05:46 时刻，即解锁后首次 app 进程启动） |
+| CE prefs | `/data/user/0/com.postlock/shared_prefs/` 空（文件被 `moveSharedPreferencesFrom` 移走） |
+| 解锁后 `BOOT_COMPLETED` | `onReceive action=android.intent.action.BOOT_COMPLETED` → `gate tick armed (alarm-clock 15min)` → `panic guard passed reason=reboot` → `skip: postlock switch=false` → `autostart wan: started`（链开关关闭是设计，恢复走 host `postlock.sh`） |
+| 三态开关回落 | 解锁后日志不再出现 `wan switch unreadable (CE sealed)`，直接 `wan ensure: ALIVE(已在跑)` |
+| IPv4 回归 | `wan hosts: [10.5.161.176, 240a:…, 240e:…]`（`loopHosts` 优先 IPv4 hairpin） |
+
+**「Tailscale 卡永远显示未运行（正在启动…）」根因**：`TailscaleRepo.probe()` /
+`alive()` 只连 `TS_SOCK = @postlock-tsd`（app uid 起的 daemon），而常态下常驻的
+是 `WanChannel.SOCK = @postlock-tsd-sh`（shell uid，HANS 免疫）——于是 app 每次
+探测都 `Connection refused` → `ts == null` → UI 文案落到「未运行（正在启动…）」，
+**即使 tailnet 明明 active**。logcat 实锤：
+`PostLockPrivate: probeTs failed: java.io.IOException: Connection refused`（每 4s 一条）。
+
+修复（app 仓）：
+
+1. `probe()` 拆出 `probeOn(sock)`，**双 socket 探测**：先 app 域，再 WAN 域；
+   WAN 域的 **403 是正结果**（daemon 活着但不给 app 写权限）→ `TsInfo.forbidden`
+   + 新增 `viaWan=true`。
+2. `alive()` = `socketAlive(TS_SOCK) || socketAlive(WanChannel.SOCK)`。
+3. 文案：`ts == null && WanChannel.isAlive()` → 「运行中（WAN 通道 · shell 域）」
+   （Success）；`ts.forbidden && viaWan` → 同文案。`canLogin` 仍为 false
+   （403 无写权限，登录只能 host 侧 `tailscale up`）。
+4. `tsDet` 的 socket/backend 行按 `viaWan` 显示真实 socket 名与
+   `n/a (403 · shell 域 daemon；host 侧 tailscale status 可见完整状态)`。
+5. **去噪**：probe 先用 `socketAlive()` 预检再发 HTTP——常态下不再每 4s 刷
+   `Connection refused`。
+
+**adbd 卡 `StatusPill` 视觉验收通过**（截图 `02_services.png`）：绿底绿字「ON」
+胶囊，不再是 Material3 下看着像关掉的灰暗 `Switch(enabled=false, checked=true)`。
+
+**SELinux 定案：app 域连不上 shell 域 abstract socket**（`socketAlive` 分别节流后
+实测，app 仓本轮）：
+```
+socketAlive @postlock-tsd:    java.io.IOException: Connection refused   ← 预期（app 域 daemon 常态不跑）
+socketAlive @postlock-tsd-sh: java.io.IOException: Permission denied     ← untrusted_app → shell 域 connectto 被拒（dontaudit 静默）
+```
+即 **`probeOn(WanChannel.SOCK)` 永远走不到**（连 connect 都失败，谈不上 403）。
+WAN 通道的健康证据只能靠 `WanChannel.isAlive()`（回环 adb pgrep 实测，5 min 缓存）
+——UI 文案因此走「旁证」分支，`tsDet` 显示
+`socket: @postlock-tsd-sh (abstract) · localapi 不可达，进程实测旁证` +
+`backend: n/a（进程在跑；host 侧 tailscale status 可见完整状态）`、
+`binary: /data/local/tmp/tailscaled（WAN · shell 域）`。
+**不要试图用 sepolicy 放行**（仅为读状态就要给 untrusted_app 连 shell socket，
+扩大攻击面且要 root 链注入）；403 分支保留给「daemon 由本 app uid 起」的场景。
+
+**两处噪音/开销修复（同一轮）**：
+
+1. **`socketAlive` 节流必须按 socket 分别计**：原先用单个全局时间戳（60s），
+   预期内的 `@postlock-tsd` 失败会吃掉配额 → 真实的 `@postlock-tsd-sh` 失败被
+   静默吞掉（就是这条掩盖了上面的 SELinux 结论一轮）。改
+   `ConcurrentHashMap<String, Long>`、每 socket 5 min。
+2. **`WanChannel.installed()` 加 60s 缓存**：它每次都 push 脚本 + exec 一整轮
+   回环 adb（每轮 2 条 `adb CNXN`），服务页 4s 刷新一次纯属浪费。缓存 `true/false`，
+   **`null`（测不出）不缓存**；`install()` 成功 / `uninstall()` 成功就地更新缓存。
+   实测效果：25s 内 `adb CNXN` 恒 2 条（= 60s TTL 的一次刷新），此前每 4s 一轮。
+
+**文案小坑**：`tsSubRaw` 已写「WAN 通道 · shell 域」时再追加 `WanChannel.wanTag()`
+的 ` · WAN✓` 是纯冗余且会被卡片宽度截成孤零零一个 `·` —— 改为含「WAN 通道」
+就不追加。
+
+**教训**：两套 socket 名（app 域 `postlock-tsd` / shell 域 `postlock-tsd-sh`）
+是 WAN 改造留下的双轨，任何「探测 daemon」的代码都必须同时认两者——否则
+UI 与真实状态长期背离，而日志里只有一行被当成常态噪音的 `Connection refused`。
+更进一步：**双 socket 探测在 app 域注定只有一半可达**（SELinux），所以「进程
+存在性」的权威判据必须是旁证（回环 adb 实测），socket 只用于「能读就多给点细节」。
