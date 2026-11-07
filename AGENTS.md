@@ -5281,3 +5281,55 @@ Tailscale 组件「安装 / 卸载」与实测安装态）。仍冻结的只有�
   仍优先 PATH；`ADB=<path>` 依旧覆盖一切。
 - 手动排障时注意 `adb.exe devices` 输出是 CRLF：`awk '$2=="device"'` 必须
   先 `tr -d '\r'`，否则计数恒 0（本例假 0 已踩过一次）。
+
+### Tailscale 持久通道验收通过（2026-11-07 晚，boot `a0691023`，未 root）
+
+**全链路实测闭环**：`reboot` → 用户解锁 → `BOOT_COMPLETED` → `BootReceiver`
+→ `AutoStartService` → `WanService` → `WanChannel.ensure` → shell 域
+`tailscaled`（uid 2000 / PPID 1）→ tailnet `boot` 上线 → **tailnet adb 可达**。
+
+判据（全部实测）：
+
+| 判据 | 实测 |
+|---|---|
+| `receiver.log` | `autostart begin (1 service(s))` / `autostart wan: started` / `autostart done` |
+| `private.log` | `wan ensure: ALIVE` / `wan attempt=1 -> ALIVE` / `wan bootstrap done -> ALIVE`（解锁后 **0.5 秒**内完成） |
+| daemon | `12059  2000  1 tailscaled --tun=userspace-networking --socket=@postlock-tsd-sh --state=/data/local/tmp/ts.state` |
+| HANS 免疫 | `/proc/12059/cgroup` = `freezer:/`（**不在 frozen cgroup**）；90s 后 pid 不变 |
+| tailnet | host `tailscale.exe status` → `100.112.16.16  boot  yang17107@  android  active; relay "hkg", tx 9868 rx 9132` |
+| **tailnet adb** | `adb connect 100.112.16.16:5555` → `connected`；`adb devices` 显示 **`device`（非 unauthorized）**；`adb -s 100.112.16.16:5555 shell id` → `uid=2000(shell) ... context=u:r:shell:s0` |
+
+**全部在未 root 状态下达成**——持久通道不依赖 root，只依赖两件跨 boot 持久物：
+`persist.adb.tcp.port=5555`（adbd 监听 `[::]:5555`）与 `/data/misc/adb/adb_keys`
+里的 app 公钥（回环 adb 拿 shell 会话）。两者都只在 root 窗口（`tools/postlock.sh`
+的 restore）里写入，恢复出厂后需要先跑一轮恢复链。
+
+**硬限制：冷 boot 后必须人工解锁一次**。`BootReceiver` 虽然声明了
+`LOCKED_BOOT_COMPLETED`，但 app **没有 `directBootAware="true"`**、`ts.state` 在
+CE 存储（`files/`）→ 锁屏未解锁时 `/data/user/0/com.postlock` 不可见、`BOOT_COMPLETED`
+不投递、`run-as` 直接 `couldn't stat`。解锁后 Android 补投 `BOOT_COMPLETED`，
+自启随即完成。若要「锁屏不解锁也上线」需 Direct Boot 改造（manifest 标记 +
+`createDeviceProtectedStorageContext()` 存 state + `LOCKED_BOOT_COMPLETED` 点火），
+**尚未实施**。
+
+**两个归因坑（本轮踩过）**：
+
+1. **查询时间早于广播 = 误判「没收到 BOOT_COMPLETED」**。解锁发生在 uptime ~200s，
+   `BOOT_COMPLETED` 实际在 22:37:58 才投递；我在 22:37:1x 查 `receiver.log`
+   看到空就下了「广播没到」的结论。**判据要用 logcat 交叉**：
+   `logcat -d | grep -i boot_completed | grep postlock` 能看到
+   `am_proc_start ... {com.postlock/com.postlock.BootReceiver}`，比文件 mtime 可靠。
+2. **`skip BOOT_COMPLETED (PostLock service disabled)` 不是故障**。那是
+   `postlock` 链开关（`services/postlock=false`）的分支日志，位于
+   `AutoStartService.start()` **之后**——后台服务点火与链开关完全解耦（设计如此：
+   HANS 在 boot 后 ~86s 冻结 app uid，WAN 首次部署必须抢在这个窗口内完成）。
+   看到这行就以为自启被挡会误判。
+
+**多设备现实（本轮起）**：`adb devices` 会同时列出 `401e909a`（PD2020，勿动）、
+`5bf5bf85`（USB）与 `100.112.16.16:5555`（tailnet）——**所有命令必须 `-s`**，
+`tools/postlock.sh` 用 `SERIAL=`、`tools/suvtz/scan.sh` 自动枚举排除。
+
+**节点名清理欠账**：tailnet 上还挂着历史节点 `node`(100.111.107.96, offline 7d) /
+`node-1`(100.80.116.111, offline 11m) / `postlock`(100.92.196.49, offline 8d) /
+`oppo-a96-5g`(100.94.61.56, offline) —— 删除需在 tailscale 管理台网页操作（无 CLI
+凭证），留待用户处理。
