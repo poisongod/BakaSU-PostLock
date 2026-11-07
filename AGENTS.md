@@ -5304,13 +5304,10 @@ Tailscale 组件「安装 / 卸载」与实测安装态）。仍冻结的只有�
 里的 app 公钥（回环 adb 拿 shell 会话）。两者都只在 root 窗口（`tools/postlock.sh`
 的 restore）里写入，恢复出厂后需要先跑一轮恢复链。
 
-**硬限制：冷 boot 后必须人工解锁一次**。`BootReceiver` 虽然声明了
-`LOCKED_BOOT_COMPLETED`，但 app **没有 `directBootAware="true"`**、`ts.state` 在
-CE 存储（`files/`）→ 锁屏未解锁时 `/data/user/0/com.postlock` 不可见、`BOOT_COMPLETED`
-不投递、`run-as` 直接 `couldn't stat`。解锁后 Android 补投 `BOOT_COMPLETED`，
-自启随即完成。若要「锁屏不解锁也上线」需 Direct Boot 改造（manifest 标记 +
-`createDeviceProtectedStorageContext()` 存 state + `LOCKED_BOOT_COMPLETED` 点火），
-**尚未实施**。
+**~~硬限制：冷 boot 后必须人工解锁一次~~ → 已解除（direct boot，见下节）**。
+当时的限制来自：app 没有 `directBootAware="true"`、`ts.state` 在 CE 存储（`files/`）
+→ 锁屏未解锁时 `/data/user/0/com.postlock` 不可见、`BOOT_COMPLETED` 不投递。
+Direct Boot 改造后 `LOCKED_BOOT_COMPLETED` 即点火，**无需解锁**。
 
 **两个归因坑（本轮踩过）**：
 
@@ -5333,3 +5330,69 @@ CE 存储（`files/`）→ 锁屏未解锁时 `/data/user/0/com.postlock` 不可
 `node-1`(100.80.116.111, offline 11m) / `postlock`(100.92.196.49, offline 8d) /
 `oppo-a96-5g`(100.94.61.56, offline) —— 删除需在 tailscale 管理台网页操作（无 CLI
 凭证），留待用户处理。
+
+### Direct Boot：锁屏不解锁也能上线（2026-11-07 晚，boot `630d58c4` / `887586cd`）
+
+**目标**：冷 boot 后不碰手机（保持 `RUNNING_LOCKED`）也能起 tailscaled、tailnet
+在线、tailnet adb 可达。**已达成**，两次独立 boot 实测。
+
+**改法（app 仓 `2fdadf1` + `22e8f29`）**：
+
+- **manifest 只给三个组件加 `directBootAware="true"`**：`BootReceiver`、
+  `platform.AutoStartService`、`wan.WanService`。**不加在 `<application>` 上**
+  ——否则 `ChainService` 等链相关组件也会在锁屏被拉起，而链在 CE 封存时必失败、
+  失败残留还可能在解锁后引爆（fail-amplifier 家族）。
+- **`BootReceiver` 的 `LOCKED_BOOT_COMPLETED` 分支只点火服务后 return**：
+  不查 gate / 不读开关 / 不跑 panic guard——那些都是链的事，锁屏期没意义。
+- **新增 `platform/BootLog.kt`**：DE + CE 双目标写日志，任一成功即可，各自 64 KiB
+  轮转，都失败静默回落 `Log`。`DiagLog`/`PrivateLog` 全部委托它。
+- **新增 `platform/Storage.kt`**：`de(ctx)` / `prefs(ctx,name)` 返回 **DE prefs**，
+  带一次性 CE→DE `moveSharedPreferencesFrom` 迁移；迁移失败（锁屏 CE 封存）**不记入
+  `migrated` 集合**，解锁后重试。`prefs()` 的裸调用同时充当「触发迁移」。
+- **三态开关 API（关键）**：`flagOrNull(ctx,name,key): Boolean?` —— DE 有 key 用之，
+  否则试 CE，CE 也封存则返回 **`null`**；`setFlag(...)` 双写 DE（权威）+ CE（镜像）。
+  **`null` 绝不能当「用户关掉了」**：升级后第一次锁屏必然是「DE 空 + CE 封存」，
+  按 false 处理会让锁屏自启永远起不来。`WanChannel.ensure` 对 `null` 打
+  `wan switch unreadable (CE sealed) -> continue on install evidence` 并继续部署
+  （部署脚本对缺失文件幂等）。UI 侧（`MainViewModel`/`ServicesViewModel`）读用
+  `flagOrNull(...) ?: <默认>`、写用 `setFlag`。
+- **锁屏期禁跑链**：`BootReceiver.chainAllowed(ctx) = UserManager.isUserUnlocked`
+  （探测异常 fail-open，与 panic guard 同策略）。`gateTick` 与 `onReceive` 的链路径
+  都先过它，锁屏时打 `chain path skipped: user locked (direct boot)` /
+  `tick: user locked (direct boot) -> skip chain` 后 return。**`LAUNCH` 调试后门
+  同样不破例**——锁屏跑链没有任何收益。
+- **`TsPrefs.stateFile` 保持 CE**：锁屏读不到 → 打 `wan hostname: state-failed`，
+  不影响部署（`/data/local/tmp/ts.state` 是部署时复制的副本，里面 Hostname 已是
+  `boot`，所以节点名照旧正确）。
+
+**判据（boot `630d58c4`，全程 `RUNNING_LOCKED` 未解锁）**：
+
+| 判据 | 实测 |
+|---|---|
+| 进程 | `4816 10286 823 com.postlock`（锁屏期 app 进程已起） |
+| 广播 | logcat `LOCKED_BOOT_COMPLETED: autostart only (CE sealed)` |
+| 开关三态 | `wan switch unreadable (CE sealed) -> continue on install evidence` |
+| 首次尝试 | `attempt=1` 网络未就绪 FAIL（`100.71.26.6 ENETUNREACH`）→ 30s 后 `attempt=2 -> ALIVE` |
+| daemon | `5301 2000 1 tailscaled`，`cgroup 5:freezer:/`（**HANS 免疫**）、`wchan futex_wait_queue_me`、90s+ pid 不变 |
+| tailnet | host `tailscale.exe status` → `100.112.16.16  boot  android  active; direct [240e:...]:41277` |
+| **tailnet adb** | `adb connect 100.112.16.16:5555` → `device` → shell `uid=2000(shell)`，同时 `dumpsys user` 仍 `RUNNING_LOCKED` |
+
+**第二轮（boot `887586cd`，换了个「纯 IPv6」网络）暴露并修掉一个真问题**：
+`AdbChannel.loopHosts()` 原先只枚举非 loopback **IPv4**，末尾再追加硬编码的
+`100.71.26.6`（历史节点 `node` 的 IP，早已离线）。本 boot 设备**零 IPv4、只有两个
+全局 IPv6**（`240a:42cd:…` / `240e:57e:…`）→ 旧代码必败。改为：全部 IPv4 在前
+（hairpin，源地址非 127.x 故 adbd 不拒 AUTH）→ 全局 IPv6 在后（adbd 监听 `[::]:5555`
+双栈），link-local 需 scope id 故跳过，`LinkedHashSet` 去重，**删掉硬编码 tailnet IP**。
+实测 `wan hosts: [240a:42cd:…:5384, 240e:57e:…:518]` → `adb connected via 240a:…`
+→ `attempt=1 -> ALIVE`。教训：**「hairpin 走本机 IP」不能假设 IPv4 一定存在**，
+移动网络纯 IPv6 是真实场景。
+
+**仍待验证（需用户解锁一次）**：解锁后 CE→DE 迁移是否成功（DE 侧
+`/data/user_de/0/com.postlock/shared_prefs/services.xml` 出现 `tailscale`/`postlock`
+键），以及迁移完成后 `flagOrNull` 是否回落到 CE 真实值。锁屏期 logcat 里的
+`prefs migrate deferred: services (IllegalStateException)` 是预期日志（会重试）。
+
+**操作提示**：`pm install` 在锁屏态可用（PM 是系统服务），`am start` 需要解锁 →
+「锁屏安装 → reboot → 锁屏验证」全程不打扰用户。锁屏态 `screencap` 返回 0 字节、
+`run-as` 不可用，诊断只能靠 `logcat`；`dumpsys user | grep -m1 "State:"` 是判断
+`RUNNING_LOCKED` 最可靠手段。
