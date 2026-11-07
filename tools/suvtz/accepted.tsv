@@ -18,6 +18,6 @@
 #   下列四项成本都高于收益或不可行, 登记为已接受 (判定仍 FAIL*)。
 #
 A1	2026-11-07	不立项(保留包名 com.resukisu.resukisu)。套壳需换证书重签(manager_sign.h 加自签 hash+size 并重编 ko)+ ksud 带 KSU_PACKAGE_NAME 重编, 且此后无法覆盖安装上游新版; 包名可见只给出「存在性」信号, 不泄露 root 能力。若将来立项, 删本行即可。
-A2	2026-11-07	保留 com.postlock.boot(SUSFS app 域自检唯一载体: 隐藏门控是 TIF_PROC_UMOUNTED+uid>=10000, 只有 zygote fork 的真 app 进程可观测) 与 com.postlock.privateapp(私有包对照组)。两者是验收基础设施, 卸载会削弱后续回归能力; 包名可见的影响同 A1。
+A2	2026-11-07	保留 com.postlock(2026-11-07 单应用合并后唯一载体: com.postlock.boot 与 com.postlock.privateapp 已卸载, 自检载体职责转入 com.postlock)。它是 SUSFS app 域自检唯一载体: 隐藏门控是 TIF_PROC_UMOUNTED+uid>=10000, 只有 zygote fork 的真 app 进程可观测, 卸载会削弱回归能力; 包名可见的影响同 A1。探针枚举数由 2 变 1(数值变更已重新裁决, 结论不变)。
 B4	2026-11-07	/product/bin/su 必须对任意被授予 app 可 exec, 属主只能是 root; SUS_PATH 隐藏会把被授予 app 一起隐藏(su 直接失效), 改走 ksud debug su 会放大 execve 上报面。保留 overlay, 「名字可见」属容器格式暴露, 内容由 ksud 侧校验。
 D1	2026-11-07	persist.adb.tcp.port=5555 是无线 adb / WAN 通道的 bootstrap 前置。属性服务拒 setprop(即使 Permissive), 只能预写 /data/property 且下次 boot 生效 —— 「按需临时开」不可行。当前设备无 Wi-Fi(仅 rmnet), USB 是唯一通道; 保留作为将来出现 Wi-Fi/tailnet 时的救回通道。

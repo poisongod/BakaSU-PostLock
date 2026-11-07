@@ -21,9 +21,9 @@
 
 ## 恢复步骤（通道一恢复立即执行）
 1. `adb.exe install -r app-debug.apk`（vc42）→ **am start 显式看输出**（组件确认见 manifest）
-   → `run-as com.postlock.boot cat shared_prefs/services.xml` 确认 `tailscale=true`。
+   → `run-as com.postlock cat shared_prefs/services.xml` 确认 `tailscale=true`。
 2. 查 receiver.log 定案上次 BOOT_COMPLETED 到没到：
-   `run-as com.postlock.boot tail -30 files/postlock/receiver.log`。
+   `run-as com.postlock tail -30 files/postlock/receiver.log`。
 3. **fresh reboot**：`adb reboot` → 轮询撞 autostart 窗口（app-uid daemon 上线 10-86s）
    → `adb.exe connect 100.71.26.6:5555`（host reconnect_loop 已挂 4h）。
 4. fresh boot + 息屏下跑 `ADB=/tmp/opencode/abw.sh bash tools/postlock.sh`

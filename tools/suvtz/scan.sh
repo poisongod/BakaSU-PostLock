@@ -21,7 +21,7 @@
 #   SERIAL=1.2.3.4:5555 tools/suvtz/scan.sh
 #   PKG=<包名> tools/suvtz/scan.sh       # runas 近似域的载体（需 debuggable）
 #                                        # 不设 = 自动取已安装的验收载体
-#                                        # （com.postlock.boot > com.postlock.privateapp）
+#                                        # （com.postlock > com.postlock.boot > ...privateapp）
 #                                        # PKG= (空串) = 强制不用载体、runas 段记 INFO
 #                                        # （PostLock-Boot 已冻结，但仍是 SUSFS
 #                                        #  app 域自检载体，装了就默认用它）
@@ -95,7 +95,7 @@ echo "device: $S" >&2
 # 自动取第一个**已安装**的验收载体；都没有就退化成「无载体」(整段 INFO)。
 # 注意 run-as 依赖 CE 存储：锁屏/休眠时即使装了也会失败，这是环境限制不是缺陷。
 if [ "$PKG_AUTO" = 1 ]; then
-	for c in com.postlock.boot com.postlock.privateapp; do
+	for c in com.postlock com.postlock.boot com.postlock.privateapp; do
 		if "$ADB" -s "$S" shell "pm list packages" 2>/dev/null \
 			| tr -d '\r' | grep -qx "package:$c"; then
 			PKG=$c

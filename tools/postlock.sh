@@ -452,7 +452,7 @@ if [ ! -x /product/bin/su ]; then
   # v27 (2026-11-05): the old non-root branch exec'd $TMP/ksud directly,
   # which only ever worked for shell (uid 2000 owns that file).  An app
   # domain cannot exec shell_data_file at all -- measured
-  # 'run-as com.postlock.boot /product/bin/su -c id' ->
+  # 'run-as com.postlock /product/bin/su -c id' ->
   # "/data/local/tmp/ksud: can't execute: Permission denied" even at DAC
   # 0711, i.e. the denial is MAC (untrusted_app has no execute on
   # shell_data_file), so every granted app's 'su' was dead.

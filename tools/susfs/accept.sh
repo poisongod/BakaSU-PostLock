@@ -11,7 +11,8 @@
 # TIF_PROC_UMOUNTED（只有 zygote fork 出来的 app 才有）。shell / run-as / su
 # 看到的永远是未隐藏的世界（见 platform/SusfsSelfTest.kt 头注释）。
 #
-# 载体：PKG 默认 com.postlock.boot。该 app 自 2026-11-06 起冻结为 legacy，但保留
+# 载体：PKG 默认 com.postlock（2026-11-07 起单一 app；legacy 载体 com.postlock.boot
+# 已卸载，如需可 PKG=com.postlock.boot 覆盖）。
 # SusfsSelfTest 这一个能力——上面的限制没有变，它是「隐藏对 app 真生效」的唯一
 # 证据来源。换载体只需改 PKG= 且实现同款 SUSFS_SELFTEST 广播契约。
 #
@@ -35,7 +36,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 AB="${AB:-$HERE/adb1.sh}"
 OUT="${OUT:-/tmp/opencode/susfs/out}"
-PKG="${PKG:-com.postlock.boot}"
+PKG="${PKG:-com.postlock}"
 
 SUS_SRC=/data/local/tmp/sus_src
 SUS_DST=/data/local/tmp/sus_dst
@@ -229,7 +230,7 @@ selftest() {
 	f="/data/user/0/$PKG/files/susfs_selftest_$tag.txt"
 	out="$OUT/selftest_$tag.txt"
 	RR "rm -f $f" >/dev/null 2>&1
-	d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
+	d "am broadcast -n $PKG/.BootReceiver -a com.postlock.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
 		>/dev/null 2>&1
 	for i in $(seq 1 60); do
 		file_exists "$f" && break
@@ -244,7 +245,7 @@ selftest() {
 		# 必须重发一次：首次广播若落在 stopped 包上会被丢弃且不补投，
 		# 光 am start 只解锁状态，不会再触发那一发已丢的广播。
 		RR "rm -f $f" >/dev/null 2>&1
-		d "am broadcast -n $PKG/.BootReceiver -a com.postlock.boot.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
+		d "am broadcast -n $PKG/.BootReceiver -a com.postlock.SUSFS_SELFTEST --es tag $tag $ST_EXTRAS" \
 			>/dev/null 2>&1
 		for i in $(seq 1 40); do
 			file_exists "$f" && break
@@ -320,8 +321,8 @@ printf 'boot: %s\n' "$BOOT"
 # app 进程若早于模块加载就已存在，就永远没有这个标记 —— 验收会假失败。
 # 所以先把旧进程杀掉，让下面第一次广播冷启动出一个带标记的新进程。
 # 注意用 kill -9 而不是 am force-stop：后者会把包置 stopped，害死 BOOT_COMPLETED。
-# 进程名要按 comm 的 15 字符上限截断：com.postlock.boot(17) 在 /proc/pid/stat 里
-# 是 com.postlock.bo，用全名 pidof 永远查不到（toybox pidof 比的是 comm）。
+# 进程名要按 comm 的 15 字符上限截断（com.postlock=12 不触发，但换长包名/
+# 换载体时会）：/proc/pid/stat 的 comm 被截到 15 字符，toybox pidof 比的就是它。
 APP_COMM=${PKG:0:15}
 # pidof 输出可能是多行（多进程）：把换行换成空格，交给 kill 一次性处理；
 # 全用 -d 会把两个 pid 粘成一个不存在的数字。

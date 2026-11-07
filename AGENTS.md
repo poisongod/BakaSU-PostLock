@@ -729,8 +729,8 @@ BOOT_COMPLETED 在链 gate 之前先读上次启动原因，命中 panic 类 →
   shell 实证：`kernel_panic,null,1792534818`——本设备 10-21 09:40 真实一次
   panic 重启）。`looksLikePanic` 匹配 panic/oops/watchdog/crash/brownout；
   **fail-open**（reason 读不到不拦，健康开机必须照常自启）。
-- **探针（免重启验证检测路径）**：`am broadcast -n com.postlock.boot/
-  .BootReceiver -a com.postlock.boot.LAUNCH --ez panicCheck true` → logcat
+- **探针（免重启验证检测路径）**：`am broadcast -n com.postlock/
+  .BootReceiver -a com.postlock.LAUNCH --ez panicCheck true` → logcat
   `PostLockBoot: panic check: ... => verdict='...' panic=...`（只检测：不切
   开关、不触发链）。实测正常 boot：`verdict='reboot' panic=false` ✓。
 - **待实战确认**：oplus 单值 prop 在 panic 时的形态未直接实证（history 不可
@@ -739,7 +739,7 @@ BOOT_COMPLETED 在链 gate 之前先读上次启动原因，命中 panic 类 →
   说明 oplus 写了不含 panic 字样的 token，按实测值扩 `looksLikePanic`。
 - 显示层 `stateLabel` 收进 `PostLock`（Main/Services 共用），新增
   PANIC_GUARD 文案分支；状态文件 = app files `loopback_state.txt`
-  （`run-as com.postlock.boot cat files/loopback_state.txt` 可读，模拟测试
+  （`run-as com.postlock cat files/loopback_state.txt` 可读，模拟测试
   写完记得恢复真实值）。
 
 ### 链三连败根因修复 + v8 动态闭环 + ocsk 固化（2026-10-19 第四轮，root=1）
@@ -1638,8 +1638,8 @@ reboot → +61s `tailscale autostart fired` → daemon 9323 `Starting -> Running
 <app> o-kill(40)` → `PhantomProcessRecord {9307:<app>:libtailscaled.so} died`
 ——OPPO 清后台杀主进程，tailscaled 作为 phantom 连带（与 round10 phantom trim
 同族）；HANS 亦观察到冻结 `[app, tailscaled]` 后 `unfreeze ... exitFF`。
-**手动 tick 测试法**：`am broadcast -n com.postlock.boot/.BootReceiver -a
-com.postlock.boot.TS_KEEPALIVE` → rlog 应出 `dead -> restarting` +
+**手动 tick 测试法**：`am broadcast -n com.postlock/.BootReceiver -a
+com.postlock.TS_KEEPALIVE` → rlog 应出 `dead -> restarting` +
 `armed (exact+idle 15min)`（v1.37 标志文案）。
 通道事实更新：LAN `192.168.8.10` 会 `No route to host`（用户「常驻」仍出现，
 别当唯一通道）；reboot 后 tailnet ~132s 恢复（官方 app 临时通道 + 我们 autostart
@@ -4843,7 +4843,7 @@ HEAD/rev-list 未动，无漂移）。
 
 - **进程必须晚于模块加载启动**：flag 只在 setresuid 那一次打，模块没加载时进程照常
   启动但不带标记 → 之后无论怎么 `add_sus_path` 都不会隐藏。验收脚本第一件事是
-  `kill -9 $(pidof com.postlock.boot)` 让广播冷启动新进程（**绝不能用 `am force-stop`**，
+  `kill -9 $(pidof com.postlock)` 让广播冷启动新进程（**绝不能用 `am force-stop`**，
   那会把包装成 stopped、害死下一次 BOOT_COMPLETED）。
 - flag 是 thread flag，但 `dup_task_struct` 整份复制 task_struct → 主线程打标后新建的
   线程全部继承，所以自检放在广播的 worker 线程里跑没问题。
@@ -5140,6 +5140,52 @@ app 都行，换载体只改 `accept.sh` 的 `PKG=`。
 **不要做的**：不要删仓（`poisongod/PostLock-Boot` 保持私有、只读参考）、
 不要删设备上的 `com.postlock.boot`（SUSFS 自检仍靠它）、不要重新 bump app 版本
 或同步 assets。
+
+### 单应用重构：`com.postlock`（2026-11-07，部分解冻）
+
+**用户裁决**：`com.postlock.boot`（公共版）与 `com.postlock.privateapp`（私有版）
+合并为**单应用** `com.postlock`，底部 4 tab（状态 / 记录 / 服务 / 设置）；
+同时**部分解冻**——WAN/Tailscale 通道与服务管理恢复在维护（服务 tab 提供
+Tailscale 组件「安装 / 卸载」与实测安装态）。仍冻结的只有「开机自启跑恢复链」
+与「APK 内嵌 payload」两块（恢复统一走 host `tools/postlock.sh`）。
+
+- **改名范围**：源码包 `com.postlock.boot` → `com.postlock`（含 Gradle
+  `namespace`/`applicationId`）；WAN 源码独立子包 `com.postlock.wan`（自带精简
+  `platform/` + `ui/components` + `ui/theme` 副本，不与主包合并）；app 名
+  `@string/app_name` = `PostLock`；`private-app/` 整个模块删除（`git rm -r`，
+  `settings.gradle.kts` 不再 include）。
+- **广播 action / 组件全变**：`com.postlock.LAUNCH` / `com.postlock.SUSFS_SELFTEST`
+  / `com.postlock.TS_KEEPALIVE` / `com.postlock.WAN_TEST`；组件
+  `com.postlock/.BootReceiver`、`.MainActivity`、`.ServicesActivity`。
+- **服务 tab**：`ServicesScreen(embedded = true)` 双宿主（独立 Activity 与底部 tab
+  共用同一 `body`）；Tailscale（登录 / **安装** / **卸载** / 立即重建通道）、
+  adbd 实况（**系统组件，无安装/卸载**，只反映 `persist.adb.tcp.port`）、
+  调试与诊断（导出链/接收器日志、pstore、panic 探针）。
+- **Tailscale 安装 / 卸载语义**：安装 = 把 `jniLibs/arm64-v8a/libtailscaled.so`
+  （35MB，`packaging { jniLibs { useLegacyPackaging = true } }` 保证解压到
+  nativeLibraryDir）+ 登录态 `files/ts.state` 铺到 `/data/local/tmp`，**不启动**；
+  卸载 = 停 daemon + 删 `tailscaled`/`ts.state`/`tsd.log`/`wan_deploy.sh` +
+  把 `services/tailscale` 置 false（app 私有 `files/ts.state` 保留，重装复用登录态）。
+- **tailnet 节点名固定 `boot`**：`tailscaled` 1.105.0 无 `--hostname`，改 state
+  文件（`_current-profile` → prefs JSON 的 `Hostname` 字段 → 重新 base64 →
+  原子 tmp+rename 0600）；daemon 已在跑时改走 localapi
+  `PATCH /localapi/v0/prefs {"Hostname":"boot","HostnameSet":true}`
+  （**同 uid 才 PermitWrite**——shell 域 daemon 对 app 只读 403，故只能先改
+  state 再重启 daemon）。
+- **WanChannel 部署顺序（踩过的坑）**：先 `pkill` 旧 daemon（等 8s，`pkill -9`
+  兜底）→ 再复制二进制 / state → 最后启动。旧顺序会让**在跑的 daemon 用内存里的
+  旧 prefs 覆盖新 state**，hostname 迁移永远不生效。
+- **deviceIdle / standby bucket**：新装 app 的 uid 会被 OPPO 置 `REJECT_ALL` 掐网
+  （tailnet 连接失败），必须 `cmd deviceidle whitelist +com.postlock` +
+  `am set-standby-bucket com.postlock active` + 一次前台启动才恢复。
+- **`pm install` 禁止带 `-g`**：OPPO `com.oplus.appdetail` 拦截后重装会因缺
+  `INSTALL_GRANT_RUNTIME_PERMISSIONS` 整次失败（`installApp ... error`），
+  去掉 `-g` 即 `Success`（运行时权限在设置里手动给）。
+- **A2 裁决随之更新**：枚举包数 2 → 1（`com.postlock`），理由见
+  `tools/suvtz/accepted.tsv`；`tools/suvtz/scan.sh` 载体候选顺序
+  `com.postlock` > legacy 两包（旧包卸载后自动跳过）。
+- **历史记录不回改**：本文件上文 2026-10 各轮里的 `com.postlock.boot` /
+  `org.postlock.boot` 是当时实名，保持原样；按新包名操作的只有当前 SOP 段。
 
 ### SUVTZ 收尾机制：accepted.tsv 与 SUVTZ_KASLR_MODE（2026-11-07）
 
