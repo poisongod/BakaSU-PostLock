@@ -5678,3 +5678,70 @@ enabled=0 hidden=false suspended=false、crash buffer 无记录、
   不是故障。
 - **`pm install -r` 在锁屏态可用且安全**（PM 是系统服务）：装完 app 进程被 kill，
   但 `tailscaled` 是 shell 域进程（PPID 1）不受影响、通道不断。
+
+### ShellChain 端到端首通（2026-11-08，boot `581a1272`，vc83/1.83）与 restore.log DAC 缺陷
+
+**结果**：app 自身派发（`am broadcast … com.postlock.LAUNCH`）→ `BootReceiver`
+`gate pass isLaunch=true` → `ChainService` `MODE_SHELL` FGS → `ShellChain`
+探测回环 adb（`uid=2000`）→ `StageDeploy` `DEPLOY changed=1 skipped=10 failed=0`
+（`preload.so` 被 sha1 比对自动补回）→ quiet gate `quiet after 180s（load=4.93）`
+→ detached 起链 → **链 42 秒 `done=1 root=1` ×4 + `route success=1` + 干净 exit
+tail** → `restore.sh`（`kernel:s0` uid0）→ `SELINUX-STRICT-OK enforce=1` +
+`POSTLOCK-RESTORE-OK`（21:36:54，链退出后 18s）→ 模块 `kernelsu` /
+`oplus_check_suppress` 加载（`kernelsu_hotload_init` 按设计不加载）→
+`ksu_debug_manager_appid=10277` == `pm` 实读 → **蓝卡「工作中 Built-in 越狱模式」
++ SuSFS v2.3.0 + 驱动 (35222/6) == 管理器 (35252/6) 无红条**。
+
+**同时暴露一个真实缺陷（已修）**：`ShellChain` 判 `FAIL:restore 未完成（无
+POSTLOCK-RESTORE-OK）`，而 restore 其实 18 秒前就成功了。根因 =
+**`postlock_restore.log` 的 DAC 权限**：该文件由**先到者**创建——app 路径下
+shell 域 trigger 先 `rm -f` 再让 restore 写，但实测落到 `-rw------- shell shell`；
+app uid 10xxx 过得了 MAC（`shell_data_file` 有 read）却过不了 DAC（0600）→
+本地 `File` 直读恒空 → `sawRestore` 永远 false → 150s 宽限到点误判失败。
+
+**双层修复**：
+
+1. `tools/postlock.sh` heredoc：`exec >> …postlock_restore.log` 之后立刻
+   `chmod \${SUVTZ_CHAIN_LOG_MODE:-$CHAIN_LOG_MODE} /data/local/tmp/postlock_restore.log`
+   ——restore 是 root，能放开 shell 属主文件的权限；host 路径不传该 env 时仍是
+   0600（行为不变）。生成物 `assets/postlock/restore.sh` 32598B / 514 行 /
+   sha1 `7fa5acb8`（`tools/gen_app_restore.sh` + `tools/check_restore_heredoc.sh` OK）。
+2. `ShellChain.kt`：新增 `readRestoreViaAdb(ctx)`，观察循环每 15s（`!sawRestore`
+   时）走一次 `adb cat` 兜底，终态判定前再兜一次。**不依赖文件权限**，即使
+   将来权限策略再变也不会误判。
+
+`PAYLOAD_VERSION` → `v30-restore-log-mode-20261108`，versionCode 84 / 1.84。
+主仓 `34acf3e8`、app 仓 `d75b1ce`。
+
+**教训（通用）**：**「链成功 + restore 成功」与「app 侧判定成功」是两个独立
+事实**，观察者读不到证据时结论必须是「读不到」而不是「没发生」。任何跨 uid
+读取（app 读 shell/root 产物）都必须假定 DAC 会挡，兜底通道走 adb 而不是
+放宽权限——权限能改但不可靠（谁先创建文件取决于时序）。
+
+### 设备端自行解锁与 HANS 前台要求（2026-11-08 实测）
+
+**自行解锁（用户已授权设备端用途，PIN `507926`）**：
+
+```bash
+adb shell 'input keyevent KEYCODE_WAKEUP; sleep 1; \
+  input swipe 540 1900 540 500 250; sleep 2; \
+  input text 507926; sleep 1; input keyevent KEYCODE_ENTER'
+# 判据：dumpsys user | grep -m1 "State:"  -> RUNNING_UNLOCKED
+```
+
+必须在**一条命令里连续执行**（屏幕几秒内会自动熄灭）。解锁前
+`dumpsys user` 是 `RUNNING_LOCKED`，此时 `run-as` 不可用（CE 封存）。
+
+**HANS 在屏幕 Awake 但 app 不在前台时仍冻结 app**（本轮关键发现）：
+`/proc/<pid>/cgroup` 显示 `5:freezer:/frozen`；`monkey -p com.postlock -c
+android.intent.category.LAUNCHER 1` 之后变 `5:freezer:/thaw`。
+**`ShellChain` 的 quiet gate 循环与观察循环都在 app 进程内**——被冻即停摆
+（表现为状态长时间不推进、日志无新增，但 adb/链都正常）。所以 app 驱动链
+的验证期必须：
+
+- 保持 `MainActivity` 前台（每轮 `monkey` 拉一次）；
+- `svc power stayon true` 防熄屏（熄屏会连带冻结 + 断 tailnet）；
+- 判据别只看 app 日志——先查 `cgroup` 的 `freezer` 行排除冻结。
+
+注意这与「HANS 在 boot 后 ~86s 冻结 app uid」是同一机制的两个场景：**前台
+可见 = 免疫**，与屏幕是否点亮无关（Awake 不等于前台）。
