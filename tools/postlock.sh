@@ -231,6 +231,11 @@ mkdir -p "$(dirname "$RESTORE_LOCAL")"
 cat > "$RESTORE_LOCAL" <<EOF
 #!/system/bin/sh
 exec >> /data/local/tmp/postlock_restore.log 2>&1
+# The file is created by whoever runs first (the shell-domain trigger pre-creates
+# it as uid 2000 / 0600 in the app-driven path), and restore itself is root so it
+# can widen the mode. Without this the app's observer (uid 10xxx) cannot DAC-read
+# the marker and mis-reports FAIL on an otherwise successful run (2026-11-08).
+chmod \${SUVTZ_CHAIN_LOG_MODE:-$CHAIN_LOG_MODE} /data/local/tmp/postlock_restore.log 2>/dev/null || true
 BOOT8=\$(cut -c1-8 /proc/sys/kernel/random/boot_id 2>/dev/null || echo "????????")
 # fix76: log to fd2 -- fd1 (the exec redirect) is fully buffered and a
 # non-gentle exit drops the tail (redo34's log ended mid "probing" with no
