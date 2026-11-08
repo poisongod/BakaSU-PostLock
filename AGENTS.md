@@ -5745,3 +5745,32 @@ android.intent.category.LAUNCHER 1` 之后变 `5:freezer:/thaw`。
 
 注意这与「HANS 在 boot 后 ~86s 冻结 app uid」是同一机制的两个场景：**前台
 可见 = 免疫**，与屏幕是否点亮无关（Awake 不等于前台）。
+
+### ShellChain 修复后 reboot 端到端复验通过（2026-11-08 晚，boot `13b5a48a`，vc84/1.84）
+
+修复（restore.log 权限 + app 侧 adb 兜底读）装机后 `reboot` 全流程零人工复验：
+
+| 阶段 | 实测 |
+|---|---|
+| 自启/解锁 | reboot → tailnet adb 3 轮重连恢复 → PIN 自动解锁 `RUNNING_UNLOCKED` → `monkey` 拉 `MainActivity` 前台（`5:freezer:/` 非 frozen） |
+| 派发 | `am broadcast -n com.postlock/.BootReceiver -a com.postlock.LAUNCH` → `gate pass isLaunch=true` → `startForegroundService OK (mode=shell)` → `ran_boot consumed` |
+| stage | `DEPLOY changed=1 skipped=10 failed=0`（restore.sh 换成 v30，双端 sha1 `7fa5acb8` 一致） |
+| gate | load 13.71（开机风暴）→ `SHELL:等待系统静默` → load 降到 <5 后 `SHELL:链运行中` |
+| 链 | 21:51:44 起 → 21:52:35 止（**51s**）→ `route success=1` + `done=1 root=1` ×4 + 干净 exit tail + `CHAIN_EXIT_DONE` |
+| restore | 21:52:35 起 `kernel:s0 uid=0` → `SELINUX-STRICT-OK enforce=1` + `POSTLOCK-RESTORE-OK`（21:52:53，**双 OK 原生各 1 次**） |
+| **app 判定** | **`DONE:shell 域 root=1 + restore 双 OK + verify 通过`**（21:53:10，链退出后 35s；修复前是误判 FAIL） |
+| 模块 | `kernelsu` + `oplus_check_suppress` 加载、`kernelsu_hotload_init` 按设计不加载 |
+| SUSFS/SUVTZ | `product-bin-mnt-id=2000000240`（≥2e9，**E2 修复生效**）+ `hide_sus_mnts_for_non_su_procs=1` + `ksu_kaslr mode=600` + ocsk v14 `kill.scan sites=2` / `rep armed=2` |
+| 稳定 | 120s+ boot `13b5a48a` 不变、uptime 595s、`enforce=1` |
+| 状态卡 | **蓝卡「工作中 Built-in 越狱模式」**、SuSFS v2.3.0、驱动 (35222/6) == 管理器 (35252/6)、无红条（`ui_blue.png`） |
+
+取证 `/tmp/opencode/shellchain_verify84/{chain.log,restore.log,receiver.log,observe.log,ui_blue.png}`。
+
+**运维细节（本轮踩到）**：
+
+- **状态文件路径 = `files/loopback_state.txt`**（`filesDir` 根，不是
+  `files/postlock/`）。监控脚本写错路径会看到「文件不存在」而误以为链没跑。
+- **终态后 app 会把 `postlock_restore.log` 收紧回 0600**（设计如此），所以事后
+  `ls -l` 看到 0600 不代表 chmod 修复失效——判据是 app 侧状态是否 `DONE:`。
+- **重启后 tailnet adb 需 3 轮 `disconnect`+`connect`**（`already connected` ≠
+  可用），脚本里固定做 60 轮带 `get-state` 校验的轮询。
