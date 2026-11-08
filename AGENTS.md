@@ -5487,3 +5487,85 @@ WAN 通道的健康证据只能靠 `WanChannel.isAlive()`（回环 adb pgrep 实
 UI 与真实状态长期背离，而日志里只有一行被当成常态噪音的 `Connection refused`。
 更进一步：**双 socket 探测在 app 域注定只有一半可达**（SELinux），所以「进程
 存在性」的权威判据必须是旁证（回环 adb 实测），socket 只用于「能读就多给点细节」。
+
+### WAN 通道抗 wedge：`tshealth` 端到端探针 + watchdog 健康判据（2026-11-08）
+
+**问题（本轮实测取证）**：shell 域 `tailscaled`（pid 4146）进程活着、`pgrep` 判据
+永远「健康」，但 localapi `/status` 显示 `BackendState=Running`、`Self.Online=true`
+（陈旧值），而 tailnet 实际**假死 5 小时**——`tsd.log` 最后一条 disco 行停在
+06:41（UTC），host 侧 `boot` 节点 `offline`。即「进程在 ≠ 通道在」，旧的
+「pid 存在 + 地址集合未变」看门狗无法识别这种 wedge。
+
+**判据换成端到端 disco ping**（不看状态字段，直接问 daemon「能不能 ping 通对端」）：
+`/localapi/v0/ping` 是**唯一**可信信号——健康态 `"Err":""` + 有 `LatencySeconds`，
+wedge 态 10s 超时无响应。`BackendState` / `Self.Online` / peer `LastSeen` 全部不可用
+（健康态两个 peer 的 `LastSeen` 反而是零值 `0001-01-01T00:00:00Z`，wedge 态才是
+陈旧时间——拿它判活会反向误判）。
+
+**`tshealth`（新工具，`/tmp/opencode/wan/tshealth.c`，静态 aarch64 `-O2 -s`，
+425728B，sha1 `ce99e54cbc6dc216ceba5dfdcc7f4bb369892ac`）**：自写 localapi +
+SOCKS5 客户端（设备无 `curl`、无支持 unix socket 的 `nc`、无 `python3`）。子命令
+`status`/`check`/`ip`/`peerip`/`ping`/`health`/`dial`。`health [peer]` 三态退出码：
+
+| rc | 含义 | watchdog 处置 |
+|---|---|---|
+| 0 | 健康（ping 成功） | 清零 fail |
+| 10 | 不健康（ping 有响应但 `Err` 非空） | 计入 fail，累计触发重启 |
+| 12 | 无法判定（无匹配 peer / 指定 peer 离线 / 未指定且无在线对端） | 按健康算（防误杀重启循环）；指定 peer 时退化为 auto 重试一次 |
+| 3 | localapi 本身打不通（daemon 卡死/超时） | 并入「不健康」 |
+
+**`/localapi/v0/ping` 两个坑（血泪）**：参数走**查询串**
+`?ip=<ip>&type=disco&ts=5&size=0`——塞 JSON body 报 `missing 'ip' parameter`，
+带了 `ip` 但缺 `type` 报 `missing 'type' parameter`；响应是**单个 JSON 对象**
+（`IP`/`NodeIP`/`NodeName`/`Err`/`LatencySeconds`/`Endpoint`/`PeerRelay`/
+`DERPRegionID`），不是数组。`/localapi/v0/status` 是**缩进 JSON**（`"Peer": {`
+带空格），不能写死紧凑格式；`Self` 也带 `HostName`/`TailscaleIPs`，解析时必须跳过。
+peer 的 `HostName` 是**大写显示名**（`DESKTOP-QP3J0JC`），匹配要小写化；健康对端
+默认 `desktop`，可用 `/data/local/tmp/ts_health_peer`（首行）覆盖。
+
+**分发方式**：放 `jniLibs/arm64-v8a/libtshealth.so`（其实是可执行文件）——shell
+能读 `nativeLibraryDir`（已由 `libtailscaled.so` 证明），锁屏期 `assets` 走不了
+（`run-as` 在 CE 封存时不可用）。`ensure` 脚本按大小比对 `cp` 到
+`/data/local/tmp/tshealth` + `chmod 755`。AGP 必须
+`packaging { jniLibs { keepDebugSymbols += "**/libtshealth.so" } }`，否则被 strip
+（已 `-s`，strip 后不可执行）。
+
+**watchdog 新逻辑**（`WanChannel.WATCH_SH`，shell 域 `sh /data/local/tmp/wan_watch.sh`，
+20s tick）：daemon 消失 → `start_daemon`；地址集合变化 → `restart_daemon net-change`；
+每 3 tick 跑一次 `health`（`/data/local/tmp/tsd_health.log`）：rc 3/10 累计 2 次且
+距上次重启 ≥300s → `restart_daemon health`。**`GAP=300` 是防重启风暴**（健康检查
+本身 10s 超时 + daemon 冷启 ~40s，太密会连环杀）。
+
+**放弃「空闲回收」重启**：原想「`ss -tn` 无 ESTAB 连接就重启」，实测
+`ss -tn | grep 127.0.0.1:5555` 恒有 2 条**陈旧 ESTAB**（早期 `dial` 测试残留，
+永不消失）→ 判据永久为假、回收永不触发。改为「ping 通对端 = 双向可达」为充分
+判据：wedge 时 ping 必失败，空闲时 ping 照样成功（不误杀）。
+
+**daemon 启动参数不带 `--socks5-server`**：健康判据已不需要 SOCKS5，留着等于多开
+一个本地代理端口（攻击面）。`tshealth dial` 仅人工调试用（需自己带 socks 参数起
+临时 daemon）。
+
+**`ensure` 的 `WAN_ALREADY` 早退不再 `exit 0`**：改 `ALREADY` 标志 + if/else，
+使 tshealth / watchdog 等辅助件**每轮无条件铺设**——否则设备上永远跑着初版
+watchdog，升级 APK 也换不掉。
+
+**watchdog 启动必须重试 + 回显 pid（本轮踩坑）**：`ensure` 里原写法
+`if ! pgrep -f "[w]an_watch" >/dev/null; then setsid nohup sh ... & fi` 只试一次，
+而此刻刚 `pkill` 掉的旧 watchdog 可能还没从进程表消失 → 静默跳过，设备上 4 分钟
+没有任何 watchdog（实测 12:52 那轮）。改为 3 次重试循环 + `echo WATCH_PID=$(...)`，
+`WATCH_PID=` 为空是取证判据（Kotlin 侧打 `wan ensure: WARN watch not running`）。
+
+**真机验收（boot `ac2c3dc8`，全程 `RUNNING_LOCKED` 未解锁，vc82/1.82）**：
+
+| 场景 | 实测 |
+|---|---|
+| 锁屏自举 | `LOCKED_BOOT_COMPLETED` → app pid 4833 → `tailscaled` pid 5005（PPID 1，shell uid）→ 12:59:54 起 watchdog pid 5136 |
+| tailnet adb | host `adb connect 100.120.155.127:5555` → `device` → `uid=2000(shell)` `Enforcing` |
+| 健康 | `tsd_health.log` 每 60s `rc=0 ... pong from 100.116.34.46 (desktop-qp3j0jc)` |
+| daemon 崩溃 | `kill -9` → 20s 内 `daemon gone -> start` → `daemon started pid=5754` → 通道 ~55s 恢复 |
+| **wedge** | `kill -STOP`（进程活着但 localapi 不响应）→ `health fail n=1 rc=3` → 106s 后 `health fail n=2 rc=3 -> restart` → `restart daemon (health)` → `daemon started pid=6265` → 下一轮 `rc=0` |
+
+**排障备忘**：`pgrep -f "[w]an_watch"` 的括号技巧只防 pgrep 自匹配——**自己的
+`adb shell` 命令串里若出现 `wan_watch` 字面量（如 `echo "=== pgrep wan_watch:"`），
+pgrep 会匹配到那条 shell 自身**，得到假 pid。查进程用
+`ps -A -o PID,PPID,ARGS | grep -F wan_watch` 或让命令串不含该字面量。
