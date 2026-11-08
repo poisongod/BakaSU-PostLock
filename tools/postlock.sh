@@ -604,9 +604,14 @@ done
 # PostLock app's log panel tails it.  0600 (default) closes the leak and
 # limits the panel to app-domain chains; SUVTZ_CHAIN_LOG_MODE=0644 restores
 # the old behaviour at the cost of the KASLR base being app-readable.
+#
+# The mode is read from the environment at restore time so ONE generated
+# restore.sh serves both callers: the host script leaves it unset (0600) and
+# the in-app shell-domain runner exports SUVTZ_CHAIN_LOG_MODE=0644 for the
+# round it triggers, then chmods the log back to 0600 once the chain is done.
 if [ -f $TMP/postlock_chain.log ]; then
   chown 2000:2000 $TMP/postlock_chain.log 2>/dev/null || true
-  chmod $CHAIN_LOG_MODE $TMP/postlock_chain.log 2>/dev/null || true
+  chmod \${SUVTZ_CHAIN_LOG_MODE:-$CHAIN_LOG_MODE} $TMP/postlock_chain.log 2>/dev/null || true
 fi
 # B10: the app-domain gate input (written by the chain as shell, umask 0644).
 # 0600 = default since 2026-11-07, i.e. unreadable to any app uid;

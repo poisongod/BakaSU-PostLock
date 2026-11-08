@@ -5569,3 +5569,112 @@ watchdog，升级 APK 也换不掉。
 `adb shell` 命令串里若出现 `wan_watch` 字面量（如 `echo "=== pgrep wan_watch:"`），
 pgrep 会匹配到那条 shell 自身**，得到假 pid。查进程用
 `ps -A -o PID,PPID,ARGS | grep -F wan_watch` 或让命令串不含该字面量。
+
+## ShellChain：app 内驱动 shell 域全链 + 自启回归定案（2026-11-08）
+
+**需求**：把恢复执行者从 host 侧 `tools/postlock.sh` 迁进 app——app 经回环 adb 拿
+shell 会话，自行部署 stage、起链、等 restore，全程零 host。
+
+**为什么必须走 shell 域**（不是 app uid direct）：app uid 三重墙实测封死——
+`untrusted_app` 的 `perf_event_open` 被 SELinux 拒（errno=13，非 seccomp）、
+tracefs 写不进、configfs read 需 route 劫持（鸡生蛋）。shell uid 有
+`perf_event_paranoid=-1`（persist）→ 能跑 KASLR leak 与全链。所以 app 只做
+「调度 + 观察」，链本体在 shell 域跑。
+
+### 架构
+
+| 组件 | 职责 |
+|---|---|
+| `domain/StageDeploy.kt` | assets → `getExternalMediaDirs()[0]/stage/`（app 免权限可写、shell 可读、跨 boot 持久）→ 回环 adb `sha1sum` 比对后 `cp` 到 `/data/local/tmp/ksu_boot/` + chmod。写 `.ver` = `PayloadRepo.PAYLOAD_VERSION`，全文件存在则跳过重复复制 |
+| `domain/ShellChain.kt` | 阶段机：探测回环 adb → 部署 stage → quiet gate → detached 起链 → 观察 → 终态。状态写 `StateStore`，前缀 `SHELL:<中文阶段>`，终态 `DONE:` / `FAIL:` |
+| `ChainService` | `MODE_SHELL`（默认）/ `MODE_DIRECT`（app uid 演练/参考）。shell 链是 detached，**不需要 FGS 保活链**，但观察循环在 app 进程内故保留 FGS |
+| `ChainTrigger` | 原 app uid direct 路径（`KS_SLIDE_SKIP=1` + `KS_PAYLOAD_PASTE=1`，依赖 shell 泄题 = 考试二），保留为 `MODE_DIRECT` |
+
+**关键实现点**：
+
+- **stage 中转必须走 media**：`/data/local/tmp` 是 `0771`（app 无 list 权限），
+  `/data/local/tmp/ksu_boot/` 是 `drwx------ shell`（app 完全进不去）。
+  `/sdcard/Android/media/com.postlock/` 双方可读写。
+- **不实现 ADB sync push**：文件传输沿用 `WanChannel.pushAndRun` 范式
+  （base64 单行 < 262144 上限），stage 部署脚本一次 adb round-trip 完成
+  sha1 比对 + cp + chmod。
+- **quiet gate 分块设备侧循环**（每块 6×5s），app 侧最多 40 次 adb 往返覆盖 20min
+  ——一条 adb 会话挂 20 分钟会超时。
+- **观察期直读本地文件**（`/data/local/tmp/postlock_chain.log`、
+  `postlock_restore.log`）：app 域对 `shell_data_file` 有 MAC read，零 adb 往返。
+  仅当链日志静默 >90s 且无终态时用一次 `pgrep -f '[e]cho CHAIN_EXIT_DONE'` 确认存活。
+- **detach 语法**：`… && { nohup sh trigger.sh >> log 2>&1 </dev/null & echo DETACHED; } || echo TRIGGER_FAIL`
+  ——裸 `A && B & C` 会把整个 `&&` 列表放后台。
+- **门票（ran_boot）**：`ShellChain.run(force=false)` 先查 `GatePolicy.alreadyRan`
+  → 已跑过则 `FAIL:本 boot 已跑过链（请 reboot 后再试）`；ENTER 时
+  `consumeRanBoot` 消费（失败轮也消费，fail amplifier 语义）。
+  `params.forceGate` 映射为 `force=true`（忽略门票）。
+- **观察循环 150s 宽限**：链已打 `CHAIN_EXIT_DONE` 但 150s 仍无 restore marker
+  → break 判失败（防挂死）。
+- **链日志权限参数化**：restore 期读 `SUVTZ_CHAIN_LOG_MODE`（默认 0600）。
+  host `postlock.sh` 不传 → 0600；app 触发时 export `0644` 供日志面板直读，
+  链进终态后由 app 经 adb `chmod 0600` 收紧。一份 `restore.sh` 同时服务两端。
+- **`restore.sh` 单一权威源**：`tools/gen_app_restore.sh` 从 `tools/postlock.sh`
+  的 heredoc 抽取生成 assets 版本（32180B / 509 行 / sha1 `64addd0c`）。
+  改完必须跑 `tools/check_restore_heredoc.sh`（抓未转义的命令替换——`bash -n`
+  抓不到，因为生成的脚本语法仍然合法）。
+
+### 自启回归定案：`pm install -r` 后包处于 stopped（2026-11-08）
+
+**现象**：boot `70af622a` 两条 boot 广播（`LOCKED_BOOT_COMPLETED` + `BOOT_COMPLETED`）
+都没投递给 `com.postlock`；历史 boot（`652b43cb`/`ac2c3dc8`）都正常收到 → 是回归。
+
+**排除项（硬证据）**：manifest `RECEIVE_BOOT_COMPLETED` granted=true、
+`LOCKED_BOOT_COMPLETED` filter 已注册（4 filter）、`stopped=false notLaunched=false`
+enabled=0 hidden=false suspended=false、crash buffer 无记录、
+`deviceidle whitelist` 含该包、`logcat -b all` 该时段无任何 `com.postlock` 行、
+`-b events` 里 postlock 最早记录是 `am_proc_start`（`pre-top-activity` = 用户手动开 app）。
+
+**根因**：本 ROM 上 `pm install -r` 会把包置为 stopped/notLaunched（与 AOSP
+文档的「`pm install` 不置 stopped」相反），且**装机后从未启动过** → boot 广播被
+`exclude-stopped` 排除，错过不补投。
+
+**验证**：`am force-stop` + `monkey` 启动一次 → 下一次 reboot（boot `581a1272`）
+`am_proc_start: [0,4833,10286,com.postlock,broadcast,{com.postlock/com.postlock.BootReceiver}]`
+@ boot+31s → `AutoStartService`（`SYSTEM_ALLOW_LISTED`）→ `WanService` →
+`tailscaled` pid 5015（boot+36s）→ tailnet adb 在 boot+104s 可用，
+**全程 `RUNNING_LOCKED` 未解锁**。
+
+**铁律（重申并升级）**：装机后必须启动一次 app 再 reboot，否则下一次 boot
+自启必失效。`pm install -r` 本身会 kill app 进程（可用于终止 `ShellChain` 线程），
+但**不能代替「启动一次」**。
+
+**第二自启通道（JobScheduler，不依赖广播分发）**：
+`platform/AutoStartJobService.kt`，`JOB_ID=0x9051`，
+`setPeriodic(15min)` + `setPersisted(true)` + `NETWORK_TYPE_ANY`。
+- **必须 periodic 而非一次性**：一次性 job 执行后即从 store 删除，必须有人重排
+  （会形成 15s 循环或死结）。
+- `schedule()` 幂等（`getPendingJob != null` 即返回）。
+- 登记点三处：`AutoStartService.dispatch()` 末尾、`BootReceiver` 两个 boot 分支、
+  `MainActivity.onCreate`（用户手动开过一次就永久有 job）。
+- 实测登记成功：`dumpsys jobscheduler` → `JOB #u0a286/36945 ... AutoStartJobService`
+  `PERIODIC interval=+15m0s0ms PERSISTED` `RUNNABLE WHITELISTED`
+  `[RUN_ANY_IN_BACKGROUND allowed]`；`receiver.log` 见 `autostart job: schedule rc=1`
+  + `autostart job: fired (periodic)`。
+- **已知限制**：periodic job 的 `TIMING_DELAY` 按 elapsedRealtime 算，reboot 后
+  elapsed 归零 → 要等满一个 interval（≤15min）才 fire。所以它是「15 分钟内兜底」，
+  不是「boot 后立即」。广播仍是主路径。
+
+### 排障备忘（本轮踩坑）
+
+- **`unzip -p APK AndroidManifest.xml | grep AutoStartJob` 会假阴性**：二进制 AXML
+  的字符串池是 UTF-16LE，必须 `strings -el`。曾据此误判「新 service 没进 APK」，
+  实际 manifest 与 dex 都在（`strings -el` 命中 1 处、dex 命中 6 处）。
+- **`dumpsys package <pkg> | grep -i <service>` 不列全所有 service**：不能拿它
+  判断组件是否存在，用 `dumpsys jobscheduler` / `logcat` / `strings -el`。
+- **`ps -A -o ARGS | grep -F "[t]ailscaled"` 的括号技巧在 `grep -F` 下失效**
+  （`-F` 是固定串匹配，`[t]` 不被当正则）→ 自匹配到自己的 `sh -c` 命令行。
+  查进程用 `grep tailscaled | grep -v grep` 或让命令串不含该字面量。
+- **锁屏期 `run-as` 不可用**（CE 封存），`receiver.log` 读不到——此时只能用
+  `logcat -b events`（`am_proc_start` 的 `broadcast` 类型 = 广播真的到了）+
+  `dumpsys jobscheduler` 取证。
+- **锁屏期 logcat 有大量 `errno 126 (Required key not available)`**：这是
+  `ContextImpl` 试图创建 CE 目录（`/data/user/0/<pkg>/files`）的正常噪音，
+  不是故障。
+- **`pm install -r` 在锁屏态可用且安全**（PM 是系统服务）：装完 app 进程被 kill，
+  但 `tailscaled` 是 shell 域进程（PPID 1）不受影响、通道不断。
