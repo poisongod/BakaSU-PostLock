@@ -54,24 +54,36 @@
 
 ## 2. 世界隔离（当前的主战场）
 
-### 2.1 现状：结构性隔离 0 项
+### 2.1 现状：结构性隔离 1 项（已落码，待 fresh boot 端到端验收）
 
 | 层 | 手段 | 强度 | 失效模式 |
 |---|---|---|---|
-| 结构性 | 无 | — | — |
+| 结构性 | `W` = restore 的独立 mount namespace（holder 常驻 + `MS_REC\|MS_PRIVATE` + 自有 tmpfs） | 高（namespace 层：`N` 侧路径**不存在**，不是被拒） | holder 死 = `W` 消失（tmpfs 内容随之释放，无残留） |
 | 过滤 · DAC | `/data/local/tmp` `0711`、`ksu_boot` `0700`、日志 `0600` | 中（P1-1 已落地） | 权限写错一个目录 = 全部可见 |
 | 过滤 · MAC | SELinux 策略 | 中 | 策略写错 = 一条路径可达 |
 | 过滤 · SUSFS | 九项 hook | 中 | 漏一个观测面 = 一条 `grep` 定性 |
+
+**落码位置与验收状态**：`tools/wns`（helper，`08af3e91…`）+ `tools/postlock.sh`
+holder 段（`3150d75f`）+ 扫描器 `W1`-`W5`（`08cdacc6`）。真机原语（`hold`/`run`/
+`stat`）与扫描器三态已在 boot `13b5a48a` 验过；**生产路径 = restore 在
+`kernel:s0` 起的 holder + restore 自己消费**，尚未经过 fresh boot 端到端验收，
+故本行强度标「高」是**设计强度**，不是已验收结论。
+
+**覆盖范围仅限 restore 世界**：受 SELinux 域墙约束（见 §2.4），链（`shell:s0`）
+无法进入 `kernel:s0` 的 holder，且链是引导、`W` 是引导的产物 —— 所以 `W` 的
+消费者只有 restore 自己。这不是实现缺口，是顺序 + 域的硬约束。
 
 **三个 namespace 的事实**（本机实测 inode）：app `4026534122` / zygote64 `4026533851` /
 shell `4026533362`，app 的是全局 `shared:65` 的 **slave**（`master:65`）。
 这些是 Android 原生分割，**不是我们建的**，也不提供对 `W` 的隔离。
 
-### 2.2 为什么现在做不到（关键约束）
+### 2.2 为什么 `W` 只能由 restore 建（关键约束）
 
 结构性隔离的定义是：`W` 的挂载落在 `N` **从不进入**的 mount namespace 里。
-实现它需要 `ksu` 域 `unshare(CLONE_NEWNS)`。而进入 `ksu` 域的唯一方式是 `su`。
-这里有一条硬因果链：
+实现它需要 `CAP_SYS_ADMIN` + `unshare(CLONE_NEWNS)`。**restore 自己
+（`kernel:s0` = init 域）就有 `CAP_SYS_ADMIN`**，实测可直接 `unshare` 并挂
+tmpfs（判据行 `by=kernel`）；`su -c`（`ksu` 域）是**回落路径**（`by=ksu`），
+因为 `ksu` 域可用性本身依赖 ocsk 先加载，见下面这条硬因果链：
 
 ```
 链必须在 shell 域跑（app 域 perf_event_open 被 SELinux 拒 + tracefs/configfs 不可用）
@@ -100,9 +112,11 @@ restore 尾部（ocsk 已加载；W 的消费者就是 restore 自己 = kernel:s
        │  direct 优先：restore 的 kernel:s0 有 CAP_SYS_ADMIN（同域挂 tmpfs 已实测），
        │  unshare 失败才回落 /system/bin/su -c（ksu 域）。判据行 by=kernel|ksu。
        └─ holder 进程持有 W 的 mount namespace
-            ├─ .../stage     ← 链物料（从 N 侧中转区拷入，拷完删中转）
-            ├─ .../log       ← 链/restore 日志（N 侧经受限通道读）
-            └─ .../state     ← ksu_kaslr / ksu_payload / skbdelta / lock slots
+            ├─ .../stage     ← 仅「纯 restore 消费」的物料（ocsk/hotload ko、
+            │                   pp_adb_tcp.bin、postlock_adbkey.pub、sep_enforce1.txt），
+            │                   从 N 侧 stage 拷入。链关键集**不进** W（域墙，见 §2.4）
+            └─ .../state     ← restore 自己的状态（预留槽位）。
+                                ksu_kaslr / ksu_payload 由链（shell）写 → 留 N
 
 N 侧（app / zygote / shell）的 mount namespace 里：
   /data/local/tmp/.w 存在（普通空目录），但其下 stage/log/state/holder.pid 全部 ENOENT
@@ -151,14 +165,29 @@ N 侧（app / zygote / shell）的 mount namespace 里：
 
 ### 2.4 对象分类（决定谁迁移）
 
-| 对象 | 消费者 | 归属 | 迁移方式 |
+**先摆硬约束（实测，2026-11-09）**：**一个 `W` 只能服务一个 SELinux 域**。
+`W` 的 holder 由谁 fork，它就是哪个域；别的域 `open(/proc/<pid>/ns/mnt)` 被
+SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。而链必须在
+`shell:s0` 跑（bootstrap 早于 ocsk），`W` 只能在 restore（`kernel:s0`）里建 ——
+所以：
+
+> **`W` 的消费者只有 restore 自己。链（`shell:s0`）既不能创建 `W`
+> （`unshare -m` 实测 `EPERM`），也不能进入 `W`。**
+
+据此分类（与上一版「链 + restore 都归 W」的设想不同，那一版与域墙矛盾）：
+
+| 对象 | 消费者（域） | 归属 | 依据 |
 |---|---|---|---|
-| `preload.so` / `kernelsu.ko` / `finitmod` / `oplus_check_suppress.ko` | 链 + restore | **W only** | 中转区 → `/w/stage` |
-| `restore.sh` / `sep_enforce1.txt` / `ksud` | restore | **W only** | 同上 |
-| `ksu_kaslr` / `ksu_payload` / `skbdelta` / `.ks_lock_slots` | 链 | **W only** | 直接在 `/w/state` |
-| `postlock_chain.log` / `postlock_restore.log` | app 读（诊断） | W 写 / N 读 | 写 `/w/log`，N 侧经 adb `cat`（现有 `ShellChain` 兜底通道已具备） |
-| `tailscaled` / `ts.state` / `tshealth` / `wan_watch.sh` | shell 域 WAN 通道 | **N**（不属于 SUVTZ） | **不迁移**（WAN 是通道，不是 `W` 能力） |
-| `/data/adb/ksud` / `/data/adb/ksu/bin` | sucompat 改写目标 | **W**（已被 `0700 root` 保护） | 可保留；真正的入口是内核改写，不是文件 |
+| `preload.so` / `kernelsu.ko` / `finitmod` / `restore.sh` / `ksud` / `ksu_payload` / `skbdelta` / `.ks_lock_slots` | 链（`shell`） | **必须留 `N`** | 链跑在 `W` 存在之前，且 `shell` 进不了 `W` |
+| `oplus_check_suppress.ko` / `kernelsu_hotload_init.ko` / `pp_adb_tcp.bin` / `postlock_adbkey.pub` / `sep_enforce1.txt` | 仅 restore（`kernel`） | **可迁 `W`** | holder 提前到消费点之前即可；消费侧 `wns run <holder> ...`，失败回退 `N` 副本（WARN-only） |
+| `ksu_kaslr` | 链写（`shell`）；当前无消费者（app 自派发已冻结） | **留 `N`** | 写者进不了 `W` |
+| `postlock_chain.log` / `postlock_restore.log` | restore 写、app 读 | **必须留 `N`** | app 无法进 `W`（`/proc/<pid>/root` 也 `Permission denied`）→ 写进 `W` 就等于不可读 |
+| `tailscaled` / `ts.state` / `tshealth` / `wan_watch.sh` | shell 域 WAN 通道 | **`N`**（不属于 SUVTZ） | WAN 是通道，不是 `W` 能力 |
+| `/data/adb/ksud` / `/data/adb/ksu/bin` | sucompat 改写目标（内核按路径打开，解析在**调用者**的 ns = `N`） | **`N`**（`0700 root`） | 迁进 `W` 会让 sucompat 找不到目标 |
+
+**结论**：结构性隔离的真实收益面 = 「纯 restore 消费的物料」+（将来）restore
+自己的状态。链关键集留在 `N` 不是妥协，是域墙的必然结果 —— 除非将来让链
+本体跑在 `W` 里，而那要求 `W` 先存在，与 bootstrap 顺序矛盾。
 
 ### 2.5 迁移的代价
 
@@ -279,8 +308,8 @@ N 侧（app / zygote / shell）的 mount namespace 里：
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace + stage/state/log 迁移 | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），**待 fresh boot 端到端验收**；扫描器 `W1`-`W5` 已落码（见 §7） |
-| **2** | `ksu_kaslr` / `ksu_payload` 移入 `/w/state` | 结构性 | 1 | 待做 |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），**待 fresh boot 端到端验收**；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工（需 holder 提前到模块加载之前，见 §2.4） |
+| **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
 | 5 | TEE 三实验 → T1 | 审计强度 | 无 | 未开始（§6.2） |

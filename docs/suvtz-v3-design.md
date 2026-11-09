@@ -294,7 +294,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 - **真实 `untrusted_app` 域：拦截生效**。zygote fork 的 app 进程（`u:r:untrusted_app:s0`，uid 10286）经 `SusfsSelfTest` 广播自检，`stat /product/bin/su` → `exists=0`；同轮 `ksu` 域读该进程 `/proc/<pid>/mountinfo`，overlay 确实在它自己的 namespace 里 → `ENOENT` 只能来自 `__lookup_mnt` 拦截，这同时证明该进程带 `TIF_PROC_UMOUNTED`。
 - **`run-as` 近似域：结构性不可观测**。`run-as` 是 shell fork + `setuid`，域为 `u:r:runas_app:s0`；`setuid_hook.c` 的 `if (!is_zygote(current_cred())) return 0` 使它**永远不带** `TIF_PROC_UMOUNTED` → 拦截永不适用 → 恒见 `/product/bin/su`（412 字节）。`B4` 探针跑的就是这个视角，它的 FAIL 是**探针方法论缺陷**，不是「隐藏失效」；同理 `run-as` 对 `SUS_PATH` / `SUS_MAP` / `OPEN_REDIRECT`(`uid_scheme=3`) 这些同样依赖该标志的功能一律不可观测。
 
-**仍是真的覆盖缺口（不是探针问题）——已于 2026-11-09 随 overlay 退役消失**：`TIF_PROC_UMOUNTED` 只在 `setresuid` 那一刻打；若某个 app 进程在模块加载**之前**就完成 `setuid`，它终生不带标志，路径拦截对它失效（本 boot 的当前 app 进程启动于模块加载之后，故带标志）。退役后不存在需要拦截的挂载对象，这个缺口自然闭合——**同时也失去了 P1-2 提供的「`W` 侧文件入口」**，那正是入口收敛的代价。注意这仍不是结构性隔离：真正的结构性隔离得让 `W` 的挂载落在独立 mount namespace 里（例如由 `ksu` 域 `unshare` 后再建，且 `N` 的进程从不进入该 namespace），这一步仍未做（§7 路径 B）。
+**仍是真的覆盖缺口（不是探针问题）——已于 2026-11-09 随 overlay 退役消失**：`TIF_PROC_UMOUNTED` 只在 `setresuid` 那一刻打；若某个 app 进程在模块加载**之前**就完成 `setuid`，它终生不带标志，路径拦截对它失效（本 boot 的当前 app 进程启动于模块加载之后，故带标志）。退役后不存在需要拦截的挂载对象，这个缺口自然闭合——**同时也失去了 P1-2 提供的「`W` 侧文件入口」**，那正是入口收敛的代价。注意这仍不是结构性隔离：真正的结构性隔离得让 `W` 的挂载落在独立 mount namespace 里（由 restore 的 `kernel:s0` 自己 `unshare(CLONE_NEWNS)` 后建，且 `N` 的进程从不进入该 namespace）——那一步是独立的第 2 项，已落码、待 fresh boot 端到端验收（`docs/suvtz-v3-gap.md` §2.1/§2.3）。
 
 ### 4.2 入口收敛第 1 项：`/product/bin` overlay 退役（2026-11-09）
 
@@ -332,9 +332,9 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 - 退役**失去**了 `W` 侧的对应能力（没有独立 `su` 文件，wrapper 的鉴权/日志点消失，这些职责回到 sucompat + `ksud`）；
 - 结构性隔离**保留** `W` 侧能力（对象在 `W` 的 namespace 里正常存在、正常使用）；
-- 所以退役是「以能力换纯净」，结构性隔离是「以工程换纯净」——前者可以立刻做且零风险，后者需要 `ksu` 域 `unshare` + stage 迁移 + bootstrap 重构（§7 路径 B）。
+- 所以退役是「以能力换纯净」，结构性隔离是「以工程换纯净」——前者可以立刻做且零风险，后者需要 restore 自己 `unshare`（`kernel:s0` 有 `CAP_SYS_ADMIN`，实测 `by=kernel`）+ stage 迁移 + bootstrap 重排（已落码，`docs/suvtz-v3-gap.md` §2.3/§6）。
 
-**为什么不干脆把 overlay 迁进独立 namespace 而是删掉**：因为 `/product/bin` 这个挂载点的全部价值就是「让 `su` 出现在 `PATH` 里」。而 `PATH` 是 `N` 侧的概念——把它迁进 `W` 的 namespace 后，`N` 里的进程连 `PATH` 都走不到它，等价于删掉。真正需要 namespace 隔离的是**那些 `N` 与 `W` 都要用的对象**（stage 物料、`ksud`、`ksu_kaslr` 等）——那是下一步（§7 路径 B）。
+**为什么不干脆把 overlay 迁进独立 namespace 而是删掉**：因为 `/product/bin` 这个挂载点的全部价值就是「让 `su` 出现在 `PATH` 里」。而 `PATH` 是 `N` 侧的概念——把它迁进 `W` 的 namespace 后，`N` 里的进程连 `PATH` 都走不到它，等价于删掉。真正需要 namespace 隔离的是**只由 `W` 消费的对象**（纯 restore 物料：`oplus_check_suppress.ko`、`pp_adb_tcp.bin`、`postlock_adbkey.pub`、`sep_enforce1.txt`）；链关键集（`preload.so`/`ksud`/`ksu_kaslr` 等）由 `shell:s0` 写读，进不了 `kernel:s0` 的 `W`，必须留 `N`（域墙实测，见 `docs/suvtz-v3-gap.md` §2.4）。
 
 ---
 
@@ -628,6 +628,7 @@ Keeper(root, ksu 域)
 | **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | ⚠ 部分落地（2026-11-07）：**每 boot 自跑已挂在 `tools/postlock.sh` 尾部**（旁路、WARN-only、`SUVTZ_SCAN=0` 关闭、台账 `history.tsv`）；「app 自身代码自跑同一套探针」随 PostLock-Boot 冻结而未做，判据仍是 `runas_app` 近似 |
 | **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 | 未开始 |
 | **P1-5** | **入口收敛第 1 项：退役 `/product/bin` overlay**（§4.2）——`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点 | 零 | 无 | 0.5 天 | ✅ 已完成（2026-11-09）：`tools/postlock.sh` + app `assets/postlock/restore.sh` 同源改动，退役块设备端 no-op 实测通过，本 boot 手动执行影响面全通 |
+| **P1-6** | **结构性隔离第 1 项：`W` 独立 mount namespace**（`docs/suvtz-v3-gap.md` §2.3）——restore 在 `kernel:s0` 起 holder（`unshare(CLONE_NEWNS)` + `MS_REC\|MS_PRIVATE` + 自有 tmpfs），`N` 侧路径不存在 | 零（helper `tools/wns` 419776B） | 无 | 1 天 | 🟡 已落码（2026-11-09，`3150d75f` + 扫描器 `08cdacc6`）：真机原语 + 扫描器三态（无 holder / 有 holder / W4 门控失败）已验，**fresh boot 端到端验收待跑**；物料迁入 `/w/stage` 未开工（域墙约束，§2.4） |
 
 **P0 必须先行**：没有基线，"修好了"和"本来就正常"分不清。这也是项目历史上多次"假绿"的根源（verify 被上一轮遗留撑绿）。
 
