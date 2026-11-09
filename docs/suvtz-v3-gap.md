@@ -114,7 +114,7 @@ ocsk 未加载 → `su -c` 必死 → **链的 bootstrap 必须留在 shell 域*
 restore 尾部（ocsk 已加载；W 的消费者就是 restore 自己 = kernel:s0）
   └─ $STAGE/wns hold /data/local/tmp/.w   ← 见 C7：必须自带 helper 关传播
        │  direct 优先：restore 的 kernel:s0 有 CAP_SYS_ADMIN（同域挂 tmpfs 已实测），
-       │  unshare 失败才回落 /system/bin/su -c（ksu 域）。判据行 by=kernel|ksu。
+       │  unshare 失败才回落 /system/bin/su -c（ksu 域）。判据行 by=kernel|ksu|reused。
        └─ holder 进程持有 W 的 mount namespace
             ├─ .../stage     ← 仅「纯 restore 消费」的物料（ocsk/hotload ko、
             │                   pp_adb_tcp.bin、postlock_adbkey.pub、sep_enforce1.txt），

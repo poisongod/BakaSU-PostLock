@@ -332,7 +332,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 - 退役**失去**了 `W` 侧的对应能力（没有独立 `su` 文件，wrapper 的鉴权/日志点消失，这些职责回到 sucompat + `ksud`）；
 - 结构性隔离**保留** `W` 侧能力（对象在 `W` 的 namespace 里正常存在、正常使用）；
-- 所以退役是「以能力换纯净」，结构性隔离是「以工程换纯净」——前者可以立刻做且零风险，后者需要 restore 自己 `unshare`（`kernel:s0` 有 `CAP_SYS_ADMIN`，实测 `by=kernel`）+ stage 迁移 + bootstrap 重排（已落码，`docs/suvtz-v3-gap.md` §2.3/§6）。
+- 所以退役是「以能力换纯净」，结构性隔离是「以工程换纯净」——前者可以立刻做且零风险，后者需要 restore 自己 `unshare`（`kernel:s0` 有 `CAP_SYS_ADMIN`，`unshare` 判据行 `by=kernel` **待 fresh boot 验收**——本 boot 无法自造 `kernel:s0` 进程来预验）+ stage 迁移 + bootstrap 重排（已落码，`docs/suvtz-v3-gap.md` §2.3/§6）。
 
 **为什么不干脆把 overlay 迁进独立 namespace 而是删掉**：因为 `/product/bin` 这个挂载点的全部价值就是「让 `su` 出现在 `PATH` 里」。而 `PATH` 是 `N` 侧的概念——把它迁进 `W` 的 namespace 后，`N` 里的进程连 `PATH` 都走不到它，等价于删掉。真正需要 namespace 隔离的是**只由 `W` 消费的对象**（纯 restore 物料：`oplus_check_suppress.ko`、`pp_adb_tcp.bin`、`postlock_adbkey.pub`、`sep_enforce1.txt`）；链关键集（`preload.so`/`ksud`/`ksu_kaslr` 等）由 `shell:s0` 写读，进不了 `kernel:s0` 的 `W`，必须留 `N`（域墙实测，见 `docs/suvtz-v3-gap.md` §2.4）。
 
