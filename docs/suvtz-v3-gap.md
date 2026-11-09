@@ -279,7 +279,7 @@ N 侧（app / zygote / shell）的 mount namespace 里：
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace + stage/state/log 迁移 | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；集成进 restore 待做 |
+| **1** | `W` 独立 mount namespace + stage/state/log 迁移 | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），**待 fresh boot 端到端验收**；扫描器 `W1`-`W5` 已落码（见 §7） |
 | **2** | `ksu_kaslr` / `ksu_payload` 移入 `/w/state` | 结构性 | 1 | 待做 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
@@ -292,23 +292,50 @@ N 侧（app / zygote / shell）的 mount namespace 里：
 
 ## 7. 与扫描器的关系
 
-`tools/suvtz/scan.sh` 的 35 个探针测的是**边界完整性**（「有没有绕过入口的观测
+`tools/suvtz/scan.sh` 的 40 个探针测的是**边界完整性**（「有没有绕过入口的观测
 路径」），不是「结构性隔离做到没有」。两者不能互相替代：
 
 - 结构性隔离的判据是 `N` 侧 `stat <mountpoint>/stage` → `ENOENT`（路径不存在；
   挂载点本身在 `N` 侧是空目录，见 §2.3）
 - 扫描器的判据是 `PASS`（app 域看不到某个具体对象）
 
-当前口径（2026-11-09 退役后）：`FAIL=0 (另有已接受 3) PASS=32 INFO=0`。
+当前口径（2026-11-09，退役 + `W1`-`W5` 落码后）：共 40 项。
+
+- 无 `W` holder（未跑恢复流程）：`FAIL=0 (另有已接受 3) PASS=32 INFO=5`
+  —— 5 个 `W` 探针全 INFO（**没有 W 就没有可验证的事实，给 PASS 属于 vacuous PASS**）
+- 有 `W` holder（本 boot 用 ksu 域 holder 实测）：`FAIL=0 (另有已接受 3) PASS=37 INFO=0`
 其中 A1/A2/D1 是**过滤层**的已接受暴露面，不是结构性缺口。
 `B4` 转 PASS 是「对象不存在」的直接结果——如果将来重新引入 overlay，
 它会自动转 FAIL，`accepted.tsv` 的登记行保留作回归兜底。
 
-**新增结构性隔离后，扫描器应新增探针**（不是替换现有探针）：
-- `W1`：app 域 `stat /data/local/tmp/.w/stage` → 期望 `ENOENT`（挂载点本身存在是正常的）
-- `W2`：app 域 `ls /data/local/tmp/.w` → 期望空目录（`stage/log/state` 均不可见）
-- `W3`：app 域 `grep '/data/local/tmp/.w' /proc/self/mountinfo` → 期望 0 行
-- `W4`：`ksu` 域（经 `nsenter -t <holder_pid> -m`）`stat /data/local/tmp/.w/stage/kernelsu.ko`
-  → 期望 `exists=1`（`W` 侧能力保留）
-- `W5`：app 域 `/proc/<holder_pid>/root/data/local/tmp/.w/stage` → 期望 `EACCES`
-  （`root` 穿越被拒；实测 shell 域即 `Permission denied`）
+**结构性隔离的探针**（`W` 类，已落码；与现有探针并列，不替换）：
+
+`WMP=/data/local/tmp/.w`。holder 探测走两条路径（`^/data/local/tmp/ksu_boot/wns hold `
+→ `^/data/local/tmp/wns hold `，**`^` 锚定是必须的**：`su -c "setsid ... &"` 的
+`sh -c` 命令行也含该串，不锚定会自匹配得到假 pid）。
+
+| ID | 视角 | 命令 | 期望 |
+|---|---|---|---|
+| `W1` | runas（app 域） | `ls $WMP/stage` | `absent`（`ENOENT`）——挂载点目录本身在 `N` 侧存在是正常的 |
+| `W2` | **shell** | `ls $WMP` | `empty` —— 必须是空目录（`stage/log/state` 均不可见）。**不能用 runas**：`/data/local/tmp` 是 `0711`，app 域连 `ls` 都拿不到，空输出与「拒绝」不可区分 |
+| `W3` | runas | `grep -c $WMP /proc/self/mountinfo` | `zero` —— app 域 mountinfo 里没有这个挂载 |
+| `W4` | **root**（ksu 域） | `wns run <holder> /system/bin/mountpoint -q $WMP && echo yes \|\| echo no` | `value:yes` —— `W` 侧仍可用 |
+| `W5` | runas | `ls /proc/<holder>/root$WMP/stage` | `absent` —— 经 `/proc/<pid>/root` 也不可穿越（实测 `Permission denied`） |
+
+三个设计约束（都是实测逼出来的）：
+
+1. **`W4` 必须经 `wns run` 而不是 toybox `nsenter`**：toybox `nsenter` 没有 `-c`
+   （`Unknown option 'c'`），且**跨域 setns 被拒**（shell 域 `open
+   /proc/<ksu_pid>/ns/mnt` → `Permission denied`）。只有创建 `W` 的域能进去，
+   所以 `W4` 的视角是 `root`（`/system/bin/su -c`）。
+2. **`W4` 有安全门控**：`su` 在 `oplus_check_suppress` 未加载时会触发
+   `OPLUS_ROOT_CHECK` → 上报 → 安全弹窗 → 15s 强制重启。所以先 `test -d
+   /sys/module/oplus_check_suppress`，再验 `su -c id` 含 `uid=0`，任一不满足
+   记 `INFO`（绝不冒险跑）。自检钩子 `SUVTZ_W4_GATE_FAIL=<原因>` 可强制走该分支
+   以验证分支本身（无需真卸模块）。
+3. **无 holder → 五项全 `INFO`**（不是 PASS）。「没有 W」时五项断言在逻辑上都
+   成立，但那是 vacuous PASS，违反诚实口径。
+
+实测（boot `13b5a48a`，ksu 域 holder）：`W1`-`W5` 全 PASS；
+kill holder 后重跑 → 5×INFO；`SUVTZ_W4_GATE_FAIL=...` → 仅 `W4` INFO、其余 4 项
+照常 PASS。

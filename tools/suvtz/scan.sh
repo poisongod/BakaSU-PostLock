@@ -162,8 +162,12 @@ fi
 LAST_RC=0
 LAST_OUT=""
 
-# exec_v <view> <cmd>   view ∈ {shell,runas}
+# exec_v <view> <cmd>   view ∈ {shell,runas,root}
 # 命令体约束: 不含单引号 (runas 外层用 sh -c '...' 包裹)。全部探针已遵守。
+# root 视角 = 经 /system/bin/su 走 sucompat 入口进 ksu 域 (uid 0, 全 cap)。
+# 调用方必须先确认 ocsk 已加载, 否则 OPLUS_ROOT_CHECK 会杀掉提权进程并弹窗
+# (15s 强制重启)。su 的 stderr 整体丢弃: 只有 stdout 是可判定的事实,
+# 错误串留在 stderr 会让 value: 判官误判 (wns 的诊断行也走 stderr)。
 exec_v() {
 	local view="$1" cmd="$2" raw rc
 	# 设备侧必须先把 stderr 并进 stdout (2>&1), 否则 echo 的 __RC__ 会插进
@@ -171,6 +175,8 @@ exec_v() {
 	# 输出顺序被打乱、实测值被污染。
 	if [ "$view" = runas ]; then
 		raw=$("$ADB" -s "$S" shell "run-as $PKG sh -c '$cmd' 2>&1; echo __RC__\$?" 2>&1)
+	elif [ "$view" = root ]; then
+		raw=$("$ADB" -s "$S" shell "sh -c '/system/bin/su -c \"$cmd\" 2>/dev/null' 2>&1; echo __RC__\$?" 2>&1)
 	else
 		raw=$("$ADB" -s "$S" shell "sh -c '$cmd' 2>&1; echo __RC__\$?" 2>&1)
 	fi
@@ -358,6 +364,7 @@ npass=0; nfail=0; ninfo=0; nacc=0
 	echo "          真正判据需 app 自身代码复测。"
 	echo "期望值来源: docs/suvtz-v3-design.md §5.3 定义的 stock 期望 (非实测对照机)。"
 	echo "类别: A 包与进程  B 文件系统  C 内核符号与模块  D 系统属性  E SELinux 与挂载"
+	echo "      W 世界隔离 (独立 mount ns: N 侧空挂载点, W 侧自有 tmpfs)"
 	echo "      X 成对交叉验证 (同一事实两条独立通道, 要求同向; 分歧=FAIL)"
 	echo "判定: PASS / FAIL / INFO ; FAIL* = 已显式裁决接受的 FAIL (仍计 FAIL, 单独列出)"
 	echo "      接受表: ${ACCEPTED_FILE:-<disabled>}"
@@ -463,6 +470,103 @@ for p in "${PAIRS[@]}"; do
 		printf '%-5s %-3s %-40s %-6s %s\n' "$id" "$cls" "$desc" "$vtag" "$act" >> "$REPORT"
 	fi
 done
+
+
+# ---------------------------------------------------------------- W 类: W 世界
+# W = tools/wns 用 unshare(CLONE_NEWNS) 建出的独立挂载命名空间 (自带 tmpfs:
+# stage/log/state)。N (本命名空间) 只剩一个空挂载点目录 —— 两个世界看到的东西
+# 不同, 且 N 侧没有任何数据结构指向 W 的内容 (结构性隔离, 不是过滤)。
+#
+# 为什么五个探针分属三个视角:
+#   W1/W3/W5 = app 域 (runas)  检测方视角, 是「隔离对外成立」的判据
+#   W2       = shell 域        app 域对 /data/local/tmp (0711) 无法 list,
+#                              empty 判官只能给 INFO, 所以改由 shell 看同一个 N
+#   W4       = root (ksu 域)   只有创建 W 的域能 setns 进去 (实测 shell 跨域
+#                              open /proc/<pid>/ns/mnt 被拒); 证明 W 侧仍可用
+#
+# 没有 holder 时五项一律 INFO: 没有 W 就没有可验证的事实, 给 PASS 属于 vacuous
+# PASS (违反诚实口径)。RUNAS_EXEC=0 时 W1/W3/W5 记 INFO + 原因。
+WMP=/data/local/tmp/.w
+WNSBIN=""
+WPID=$("$ADB" -s "$S" shell 'pgrep -f "^/data/local/tmp/ksu_boot/wns hold " 2>/dev/null | head -n1' 2>/dev/null | tr -d '\r' | head -n1)
+if [ -n "$WPID" ]; then
+	WNSBIN=/data/local/tmp/ksu_boot/wns
+else
+	WPID=$("$ADB" -s "$S" shell 'pgrep -f "^/data/local/tmp/wns hold " 2>/dev/null | head -n1' 2>/dev/null | tr -d '\r' | head -n1)
+	if [ -n "$WPID" ]; then WNSBIN=/data/local/tmp/wns; fi
+fi
+
+w_row() {  # <id> <desc> <view> <verdict> <expect> <act>
+	local id="$1" desc="$2" view="$3" verdict="$4" expect="$5" act="$6"
+	case "$verdict" in
+		PASS) npass=$((npass+1));;
+		FAIL) nfail=$((nfail+1));;
+		*)    ninfo=$((ninfo+1));;
+	esac
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$id" W "$view" "$verdict" "$expect" "$act" "" >> "$SUMMARY"
+	if [ "$QUIET" = 0 ]; then
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" W "$desc" "$verdict" "$act" | tee -a "$REPORT" >&2
+	else
+		printf '%-5s %-3s %-40s %-6s %s\n' "$id" W "$desc" "$verdict" "$act" >> "$REPORT"
+	fi
+}
+
+w_act() {  # LAST_OUT + REASON -> 单行实测值
+	local a
+	a=$(printf '%s' "$LAST_OUT" | tr '\n' ';' | cut -c1-90)
+	[ -n "$a" ] || a="-"
+	[ -n "$REASON" ] && a="$a  ($REASON)"
+	printf '%s' "$a"
+}
+
+w_probe() {  # <id> <desc> <view> <cmd> <expect>
+	local id="$1" desc="$2" view="$3" cmd="$4" expect="$5"
+	if [ "$view" = runas ] && [ "$RUNAS_EXEC" = 0 ]; then
+		LAST_RC=255; LAST_OUT=""; VERDICT="INFO"; REASON="$RUNAS_WHY"
+	else
+		exec_v "$view" "$cmd"
+		judge "$expect"
+	fi
+	w_row "$id" "$desc" "$view" "$VERDICT" "$expect" "$(w_act)"
+}
+
+if [ -z "$WPID" ]; then
+	WNO="无 holder: W 未建立(未跑恢复流程), 无从验证"
+	w_row W1 "W 内 stage 对 app 不可见"   runas INFO absent    "$WNO"
+	w_row W2 "N 侧挂载点为空目录"        shell INFO empty     "$WNO"
+	w_row W3 "app 域 mountinfo 无 W 挂载" runas INFO zero      "$WNO"
+	w_row W4 "W 侧 tmpfs 可自证(setns)"   root  INFO value:yes "$WNO"
+	w_row W5 "app 域经 /proc 不可穿越"    runas INFO absent    "$WNO"
+else
+	w_probe W1 "W 内 stage 对 app 不可见"   runas "ls $WMP/stage" absent
+	w_probe W2 "N 侧挂载点为空目录"        shell "ls $WMP" empty
+	w_probe W3 "app 域 mountinfo 无 W 挂载" runas "grep -c $WMP /proc/self/mountinfo" zero
+
+	# W4 前置门控: oplus_check_suppress 未加载时执行 su 会触发 OPLUS_ROOT_CHECK
+	# 上报 -> 安全弹窗 -> 15s 强制重启。所以先看模块目录, 再验 su 真能拿到 uid=0。
+	# 自检钩子: SUVTZ_W4_GATE_FAIL=<原因> 强制走「门控不满足 -> INFO」分支,
+	# 用于验证该分支本身 (无需真卸模块 —— 卸模块窗口里执行 su 有重启风险)。
+	W4_WHY="${SUVTZ_W4_GATE_FAIL:-}"
+	if [ -n "$W4_WHY" ]; then
+		:
+	elif ! "$ADB" -s "$S" shell 'test -d /sys/module/oplus_check_suppress' >/dev/null 2>&1; then
+		W4_WHY="oplus_check_suppress 未加载: 此时执行 su 会触发安全弹窗/强制重启"
+	else
+		_su=$("$ADB" -s "$S" shell '/system/bin/su -c id 2>&1' 2>/dev/null | tr -d '\r')
+		case "$_su" in
+			*uid=0*) : ;;
+			*) W4_WHY="su 未取得 uid=0 ($(printf '%s' "$_su" | tr '\n' ';' | cut -c1-60))" ;;
+		esac
+	fi
+	if [ -n "$W4_WHY" ]; then
+		w_row W4 "W 侧 tmpfs 可自证(setns)" root INFO value:yes "$W4_WHY"
+	else
+		w_probe W4 "W 侧 tmpfs 可自证(setns)" root \
+			"$WNSBIN run $WPID /system/bin/mountpoint -q $WMP && echo yes || echo no" value:yes
+	fi
+
+	w_probe W5 "app 域经 /proc 不可穿越" runas "ls /proc/$WPID/root$WMP/stage" absent
+fi
 
 SUM=""
 {

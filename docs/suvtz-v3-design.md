@@ -39,7 +39,7 @@ v3 的核心主张有两句，一句是能力，一句是自限：
   提交，消费侧同步改完之前 `W` 不产生实际隔离收益。判据与实测见 `docs/suvtz-v3-gap.md` §2.3。
 - **P1-2 已随对象消失而失去意义**。原先的「在 `ksu` 域建 overlay + 伪 mnt_id + `__lookup_mnt` 拦截」是过滤层手段（挂载对象仍在 app 的 mount namespace 里，靠进程标志过滤解析）；现在没有 overlay 要隐藏，`hide_sus_mnts_for_non_su_procs` 也不再打开（它会让非 `ksu` 域看不到伪 id 挂载，反而害死同 boot 重跑的 restore——本 boot 实测叠层 bug）。
 
-`tools/suvtz/scan.sh` 的 35 个探针是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。退役的实测影响面：扫描器 `B4`（`/product/bin/su` 存在）由 FAIL\* 转 PASS（探针实测 `absent`），`B9` / `E2` / `E3` / `X3` 保持 PASS，`B5`（`/system/bin/su` 在 `run-as` 视角）退役前后均 PASS（sucompat 的 `stat` 伪造只对 allow-listed uid 生效，`run-as` 域实测 `ENOENT`）。
+`tools/suvtz/scan.sh` 的 40 个探针（含 5 个 `W` 类世界隔离探针，见 `docs/suvtz-v3-gap.md` §7）是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。退役的实测影响面：扫描器 `B4`（`/product/bin/su` 存在）由 FAIL\* 转 PASS（探针实测 `absent`），`B9` / `E2` / `E3` / `X3` 保持 PASS，`B5`（`/system/bin/su` 在 `run-as` 视角）退役前后均 PASS（sucompat 的 `stat` 伪造只对 allow-listed uid 生效，`run-as` 域实测 `ENOENT`）。
 
 ---
 
