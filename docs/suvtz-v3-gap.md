@@ -81,8 +81,12 @@ shell `4026533362`，app 的是全局 `shared:65` 的 **slave**（`master:65`）
 
 结构性隔离的定义是：`W` 的挂载落在 `N` **从不进入**的 mount namespace 里。
 实现它需要 `CAP_SYS_ADMIN` + `unshare(CLONE_NEWNS)`。**restore 自己
-（`kernel:s0` = init 域）就有 `CAP_SYS_ADMIN`**，实测可直接 `unshare` 并挂
-tmpfs（判据行 `by=kernel`）；`su -c`（`ksu` 域）是**回落路径**（`by=ksu`），
+（`kernel:s0` = init 域）就有 `CAP_SYS_ADMIN`**，`unshare` 能力面已有历史实测
+（P1-2 之前 restore 长期成功在 `shell_data_file` 下挂 tmpfs/overlay），但
+`by=kernel` 这条判据行**尚未取得**——本 boot 无法自造 `kernel:s0` 进程
+（`su -c "runcon u:r:kernel:s0 id"` → `Permission denied`），故 `kernel` 侧的
+`unshare` 只能在 fresh boot 的生产 restore 里首验。`su -c`（`ksu` 域）是
+**回落路径**（`by=ksu`），其 `unshare -m` + tmpfs + 写 marker 已实测（C7），
 因为 `ksu` 域可用性本身依赖 ocsk 先加载，见下面这条硬因果链：
 
 ```
