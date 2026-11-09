@@ -541,7 +541,13 @@ else
   if [ -z "\$WPID" ]; then
     log WARN-suvtz-w-holder-missing
   else
-    WNS=\$(grep -o 'mnt:\[[0-9]*\]' \$WLOG 2>/dev/null | tail -n1)
+    # The holder prints its ns right after mounting, but pgrep can see the
+    # process a few ms earlier, so read the namespace from procfs (we own the
+    # process) and only fall back to the log line.
+    WNS=\$(readlink /proc/\$WPID/ns/mnt 2>/dev/null || true)
+    if [ -z "\$WNS" ]; then
+      WNS=\$(grep -o 'mnt:\[[0-9]*\]' \$WLOG 2>/dev/null | tail -n1)
+    fi
     if [ -z "\$WNS" ]; then WNS=unknown; fi
     log "suvtz-w: holder pid=\$WPID ns=\$WNS mp=\$WMP by=\$WBY"
     if \$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP >/dev/null 2>&1; then
