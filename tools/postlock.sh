@@ -164,6 +164,17 @@ KSUD_SRC="$REPO/build/embed/ksud"
 [ -f "$KSUD_SRC" ] || die "missing $KSUD_SRC (embedded ksud blob)"
 push_if_changed "$KSUD_SRC" ksud
 ab shell "chmod 755 $STAGE/ksud" >/dev/null || true
+# W world helper (2026-11-09): static aarch64 binary that owns the private
+# mount namespace holding W.  Committed artifact (tools/wns/wns), same
+# policy as the other stage payloads -- host pushes, restore execs from
+# $STAGE.  Missing is fatal here rather than a silent WARN later: the app
+# assets ship the same file (StageDeploy.EXEC), so a missing host copy
+# means one of the two sides is stale and the boundary would silently
+# not exist.
+WNS_SRC="$REPO/tools/wns/wns"
+[ -f "$WNS_SRC" ] || die "missing $WNS_SRC (run tools/wns/build.sh)"
+push_if_changed "$WNS_SRC" wns
+ab shell "chmod 755 $STAGE/wns" >/dev/null || true
 push_if_changed "$REPO/tools/sepolicy_enforce1.txt" sep_enforce1.txt
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --
@@ -468,6 +479,84 @@ fi
 if [ -x $STAGE/ksud ] && [ ! -e /data/adb/ksud ]; then
   cp -f $STAGE/ksud /data/adb/ksud 2>/dev/null && chmod 755 /data/adb/ksud 2>/dev/null \
     && log su-driver-ksud-provisioned || log WARN-su-driver-ksud-cp
+fi
+# --- SUVTZ W world: structural isolation #1 (2026-11-09) ---------------
+# SUVTZ is defined as two execution worlds with a structural boundary, not
+# as a filter (docs/suvtz-v3-design.md).  W lives in its own mount
+# namespace: a tmpfs mounted on $TMP/.w inside a private namespace, so its
+# contents (stage/log/state) have no path in N at all -- N sees only the
+# empty mountpoint directory.  That is the observable difference between
+# "structurally absent" (ENOENT) and "hidden by a filter" (EACCES), and it
+# is what makes this a boundary rather than another layer of masking.
+#
+# Order is load-bearing (measured C7): unshare(CLONE_NEWNS), then
+# mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL), then the tmpfs.  Without the
+# second step the mount propagates back into N's namespace through
+# shared:1 and the boundary does not exist.  wns hold does all three.
+#
+# Who owns the holder: W is consumed by this very script (the stage payload
+# is the future content), i.e. u:r:kernel:s0 uid 0 with full caps, so a
+# direct start is tried first.  The ksu-domain start is the fallback for a
+# domain that cannot unshare; measured 2026-11-09: ksu can open its own
+# namespace, shell cannot, so cross-domain access is never assumed.
+#
+# WARN-only by construction: W is an addition.  A boot without a holder
+# still reaches POSTLOCK-RESTORE-OK.
+WMP=$TMP/.w
+WLOG=$TMP/wns_hold.log
+WNSBIN=$STAGE/wns
+WPID=
+WBY=
+WNS=
+if [ ! -x \$WNSBIN ]; then
+  log WARN-suvtz-w-wns-missing
+else
+  WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+  if [ -n "\$WPID" ]; then
+    WBY=reused
+  else
+    rm -f \$WLOG 2>/dev/null || true
+    setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &
+    i=0
+    while [ \$i -lt 50 ]; do
+      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+      if [ -n "\$WPID" ]; then break; fi
+      sleep 0.2
+      i=\$((i+1))
+    done
+    if [ -n "\$WPID" ]; then WBY=kernel; fi
+  fi
+  if [ -z "\$WPID" ] && [ -x /system/bin/su ]; then
+    rm -f \$WLOG 2>/dev/null || true
+    /system/bin/su -c "setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &" >/dev/null 2>&1 || true
+    i=0
+    while [ \$i -lt 50 ]; do
+      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+      if [ -n "\$WPID" ]; then break; fi
+      sleep 0.2
+      i=\$((i+1))
+    done
+    if [ -n "\$WPID" ]; then WBY=ksu; fi
+  fi
+  if [ -z "\$WPID" ]; then
+    log WARN-suvtz-w-holder-missing
+  else
+    WNS=\$(grep -o 'mnt:\[[0-9]*\]' \$WLOG 2>/dev/null | tail -n1)
+    if [ -z "\$WNS" ]; then WNS=unknown; fi
+    log "suvtz-w: holder pid=\$WPID ns=\$WNS mp=\$WMP by=\$WBY"
+    if \$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP >/dev/null 2>&1; then
+      log "suvtz-w: mountpoint=yes"
+    elif /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP" >/dev/null 2>&1; then
+      log "suvtz-w: mountpoint=yes-via-su"
+    else
+      log WARN-suvtz-w-mountpoint
+    fi
+    if [ -e \$WMP/stage ]; then
+      log WARN-suvtz-w-visible-in-n
+    else
+      log "suvtz-w: n-side-absent stage=ENOENT"
+    fi
+  fi
 fi
 # --- SUVTZ P1-1: DAC hygiene (2026-11-03) -----------------------------
 # The P0 baseline (docs/suvtz-p0-baseline.md, 30 probes) measured what a
