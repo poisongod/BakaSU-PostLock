@@ -527,7 +527,8 @@ else
     if [ -n "\$WPID" ]; then WBY=kernel; fi
   fi
   if [ -z "\$WPID" ] && [ -x /system/bin/su ]; then
-    rm -f \$WLOG 2>/dev/null || true
+    # Keep whatever the direct attempt wrote: if unshare(CLONE_NEWNS) was
+    # denied there, that line is the only evidence for why we fell back.
     /system/bin/su -c "setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &" >/dev/null 2>&1 || true
     i=0
     while [ \$i -lt 50 ]; do
@@ -540,6 +541,9 @@ else
   fi
   if [ -z "\$WPID" ]; then
     log WARN-suvtz-w-holder-missing
+    if [ -s \$WLOG ]; then
+      log "WARN-suvtz-w-hold-log: \$(tail -n3 \$WLOG 2>/dev/null | tr '\n' '|')"
+    fi
   else
     # The holder prints its ns right after mounting, but pgrep can see the
     # process a few ms earlier, so read the namespace from procfs (we own the
