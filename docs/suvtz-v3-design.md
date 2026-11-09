@@ -29,9 +29,14 @@ v3 的核心主张有两句，一句是能力，一句是自限：
    **关键推论**：TrustZone 里 Secure World 的状态"不可观测"，不是因为被过滤，而是因为 Normal World 没有"读它"的接口——唯一的跨界动作是 `SMC`，而 `SMC` 是**请求服务**，不是**读取状态**。所以正确的工程动作是"让 `W` 的状态不出现在 `N` 的数据结构里"（结构性隔离），而不是"数据在、过滤在"（出口过滤）。过滤层永远漏，漏一个就是一条 grep 定性——这正是「已接受」暴露面里 A1/A2/D1 三个的性质（§5.3；原先第 4 个**扫描器** `B4`（`/product/bin/su`）已于 2026-11-09 随 overlay 退役转为 PASS，见 §4.2；扫描器编号与设计表编号的对应见 §5.3.1）。**边界不画在特权级上**——EL1 里既有 `W` 的守卫（`ksu` 域、SUSFS、`oplus_check_suppress`），也有 `W` 的敌人（ocs 的 `force_sig` 与 `kevent_send_to_user`），所以承诺对象是默认世界 `N` 里我们真正承诺的那部分（§2.2.1）。
 2. **在本设备的硬件与启动链条件下，T2 不可达，T1 受限于 3 个未验证前提，T0 是唯一可交付的级别**。任何声称做到 T1/T2 的软件方案都是假的——这一条本身是设计的一部分。
 
-**当前交付状态（诚实标注，2026-11-09 第二轮）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离仍为零**（namespace 化未做）、**入口收敛完成第 1 项**（`/product/bin` overlay 已退役，`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点，见 §4.2）、**审计缺失**。两处必须拆开说清楚：
+**当前交付状态（诚实标注，2026-11-09 第三轮）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离第 1 项已落码**（`W` 的独立 mount namespace：`tools/wns` holder 已接入 restore，设备原语实测通过、fresh boot 端到端验收待跑）、**入口收敛完成第 1 项**（`/product/bin` overlay 已退役，`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点，见 §4.2）、**审计缺失**。三处必须拆开说清楚：
 
 - **退役 ≠ 结构性隔离**。退役是把对象**删掉**（`N` 与 `W` 都没有），不是把对象迁进 `W` 的独立 namespace。它消除的是「`/product/bin/su` 对 `shell` / `run-as` / 模块加载前 `setuid` 的进程可达」这个过滤层兜不住的缺口（见下方易错点），代价是 `W` 侧也失去该文件入口——这正好符合「入口应收敛到指令级」的判据（§2.2.3）。
+- **有了 `W` 的 namespace ≠ 迁移完成**。第 1 项交付的是「世界存在」：`W` 的 tmpfs
+  挂在自己的 mount namespace 里，`N` 侧看 `<mountpoint>/stage` 是 `ENOENT`（路径不存在，
+  不是被拒）。但 `W` 里目前只有 `stage`/`log`/`state` 三个空骨架——**物料迁入**（`kernelsu.ko` /
+  `finitmod` / `oplus_check_suppress.ko` / `ksud` / `restore.sh` / `sep_enforce1.txt`）是下一个
+  提交，消费侧同步改完之前 `W` 不产生实际隔离收益。判据与实测见 `docs/suvtz-v3-gap.md` §2.3。
 - **P1-2 已随对象消失而失去意义**。原先的「在 `ksu` 域建 overlay + 伪 mnt_id + `__lookup_mnt` 拦截」是过滤层手段（挂载对象仍在 app 的 mount namespace 里，靠进程标志过滤解析）；现在没有 overlay 要隐藏，`hide_sus_mnts_for_non_su_procs` 也不再打开（它会让非 `ksu` 域看不到伪 id 挂载，反而害死同 boot 重跑的 restore——本 boot 实测叠层 bug）。
 
 `tools/suvtz/scan.sh` 的 35 个探针是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。退役的实测影响面：扫描器 `B4`（`/product/bin/su` 存在）由 FAIL\* 转 PASS（探针实测 `absent`），`B9` / `E2` / `E3` / `X3` 保持 PASS，`B5`（`/system/bin/su` 在 `run-as` 视角）退役前后均 PASS（sucompat 的 `stat` 伪造只对 allow-listed uid 生效，`run-as` 域实测 `ENOENT`）。
@@ -272,7 +277,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 | 层 | 手段 | 保证来源 | 失效模式 | 当前覆盖（2026-11-09） |
 |---|---|---|---|---|
-| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **零项**（namespace 化未做）。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤；**该对象已于 2026-11-09 退役**（删掉而非迁走，见 §4.2） |
+| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **1 项（已落码）**：`W` 的独立 mount namespace（`tools/wns hold` = `unshare(CLONE_NEWNS)` → `/` 设 `MS_REC\|MS_PRIVATE` → 已存在目录上 tmpfs），2026-11-09 设备原语实测通过（`N` 侧 `<mp>/stage` = `ENOENT`、`W` 侧 tmpfs 可写）；**物料迁入仍待办**，故 `W` 现在只有空骨架。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤；**该对象已于同日退役**（删掉而非迁走，见 §4.2） |
 | **过滤层** | ① SUSFS 九项 hook（输出过滤，靠枚举完整性）② DAC / SELinux（访问控制：对象在，访问被内核拒） | 枚举完整性（①）/ 内核权限模型（②） | ① 漏一个观测面 = 一条 `grep` 定性；② 策略写错 = 一条路径可达 | **较完整**：九项 feature 全部实现并实测；~~P1-2 属此层~~（**2026-11-09 随 overlay 退役消失**——没有对象可过滤）；「已接受」暴露面 4 → **3 项**（A1/A2/D1），**扫描器** `B4`（`/product/bin/su`）退役后实测转 PASS、登记行仅作回归兜底（§4.1 易错点） |
 | **入口 + 审计** | su socket / `ksud` supercall 收敛 + 鉴权 + 记录 | 协议设计 + 调用点唯一 | 多一个 magic = 多一个绕过入口的通道 | **部分收敛**：文件入口已收敛到 sucompat 单点（2026-11-09）；协议入口仍分散（`ksud debug su` 管道 / `libksud.so` reboot magic / `ksu_debug_manager_appid` 参数 / SUSFS reboot 命令族），**审计缺失**（§2.2.3） |
 
@@ -280,7 +285,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 **为什么过滤层不能替代结构性隔离**：过滤是「数据在、看不见」，结构隔离是「数据不在这个世界」。前者靠枚举完整，后者靠对象归属。枚举永远不完备（内核每加一个 `/proc` 节点、厂商每加一个 sysfs 属性，都要重新枚举一次），而对象归属只需要在创建时决定一次。这就是容器用 namespace 而不是 `LD_PRELOAD` 隐藏进程的原因。
 
-**当前交付的真实等级**：结构性隔离 **0 项**（namespace 化未做）、过滤层较完整、入口**部分收敛**（文件入口 1 项已收敛，协议入口未收敛）、审计缺失。所以准确的说法是「**T0 的过滤层基本可用，入口收敛刚起步，世界隔离还没开始**」——不是「SUVTZ 已实现」。
+**当前交付的真实等级**：结构性隔离 **1 项起步**（`W` 的独立 mount namespace 已建，但物料迁移未做，`W` 目前是空骨架）、过滤层较完整、入口**部分收敛**（文件入口 1 项已收敛，协议入口未收敛）、审计缺失。所以准确的说法是「**T0 的过滤层基本可用，入口收敛刚起步，世界隔离刚起步——有世界，还没有东西搬进去**」——不是「SUVTZ 已实现」。
 
 **为什么 P1-2 不算结构隔离（易错点，2026-11-09 复核 + 实测修正；该机制已于同日随 overlay 退役，以下为历史归因，保留作将来重启 P1-2 时的判据）**：它用 `runcon u:r:ksu:s0` 建挂载，只是换了**建挂载时的域**（打上伪 mnt_id 的前提），mount namespace 并未分裂——`app` / `zygote64` / `shell` 是三个不同的 mount namespace（本机实测 inode `4026534122` / `4026533851` / `4026533362`），app 的那个是全局 `shared:65` 的 **slave**（`master:65`），overlay 经**挂载传播**进入它。所以 overlay 对象确实在 app 自己的 namespace 里（`ksu` 域读 `/proc/<app_pid>/mountinfo` 可见 `2000000003 … /product/bin … overlay`），`N` 侧只是**看不见 / 打不开**它。可见性的改善来自两处**过滤**：`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 三个 kprobe 按伪 id 隐藏（开关 `hide_sus_mnts_for_non_su_procs`，对全体非 `ksu` 域生效），以及 `__lookup_mnt` 按 `TIF_PROC_UMOUNTED && uid>=10000` 拦截路径解析（**只对带标志的进程生效**，`lookup_hook` 可关）。
 

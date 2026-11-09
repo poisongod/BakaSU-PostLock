@@ -95,8 +95,10 @@ ocsk 未加载 → `su -c` 必死 → **链的 bootstrap 必须留在 shell 域*
 ### 2.3 目标形态（原语已实测，2026-11-09）
 
 ```
-restore 尾部（ocsk 已加载，ksu 域可用）
-  └─ su -c 'wns hold /data/local/tmp/.w'   ← 见 C7：必须自带 helper 关传播
+restore 尾部（ocsk 已加载；W 的消费者就是 restore 自己 = kernel:s0）
+  └─ $STAGE/wns hold /data/local/tmp/.w   ← 见 C7：必须自带 helper 关传播
+       │  direct 优先：restore 的 kernel:s0 有 CAP_SYS_ADMIN（同域挂 tmpfs 已实测），
+       │  unshare 失败才回落 /system/bin/su -c（ksu 域）。判据行 by=kernel|ksu。
        └─ holder 进程持有 W 的 mount namespace
             ├─ .../stage     ← 链物料（从 N 侧中转区拷入，拷完删中转）
             ├─ .../log       ← 链/restore 日志（N 侧经受限通道读）
@@ -129,8 +131,9 @@ N 侧（app / zygote / shell）的 mount namespace 里：
   mountinfo 显示 `tmpfs`。实测 `mnt_id` 是 SUS_MOUNT 伪 id，但**不依赖**它：
   `hide_sus_mnts_for_non_su_procs=0` 时隔离照样成立（namespace 层，不是过滤层）。
 
-**实测记录（2026-11-09，boot `13b5a48a`，`tools/wns/wns` sha1 `498dc60e…`，
-419136B 静态 ELF）**：
+**实测记录（2026-11-09，boot `13b5a48a`，测量用的是 helper 中间版
+`498dc60e…` / 419136B；入库终版是 `08af3e91…` / 419776B，差别只是多了
+`run`/`stat` 两个诊断子命令，`hold` 的三步序列逐字未变）**：
 
 | 观测点 | `N`（shell, `mnt:[4026533362]`） | `W`（`mnt:[4026534158]`） |
 |---|---|---|
@@ -260,9 +263,10 @@ N 侧（app / zygote / shell）的 mount namespace 里：
 > 顺序必须是 `unshare → mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL) → 建挂载`，
 > 中间不能省。toybox 缺这一步，所以 `W` 的 ns 需要一个自带的静态 helper
 > —— **已实现**：`tools/wns/wns.c`（`build.sh` 用 NDK r29 静态编译，
-> 419136B，sha1 `498dc60e…`），三个子命令：`private`（只关传播）、
+> 419776B，sha1 `08af3e91…`），四个子命令：`private`（只关传播）、
 > `hold <dir>`（unshare+rprivate+tmpfs+`stage/log/state`+`holder.pid`+
-> `pause` 常驻）、`stat <path>...`（N/W 对照诊断）。
+> `pause` 常驻）、`run <pid> <cmd>...`（setns + execvp，绕开 toybox
+> `nsenter -c` 的 getopt 陷阱）、`stat <path>...`（N/W 对照诊断）。
 > 实测还顺带证明：**泄漏出去的挂载 `rmdir` 删不掉（EBUSY），必须 `umount`**，
 > 而 `umount` 又只有 `ksu` 域（`CAP_SYS_ADMIN`）能做——清理成本不低，
 > 更说明这一步不能靠试错。
