@@ -92,26 +92,59 @@ ocsk 未加载 → `su -c` 必死 → **链的 bootstrap 必须留在 shell 域*
 > `W` 的 namespace 化只能在「链成功 + restore 加载 ocsk 之后」执行。
 > 它属于 restore 的后续阶段，不属于链本身。
 
-### 2.3 目标形态（待实施）
+### 2.3 目标形态（原语已实测，2026-11-09）
 
 ```
 restore 尾部（ocsk 已加载，ksu 域可用）
-  └─ su -c 'wns hold /w'          ← 见 C7：必须自带 helper 关传播
+  └─ su -c 'wns hold /data/local/tmp/.w'   ← 见 C7：必须自带 helper 关传播
        └─ holder 进程持有 W 的 mount namespace
-            ├─ /w/stage     ← 链物料（从 N 侧中转区拷入，拷完删中转）
-            ├─ /w/log       ← 链/restore 日志（N 侧经受限通道读）
-            └─ /w/state     ← ksu_kaslr / ksu_payload / skbdelta / lock slots
+            ├─ .../stage     ← 链物料（从 N 侧中转区拷入，拷完删中转）
+            ├─ .../log       ← 链/restore 日志（N 侧经受限通道读）
+            └─ .../state     ← ksu_kaslr / ksu_payload / skbdelta / lock slots
 
-N 侧（app / zygote / shell）的 mount namespace 里：/w 不存在（ENOENT）
+N 侧（app / zygote / shell）的 mount namespace 里：
+  /data/local/tmp/.w 存在（普通空目录），但其下 stage/log/state/holder.pid 全部 ENOENT
 ```
 
 > **顺序不能省**（C7 实测）：`unshare(CLONE_NEWNS)` → `mount(NULL, "/", NULL,
 > MS_REC|MS_PRIVATE, NULL)` → 建挂载。少了第二步，`W` 的 tmpfs 会按 `shared:1`
-> 传播回 `N` 的 ns，`stat /w` 在 `N` 侧变成 `exists=1` —— 比不做更糟。
-> `wns hold /w` 就是这三步的封装（外加 `/w/{stage,log,state}` 与 `pause` 常驻）。
+> 传播回 `N` 的 ns，`N` 侧 mountinfo 出现该挂载、`rmdir` 删不掉 —— 比不做更糟。
+> `wns hold <dir>` 就是这三步的封装（外加 `stage/log/state`、`holder.pid` 与
+> `pause` 常驻）。
 
-**判据**：N 侧 `stat /w` → `ENOENT`（不是 `EACCES`）。这是结构性隔离与 DAC 的
-唯一可区分特征——前者路径都不存在，后者路径存在但被拒。
+> **挂载点必须已存在**：`/` 是 erofs 只读，`mkdir /w` 会 `EROFS`。所以 `W` 的
+> tmpfs 挂在已存在且可写的目录上（`/data/local/tmp/.w`，`mkdir_p` 在 unshare
+> 之后创建）。目录本身是普通目录（`N` 侧可见，这是挂载点不是内容），`W` 的
+> 内容只存在于 tmpfs 里。
+
+**判据（按实测调整）**：
+
+- `N` 侧 `stat <mountpoint>` → `exists=1`（空目录）—— 这不是泄漏，是挂载点本身；
+- `N` 侧 `stat <mountpoint>/stage` → `ENOENT`（**不是** `EACCES`）—— 结构性隔离
+  与 DAC 的唯一可区分特征（路径都不存在 vs 存在但被拒）；
+- `N` 侧 `grep <mountpoint> /proc/self/mountinfo` → 0 行（无挂载、无传播）；
+- `N` 侧 `/proc/<holder_pid>/root/<mountpoint>/stage` → `EACCES`（`root` 穿越被
+  DAC/SELinux 拒；实测 uid 2000 访问 uid 0 的 ksu 域进程）；
+- `W` 侧（`nsenter -t <holder_pid> -m`）`stat <mountpoint>/stage` → `exists=1`，
+  mountinfo 显示 `tmpfs`。实测 `mnt_id` 是 SUS_MOUNT 伪 id，但**不依赖**它：
+  `hide_sus_mnts_for_non_su_procs=0` 时隔离照样成立（namespace 层，不是过滤层）。
+
+**实测记录（2026-11-09，boot `13b5a48a`，`tools/wns/wns` sha1 `498dc60e…`，
+419136B 静态 ELF）**：
+
+| 观测点 | `N`（shell, `mnt:[4026533362]`） | `W`（`mnt:[4026534158]`） |
+|---|---|---|
+| `stat <mp>` | `exists=1 mode=40755`（空目录） | `exists=1 mode=40700`（tmpfs） |
+| `stat <mp>/stage` | `exists=0 errno=2(ENOENT)` | `exists=1 mode=40755` |
+| `stat <mp>/holder.pid` | `exists=0 errno=2(ENOENT)` | `exists=1 size=6` |
+| mountinfo | 0 行 | `tmpfs ... mode=700`，`mnt_id=2000000150` |
+| 写 `<mp>/stage/probe.txt` | 失败 `ENOENT` | 成功 |
+| `/proc/<holder>/root/...` | `Permission denied` | — |
+| holder 退出后 | `mountpoint=no`，目录可删，无残留 | ns 销毁，tmpfs 内容随之释放 |
+
+> **holder 是 `W` 的生命周期**：holder 死 = ns 销毁 = `W` 里的对象全部消失
+> （这是「W 的状态不落在 N」的代价，也是它的证明）。所以 holder 必须常驻，
+> 且 `W` 里只放可再生对象（stage 从 `build/embed` 重推、state 由链重写）。
 
 ### 2.4 对象分类（决定谁迁移）
 
@@ -226,8 +259,10 @@ N 侧（app / zygote / shell）的 mount namespace 里：/w 不存在（ENOENT�
 > 语义传播给 peer group 的所有成员（包括初始 ns / zygote / app）。
 > 顺序必须是 `unshare → mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL) → 建挂载`，
 > 中间不能省。toybox 缺这一步，所以 `W` 的 ns 需要一个自带的静态 helper
-> （计划名 `wns`，两个子命令：`private` 只关传播、`hold <dir>` 一次性
-> unshare+rprivate+tmpfs+子目录+`pause` 常驻）。
+> —— **已实现**：`tools/wns/wns.c`（`build.sh` 用 NDK r29 静态编译，
+> 419136B，sha1 `498dc60e…`），三个子命令：`private`（只关传播）、
+> `hold <dir>`（unshare+rprivate+tmpfs+`stage/log/state`+`holder.pid`+
+> `pause` 常驻）、`stat <path>...`（N/W 对照诊断）。
 > 实测还顺带证明：**泄漏出去的挂载 `rmdir` 删不掉（EBUSY），必须 `umount`**，
 > 而 `umount` 又只有 `ksu` 域（`CAP_SYS_ADMIN`）能做——清理成本不低，
 > 更说明这一步不能靠试错。
@@ -240,7 +275,7 @@ N 侧（app / zygote / shell）的 mount namespace 里：/w 不存在（ENOENT�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace + stage/state/log 迁移 | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 设计已确认（C7 已实测）；helper `wns` 待编 |
+| **1** | `W` 独立 mount namespace + stage/state/log 迁移 | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；集成进 restore 待做 |
 | **2** | `ksu_kaslr` / `ksu_payload` 移入 `/w/state` | 结构性 | 1 | 待做 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
@@ -256,7 +291,8 @@ N 侧（app / zygote / shell）的 mount namespace 里：/w 不存在（ENOENT�
 `tools/suvtz/scan.sh` 的 35 个探针测的是**边界完整性**（「有没有绕过入口的观测
 路径」），不是「结构性隔离做到没有」。两者不能互相替代：
 
-- 结构性隔离的判据是 `N` 侧 `stat /w` → `ENOENT`（路径不存在）
+- 结构性隔离的判据是 `N` 侧 `stat <mountpoint>/stage` → `ENOENT`（路径不存在；
+  挂载点本身在 `N` 侧是空目录，见 §2.3）
 - 扫描器的判据是 `PASS`（app 域看不到某个具体对象）
 
 当前口径（2026-11-09 退役后）：`FAIL=0 (另有已接受 3) PASS=32 INFO=0`。
@@ -265,7 +301,10 @@ N 侧（app / zygote / shell）的 mount namespace 里：/w 不存在（ENOENT�
 它会自动转 FAIL，`accepted.tsv` 的登记行保留作回归兜底。
 
 **新增结构性隔离后，扫描器应新增探针**（不是替换现有探针）：
-- `W1`：app 域 `stat /w` → 期望 `ENOENT`
-- `W2`：app 域 `ls /w` → 期望 `ENOENT`
-- `W3`：app 域 `grep ' /w ' /proc/self/mountinfo` → 期望 0 行
-- `W4`：`ksu` 域 `stat /w/stage/kernelsu.ko` → 期望 `exists=1`（`W` 侧能力保留）
+- `W1`：app 域 `stat /data/local/tmp/.w/stage` → 期望 `ENOENT`（挂载点本身存在是正常的）
+- `W2`：app 域 `ls /data/local/tmp/.w` → 期望空目录（`stage/log/state` 均不可见）
+- `W3`：app 域 `grep '/data/local/tmp/.w' /proc/self/mountinfo` → 期望 0 行
+- `W4`：`ksu` 域（经 `nsenter -t <holder_pid> -m`）`stat /data/local/tmp/.w/stage/kernelsu.ko`
+  → 期望 `exists=1`（`W` 侧能力保留）
+- `W5`：app 域 `/proc/<holder_pid>/root/data/local/tmp/.w/stage` → 期望 `EACCES`
+  （`root` 穿越被拒；实测 shell 域即 `Permission denied`）
