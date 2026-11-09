@@ -376,130 +376,77 @@ fi
 # setting survives reboots but not a factory reset.  Written via settings
 # (root here; untrusted_app cannot write global settings).
 settings put global settings_enable_monitor_phantom_procs false 2>/dev/null || log WARN-phantom-settings
-# fix61 (2026-10-24): the ksud events run BEFORE the overlay build below,
-# not after.  Measured on-device: ksud post-fs-data umounts our freshly
-# mounted /product/bin overlay (the wrapper+ksud upper vanishes, shell
-# 'ls /product/bin/su' falls back to the stock ro partition and gets
-# Permission denied) -- so events-after-overlay guarantees a broken su
-# even when nothing panics.  Running events first means their mount
-# churn finishes before our overlay lands.  fix59's gate stays (events x
-# post-chain window is still a suspect for the 12:21 panic): default OFF,
-# KS_RUN_KSUD_EVENTS=1 to enable.  All three events tested safe on a
-# healthy system (14:26-14:39, OMK injector came up clean).
+# fix61 (2026-10-24): the ksud events run BEFORE any mount work in the tail,
+# not after.  Measured on-device: ksud post-fs-data umounts mounts a restore
+# step just created (the old /product/bin overlay's wrapper+ksud upper
+# vanished, shell 'ls /product/bin/su' fell back to the stock ro partition and
+# got Permission denied).  That overlay is retired as of 2026-11-09, but the
+# ordering rule stays: mount work must land after the events, because the
+# events churn the mount table.  fix59's gate stays (events x post-chain
+# window is still a suspect for the 12:21 panic): default OFF,
+# KS_RUN_KSUD_EVENTS=1 to enable.  All three events tested safe on a healthy
+# system (14:26-14:39, OMK injector came up clean).
 if [ "\${KS_RUN_KSUD_EVENTS:-0}" = "1" ] && [ -x $STAGE/ksud ]; then
   timeout 60 $STAGE/ksud post-fs-data > /dev/null 2>&1 || log WARN-ksud-postfs
   timeout 90 $STAGE/ksud services > /dev/null 2>&1 || log WARN-ksud-services
   timeout 30 $STAGE/ksud boot-completed > /dev/null 2>&1 || log WARN-ksud-bootcomp
 fi
-if [ ! -x /product/bin/su ]; then
-  # --- SUVTZ P1-2 readiness gate (2026-11-06) ---
-  # The chain forks the insmod helper and this script in the SAME second
-  # (chain log: "root child insmod helper forked" / "root child coldstart
-  # forked"), and /proc/modules already lists kernelsu while module_init()
-  # is still running -- so "driver-already-loaded" does NOT mean SUSFS is
-  # up.  Measured on boot acdebd41: the overlay was mounted at kernel
-  # t+204s, susfs_mount_init() only reported ready at t+213s, the
-  # alloc_vfsmnt() marking probe therefore did not exist yet (mnt_id 5361 =
-  # real ida value, not the 2000000000 tag) and the hide switch answered
-  # -EOPNOTSUPP.  The SUSFS command channel replying with its feature list
-  # is exactly the "every susfs_*_init() has run" signal, and SUS_MOUNT only
-  # appears in that list when its own probes registered
-  # (susfs_get_enabled_features() is gated on susfs_mount_available()).
-  # $STAGE/ksud, not $TMP/ksud: the temp copy is only made AFTER this block.
-  susfs_ready=0
-  i=0
-  if [ -x $STAGE/ksud ]; then
-    while [ \$i -lt 45 ]; do
-      if feat=\$(timeout 10 $STAGE/ksud susfs show enabled_features 2>/dev/null); then
-        case "\$feat" in
-        *CONFIG_KSU_SUSFS_SUS_MOUNT*) susfs_ready=1; break ;;
-        esac
-      fi
-      i=\$((i+1)); sleep 1
-    done
-  fi
-  log "suvtz-p1-2: susfs-ready=\$susfs_ready after \${i}s (expect 1 soon after module init)"
-  mkdir -p $TMP/ovl/lower $TMP/ovl/tmp
-  # --- SUVTZ P1-2 (2026-11-06): build every ovl mount in the ksu domain ---
-  # SUS_MOUNT's marking probe runs from alloc_vfsmnt()/clone_mnt() and only
-  # tags a vfsmount when security_task_getsecid(current) == u:r:ksu:s0; the
-  # tag is the fake mnt_id (>= DEFAULT_KSU_MNT_ID = 2000000000) that the
-  # hiding side later keys on.  restore runs as u:r:kernel:s0, and a
-  # kernel-domain overlay kept mnt_id 12520 (real ida value) -- measured on
-  # boot 898d3136, which is exactly why the P0 scan's E2 probe still saw the
-  # overlay in the app-domain /proc/self/mountinfo and leaked the whole
-  # material layout (ovl path, upper dir, overlay mechanics).
-  # A ksu-domain bind test on the same boot landed as mnt_id 2000000000, so
-  # wrapping the three mounts in runcon is enough.  restore is still in the
-  # Permissive window here (the fix81 flip is the very last step), so
-  # setcurrent from kernel needs no extra policy; if either the probe or a
-  # mount fails we fall through to the old kernel-domain behaviour rather
-  # than dying -- P1-2 is hardening, not a boot prerequisite.
-  OVLMNT=""
-  if runcon u:r:ksu:s0 true 2>/dev/null; then OVLMNT="runcon u:r:ksu:s0"; fi
-  if [ -n "\$OVLMNT" ]; then log "suvtz-p1-2: ovl mounts built in ksu domain"; \
-  else log "WARN-suvtz-p1-2: runcon ksu unavailable, ovl mounts stay kernel-domain"; fi
-  mountpoint -q $TMP/ovl/lower || \$OVLMNT mount --bind /product/bin $TMP/ovl/lower \
-    || mount --bind /product/bin $TMP/ovl/lower || log WARN-ovl-bind
-  # tmpfs sb context (2026-10-25 strict-mode root fix): upper inodes inherit
-  # the tmpfs sb label, so without context= su/ksud land as shell_data_file
-  # and shell loses exec of them the moment enforcing flips (measured:
-  # DAC 777 passes, MAC denies, avc dontaudit-silent).  Fallback keeps the
-  # old behaviour if this kernel rejects context= on tmpfs.
-  mountpoint -q $TMP/ovl/tmp || \$OVLMNT mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
-    || mount -t tmpfs -o size=16m,context=u:object_r:system_file:s0 tmpfs $TMP/ovl/tmp \
-    || mount -t tmpfs -o size=16m tmpfs $TMP/ovl/tmp || log WARN-tmpfs-mount
-  mkdir -p $TMP/ovl/tmp/upper $TMP/ovl/tmp/work
-  rm -f $TMP/ovl/tmp/upper/su $TMP/ovl/tmp/upper/ksud
-  # su = compatibility shim: root callers are already root and go straight
-  # to sh -c (module WebUIs hardcode 'su -c' and must not pay a driver
-  # round-trip); non-root callers are handed to the driver's real su path.
-  # v27 (2026-11-05): the old non-root branch exec'd $TMP/ksud directly,
-  # which only ever worked for shell (uid 2000 owns that file).  An app
-  # domain cannot exec shell_data_file at all -- measured
-  # 'run-as com.postlock /product/bin/su -c id' ->
-  # "/data/local/tmp/ksud: can't execute: Permission denied" even at DAC
-  # 0711, i.e. the denial is MAC (untrusted_app has no execute on
-  # shell_data_file), so every granted app's 'su' was dead.
-  # The real path is /system/bin/su: the driver's sucompat intercepts
-  # execve("/system/bin/su") for allow-listed uids at sys_enter and
-  # rewrites it to execveat(ksud fd) with the root profile applied, so
-  # the path does not even need to exist on disk.  That is upstream's own
-  # flow -- our wrapper just stops hiding it.
-  cat > $TMP/ovl/tmp/upper/su <<'SUW'
-#!/system/bin/sh
-if [ "\$(id -u)" = 0 ]; then
-  if [ "\$1" = "-c" ]; then
-    shift
-    exec /system/bin/sh -c "\$*"
-  fi
-  exec /system/bin/sh
+# --- SUVTZ: /product/bin overlay RETIRED (2026-11-09) ----------------------
+# The overlay gave the su entry point a filesystem presence: a 412-byte
+# wrapper at /product/bin/su plus /product/bin/ksud in a tmpfs upper over a
+# bind of the stock /product/bin.  Two measured facts made that the wrong
+# design:
+#
+#   1. The real entry point has no filesystem presence.  The driver's sucompat
+#      rewrites execve("/system/bin/su") for allow-listed uids at sys_enter and
+#      execs ksud through a fd (BakaSU kernel/feature/sucompat.c SU_PATH).
+#      stat("/system/bin/su") resolves to the ksud inode, open() answers
+#      ENOENT, and the exec works anyway.  TrustZone's own entry (smc #0) is
+#      instruction-level too -- an entry that needs a path to exist is a
+#      filter-layer artifact, not structural isolation.
+#   2. The overlay was a mount every domain could enumerate.  SUS_MOUNT tagged
+#      it (mnt_id >= 2000000000) but hiding it required
+#      hide_sus_mnts_for_non_su_procs=1, and that switch also blinded this
+#      script's own mountpoint -q (restore runs as u:r:kernel:s0, a non-ksu
+#      domain): on a same-boot re-run the overlay got bind-mounted onto its own
+#      lower dir -- measured two layers on $TMP/ovl/lower, mnt ids 2000000000
+#      and 2000000241, same overlay sb 0:217.  Structural isolation cannot
+#      depend on a switch that has to lie to half the system.
+#
+# Measured after manual retirement on boot 13b5a48a: shell 'su -c id' ->
+# uid=0 u:r:ksu:s0 (both with the default PATH and with a PATH without
+# /product/bin), /product/bin back to the stock four files, zero product/bin
+# lines in shell and ksu mountinfo, manager still holds its [ksu_driver] fd,
+# and both ksud copies work (stage 4.2.0-rc3-51, /data/adb/ksud 4.2.0-rc3-81).
+#
+# On a fresh boot nothing is mounted and this is a no-op; it exists for the
+# same-boot upgrade path and for devices still carrying an older run's
+# overlay.  Order matters: drop the hide switch FIRST, otherwise tagged mounts
+# are invisible to mountpoint -q and the umount loop silently does nothing.
+if [ -x $STAGE/ksud ]; then
+  timeout 10 $STAGE/ksud susfs hide_sus_mnts_for_non_su_procs 0 >/dev/null 2>&1 || true
 fi
-# Non-root: delegate to the driver.  sucompat decides allow/deny by uid
-# (allow-listed -> redirected root ksud, otherwise the exec is refused),
-# so a non-granted app gets the driver's own denial instead of a
-# misleading sh_data_file error.
-exec /system/bin/su "\$@"
-SUW
-  chmod 755 $TMP/ovl/tmp/upper/su
-  if [ -x $STAGE/ksud ]; then
-    cp $STAGE/ksud $TMP/ovl/tmp/upper/ksud || log WARN-ksud-cp
-    chmod 755 $TMP/ovl/tmp/upper/ksud 2>/dev/null || true
-  fi
-  \$OVLMNT mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin \
-    || mount -t overlay overlay -o lowerdir=$TMP/ovl/lower,upperdir=$TMP/ovl/tmp/upper,workdir=$TMP/ovl/tmp/work,context=u:object_r:system_file:s0 /product/bin \
-    || log WARN-overlay-mount
-  # P1-2 evidence: a tagged overlay reads back as >= 2000000000, an untagged
-  # one as the real ida value (measured 12520).  Recorded before the hide
-  # switch below is turned on, because after that only ksu-domain processes
-  # can see the line at all.
-  ovl_id=\$(awk '\$5=="/product/bin"{id=\$1} END{print id}' /proc/self/mountinfo 2>/dev/null)
-  log "suvtz-p1-2: product-bin-mnt-id=\${ovl_id:-none} (tagged when >=2000000000)"
-  # belt+braces: force the visible labels too (no-op when tmpfs sb context
-  # already covers them; ENOTSUP on xattr-less tmpfs is tolerated)
-  chcon u:object_r:system_file:s0 /product/bin/su /product/bin/ksud 2>/dev/null || true
+retired=0
+for round in 1 2 3; do
+  for m in /product/bin $TMP/ovl/lower $TMP/ovl/tmp; do
+    if mountpoint -q "\$m" 2>/dev/null; then
+      if umount "\$m" 2>/dev/null; then
+        retired=\$((retired+1)); log "suvtz: retired mount \$m"
+      elif umount -f "\$m" 2>/dev/null; then
+        retired=\$((retired+1)); log "suvtz: retired mount \$m (force)"
+      else
+        log "WARN-suvtz-umount \$m"
+      fi
+    fi
+  done
+done
+if ! mountpoint -q /product/bin 2>/dev/null \
+   && ! mountpoint -q $TMP/ovl/lower 2>/dev/null \
+   && ! mountpoint -q $TMP/ovl/tmp 2>/dev/null; then
+  rm -rf $TMP/ovl 2>/dev/null || true
+  log "suvtz: overlay-retired mounts=\$retired"
 else
-  log "overlay wrapper already present"
+  log "WARN-suvtz-overlay-residual mounts=\$retired"
 fi
 # $TMP/ksud is the shell/root-facing copy (restore + host triage use it;
 # $TMP is shell_data_file so shell can exec it).
@@ -510,42 +457,6 @@ if [ -x $STAGE/ksud ]; then
   cp -f $STAGE/ksud $TMP/ksud 2>/dev/null || log WARN-ksud-temp-cp
   chmod 755 $TMP/ksud 2>/dev/null || true
   chcon u:object_r:shell_data_file:s0 $TMP/ksud 2>/dev/null || true
-fi
-# --- SUVTZ P1-2: turn on SUS_MOUNT hiding (2026-11-06) ---------------------
-# susfs_mount_hide_enabled is a kernel variable that starts at 0 every boot
-# (susfs_mount.c: static bool susfs_mount_hide_enabled;), so the fake mnt_id
-# assigned above is inert until this switch is flipped.  With it on, every
-# non-ksu process stops seeing any mount whose mnt_id >= 2000000000 in
-# /proc/self/{mounts,mountinfo,mountstat} -- which is exactly the P0 scan's
-# E2/E3 probes (app-domain mountinfo leaking the overlay and the tmpfs upper).
-# Path resolution is deliberately untouched for shell (uid 2000 < 10000) and
-# for su-granted apps (they carry no TIF_PROC_UMOUNTED), so /product/bin/su
-# keeps working for both; only plain apps lose the map, which is the point.
-# Measured on boot 898d3136: switch 0 -> shell grep=1, switch 1 -> shell
-# grep=0 against a ksu-domain bind mount (mnt_id 2000000000).
-# Triage note: from now on a plain "grep overlay /proc/self/mountinfo" is
-# empty for shell too; run "ksud susfs hide_sus_mnts_for_non_su_procs 0"
-# to see it again.
-if [ -x $TMP/ksud ]; then
-  hide_ok=0
-  i=0
-  while [ \$i -lt 3 ]; do
-    if $TMP/ksud susfs hide_sus_mnts_for_non_su_procs 1 >/dev/null 2>&1; then
-      hide_ok=1; break
-    fi
-    i=\$((i+1)); sleep 2
-  done
-  if [ \$hide_ok = 1 ]; then
-    log "suvtz-p1-2: hide_sus_mnts_for_non_su_procs=1"
-  else
-    log "WARN-suvtz-p1-2: hide_sus_mnts_for_non_su_procs failed"
-  fi
-  # Independent read-back: this script runs as u:r:kernel:s0, i.e. a NON-ksu
-  # domain, so the hiding side must already drop the tagged line from our own
-  # view.  "1" here means the mount was never tagged (the readiness gate above
-  # timed out, or this boot reused an overlay built by an older run).
-  ovl_vis=\$(awk '\$5=="/product/bin"' /proc/self/mountinfo 2>/dev/null | wc -l)
-  log "suvtz-p1-2: hide-view-check kernel-domain-sees=\$ovl_vis (expect 0)"
 fi
 # v27 (2026-11-05): sucompat's KSUD_PATH is a compile-time
 # /data/adb/ksud -- the execve rewrite opens exactly that file.  The
@@ -579,23 +490,13 @@ for f in kernelsu.ko oplus_check_suppress.ko kernelsu_hotload_init.ko; do
 done
 if [ -f $TMP/finitmod ]; then chmod 0700 $TMP/finitmod 2>/dev/null || true; fi
 # shell-exec'd binaries: owner shell + 0700 (run_fops.sh LD_PRELOADs
-# /data/local/tmp/preload.so, the /product/bin/su wrapper execs ksud).
+# /data/local/tmp/preload.so; the ksud copy is what restore and triage exec).
 for f in ksud preload.so; do
   if [ -f $TMP/\$f ]; then
     chown 2000:2000 $TMP/\$f 2>/dev/null || true
     chmod 0700 $TMP/\$f 2>/dev/null || true
   fi
 done
-# Overlay skeleton is root-only EXCEPT upper: its mode IS the merged
-# /product/bin mode (measured: upper 0777 -> /product/bin 0777).  Stock is
-# 0755 and shell must keep traversing it to exec the su wrapper.
-# NEVER chmod $TMP/ovl/lower -- that is a bind mount of the real /product/bin.
-if [ -d $TMP/ovl ]; then
-  chmod 0700 $TMP/ovl 2>/dev/null || true
-  if [ -d $TMP/ovl/tmp ]; then chmod 0700 $TMP/ovl/tmp 2>/dev/null || true; fi
-  if [ -d $TMP/ovl/tmp/upper ]; then chmod 0755 $TMP/ovl/tmp/upper 2>/dev/null || true; fi
-  if [ -d $TMP/ovl/tmp/work ]; then chmod 0700 $TMP/ovl/tmp/work 2>/dev/null || true; fi
-fi
 # Run residue: the chain/restore logs carry the KASLR base and pvo in clear
 # text, pstore_dump is a raw kernel log, ts.state is the tailnet node key.
 # shell stays owner so the host can still append the host-verify probe line.
@@ -631,7 +532,7 @@ done
 log "suvtz-b10: ksu_kaslr mode=\$(stat -c %a $TMP/ksu_kaslr 2>/dev/null || echo absent) (want $KASLR_MODE)"
 log "suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)"
 # --- su/fd regression triage (2026-11-03) ------------------------------
-# The host verify's '/product/bin/su -c id' dies with "could not retrieve
+# The host verify's '/system/bin/su -c id' dies with "could not retrieve
 # kernelsu driver fd" although kernelsu is Live.  Root only exists inside
 # this window, so snapshot the kernel ring buffer here: it still holds the
 # module init of this boot AND every earlier su attempt.  Plus the ksu_dbg_*
@@ -911,7 +812,8 @@ ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log;
 # --- wait for the async KS_COLDSTART restore -----------------------------
 # The restore forks inside the chain (root.c coldstart fork) and keeps
 # running after the constructor returns; verify must not race it.  Success
-# markers: the RESTORE-OK line, or the overlay target it creates.
+# marker: the RESTORE-OK line (the old "[ -x /product/bin/su ]" fallback was
+# removed together with the overlay, see fix76 below).
 step "wait for restore (KS_COLDSTART fork)"
 RESTORE_OK=0
 # 240x2s=480s: restore now also waits for the chain exit-tail, runs the
@@ -921,7 +823,9 @@ for _ in $(seq 1 240); do
   # fix76 (redo34): ONLY the OK line counts.  The old `[ -x /product/bin/su ]`
   # fallback matched the overlay restore had already mounted while restore
   # was still running its later steps -- verify raced ahead of the strict
-  # block, read enforce=0 and died (false-positive pass).
+  # block, read enforce=0 and died (false-positive pass).  The overlay is
+  # retired as of 2026-11-09; the rule stays because any pre-marker side
+  # effect would reintroduce the same race.
   if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null"; then
     RESTORE_OK=1
     break
@@ -938,21 +842,22 @@ else
   ab shell "tail -25 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true
 fi
 
-# --- verify as shell (su wrapper: non-root falls to the KP fake, whose
-# whitelist covers shell uid 2000; the wrapper passes root through) ------
+# --- verify as shell (the driver's sucompat entry: shell uid 2000 is
+# allow-listed via CONFIG_KSU_DEBUG, so execve("/system/bin/su") is rewritten
+# to the root ksud and yields uid=0 in the u:r:ksu:s0 domain) ---------------
 step "verify"
-if ! ab shell "/product/bin/su -c id" | grep -q "uid=0"; then
-  echo "  [diag] overlay/targets:"
-  ab shell "ls -la /product/bin/su /data/local/tmp/ksud /data/local/tmp/su_profiles.dat 2>&1" | sed 's/^/    /' || true
-  echo "  [diag] su wrapper raw output:"
-  ab shell "timeout 8 /product/bin/su -c id 2>&1; echo rc=\$?" | sed 's/^/    /' || true
+if ! ab shell "/system/bin/su -c id" | grep -q "uid=0"; then
+  echo "  [diag] su targets:"
+  ab shell "ls -la /data/local/tmp/ksud /data/adb/ksud 2>/dev/null" | sed 's/^/    /' || true
+  echo "  [diag] su raw output:"
+  ab shell "timeout 8 /system/bin/su -c id 2>&1; echo rc=\$?" | sed 's/^/    /' || true
   echo "  [diag] temp ksud direct:"
   ab shell "timeout 8 sh -c 'echo id | /data/local/tmp/ksud debug su 2>&1' | head -5" | sed 's/^/    /' || true
   echo "  [diag] modules:"
   ab shell "ls /sys/module/ 2>/dev/null | grep -E '^kernelsu|^oplus_check'" | sed 's/^/    /' || true
   echo "  [diag] chain log tail:"
   ab shell "tail -12 $CHAIN_OUT 2>/dev/null" | sed 's/^/    /' || true
-  die "/product/bin/su failed (overlay wrapper?)"
+  die "/system/bin/su failed (sucompat entry)"
 fi
 # strict-mode exam criterion (2026-10-25): the restore must leave
 # Enforcing on.  restore's own fail-safe reverts to Permissive + WARN on
@@ -962,7 +867,7 @@ ENC=$(ab shell "cat /sys/fs/selinux/enforce" | tr -d '\r')
 # fix81: kernel:s0 cannot exec post-flip, so the su probe lives here now.
 # Append the real measurement to restore.log so the STRICT-OK marker's
 # probe=host-verify field is backed by an on-log line, automatically.
-PROBE_OUT=$(ab shell "/product/bin/su -c id" | tr -d '\r')
+PROBE_OUT=$(ab shell "/system/bin/su -c id" | tr -d '\r')
 ab shell "echo '[host-verify] probe: $PROBE_OUT' >> /data/local/tmp/postlock_restore.log; chmod 0600 /data/local/tmp/postlock_restore.log 2>/dev/null" || true
 ab shell "grep -q ^kernelsu /proc/modules" || die "kernelsu.ko not loaded"
 if ab shell "getprop wrap.$APP" | grep -q "libgrant"; then
@@ -973,21 +878,21 @@ fi
 # -e killed the whole verify silently -- no ERROR, no OK, just "cat:
 # Permission denied" as the last line.  Value-empty only triggers the WARN
 # below, which is the designed handling.
-CUR_MUID=$(ab shell "/product/bin/su -c 'cat /sys/module/kernelsu/parameters/ksu_debug_manager_appid'" | tr -d '\r') || true
+CUR_MUID=$(ab shell "/system/bin/su -c 'cat /sys/module/kernelsu/parameters/ksu_debug_manager_appid'" | tr -d '\r') || true
 if [ -n "$MUID" ]; then
   [ "$CUR_MUID" = "$MUID" ] || echo "WARN: manager param=$CUR_MUID, want $MUID (app fd may be missing)"
 else
   echo "INFO: appid param not written (unresolved); driver must crown the manager via track_throne (param=$CUR_MUID)"
 fi
 echo "OK:"
-echo "  $(ab shell "/product/bin/su -c id" | tr -d '\r')"
+echo "  $(ab shell "/system/bin/su -c id" | tr -d '\r')"
 echo "  $(ab shell "grep ^kernelsu /proc/modules" | tr -d '\r')"
 echo "  daemon pid=$(ab shell "cat $TMP/su.pid 2>/dev/null" | tr -d '\r')"
 echo "  manager uid=$CUR_MUID  wrap.$APP=$(ab shell "getprop wrap.$APP" | tr -d '\r') (must be empty)"
 # pidof rc=1 when the app is not running; pipefail would kill the script
 # after all verify steps passed (round 998d4c8d: OK: printed, rc=1).
 APID=$(ab shell "pidof $APP 2>/dev/null" | tr -d '\r' | awk '{print $1}' || true)
-if [ -n "$APID" ] && ab shell "/product/bin/su -c 'ls -l /proc/$APID/fd 2>/dev/null | grep -q ksu_driver'"; then
+if [ -n "$APID" ] && ab shell "/system/bin/su -c 'ls -l /proc/$APID/fd 2>/dev/null | grep -q ksu_driver'"; then
   echo "  app fd: [ksu_driver] present (pid $APID)"
 else
   echo "  WARN: app fd not confirmed — restart the app if the blue card is missing"
@@ -995,7 +900,7 @@ fi
 # 版本对齐验收（用户要求：内核驱动版本号必须与管理器完全一致）。
 # 内核侧唯一权威来源 = insmod 时打的那行 dmesg；shell 域读 dmesg 被拒，
 # 走 su 通道读。KSU_VERSION/KSU_VERSION_FULL 由 make 命令行覆盖注入。
-DRV=$(ab shell "/product/bin/su -c 'dmesg | grep -m1 \"Initialized with driver version\"'" | tr -d '\r') || true
+DRV=$(ab shell "/system/bin/su -c 'dmesg | grep -m1 \"Initialized with driver version\"'" | tr -d '\r') || true
 echo "  driver: $DRV"
 echo
 echo "manual check: BakaSU blue card 工作中 Built-in, driver == manager version (v4.2.0-rc3 / 35252 / UAPI 6), 越狱模式 badge expected (真 late load), enforce=1"

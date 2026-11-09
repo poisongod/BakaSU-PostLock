@@ -123,18 +123,27 @@ detect_channel() {
 	[ -x "$AB" ] || die "缺少 $AB（chmod +x）"
 	d 'id' | grep -q 'uid=' || die "设备不在线：adb1.sh 找不到目标设备"
 
-	local out
-	out=$(d '/product/bin/su -c id' 2>/dev/null)
-	if printf '%s' "$out" | grep -q 'uid=0'; then
-		SU_KIND=su
-		SU_BIN=/product/bin/su
-	else
+	local out cand
+	# 权威入口 = sucompat：内核在 sys_enter 把 allow-listed uid 的
+	# execve("/system/bin/su") 改写成 ksud（kernel/feature/sucompat.c 的
+	# SU_PATH）。stat 会解析到 ksud 的 inode、open 回 ENOENT，但 exec 成功
+	# —— 所以不能用 `-x` 判定，只能真跑。`/product/bin/su` 只是 2026-11-09
+	# overlay 退役前的旧载体，保留为旧 boot 的兼容候选。
+	for cand in /system/bin/su /product/bin/su; do
+		out=$(d "$cand -c id" 2>/dev/null)
+		if printf '%s' "$out" | grep -q 'uid=0'; then
+			SU_KIND=su
+			SU_BIN=$cand
+			break
+		fi
+	done
+	if [ -z "$SU_BIN" ]; then
 		out=$(d "printf 'id\n' | /data/local/tmp/ksud debug su" 2>/dev/null)
 		if printf '%s' "$out" | grep -q 'uid=0'; then
 			SU_KIND=ksud
 			KSUD_CLI=/data/local/tmp/ksud
 		else
-			die "无 root 通道（/product/bin/su 与 ksud debug su 均不可用）"
+			die "无 root 通道（/system/bin/su、/product/bin/su 与 ksud debug su 均不可用）"
 		fi
 	fi
 

@@ -43,6 +43,6 @@ PL_RC=$?
 echo "  postlock.sh rc=$PL_RC"
 
 echo "== [4/4] report =="
-ab shell 'grep -c POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null; ls -la /product/bin/su 2>&1 | head -1; head -c 60 /data/misc/adb/adb_keys 2>/dev/null | tr -d "\n"; echo' 20 2>&1 | tr -d '\r' | sed 's/^/  /'
+ab shell 'grep -c POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null; ls -la /system/bin/su 2>&1 | head -1; head -c 60 /data/misc/adb/adb_keys 2>/dev/null | tr -d "\n"; echo' 20 2>&1 | tr -d '\r' | sed 's/^/  /'
 echo "DONE (postlock rc=$PL_RC)"
 [ "$PL_RC" = 0 ]

@@ -22,7 +22,16 @@
 #   is_zygote 门控), 对 SUSFS 全部门控功能不可观测 —— FAIL 是探针方法论缺陷, 不是
 #   隐藏失效。真实 untrusted_app 域实测 stat /product/bin/su => exists=0。详见 B4 行。
 #
+# 2026-11-09 /product/bin overlay 退役 (结构性隔离第 1 项):
+#   restore 不再重建 overlay, 入口收敛到 sucompat (execve("/system/bin/su")
+#   -> ksud 改写)。影响面实测: B4 (overlay su 存在) 由 FAIL* 转 PASS ——
+#   探针实测就是 absent, 属事实变化不是改判; B9 (ovl upper) / E2 / E3 / X3
+#   原本即 PASS 并保持; B5 (/system/bin/su 在 runas 视角) 退役前后均 PASS
+#   (sucompat 的 stat 伪造只对 allow-listed uid 生效, runas 域实测 ENOENT)。
+#   B4 登记行保留: 只有 FAIL 才查本表, 恒 PASS 后它不再被引用; 一旦有人重新
+#   引入 overlay, B4 会重新 FAIL 并自动沿用该裁决。
+#
 A1	2026-11-07	不立项(保留包名 com.resukisu.resukisu)。套壳需换证书重签(manager_sign.h 加自签 hash+size 并重编 ko)+ ksud 带 KSU_PACKAGE_NAME 重编, 且此后无法覆盖安装上游新版; 包名可见只给出「存在性」信号, 不泄露 root 能力。若将来立项, 删本行即可。
 A2	2026-11-07	保留 com.postlock(2026-11-07 单应用合并后唯一载体: com.postlock.boot 与 com.postlock.privateapp 已卸载, 自检载体职责转入 com.postlock)。它是 SUSFS app 域自检唯一载体: 隐藏门控是 TIF_PROC_UMOUNTED+uid>=10000, 只有 zygote fork 的真 app 进程可观测, 卸载会削弱回归能力; 包名可见的影响同 A1。探针枚举数由 2 变 1(数值变更已重新裁决, 结论不变)。
-B4	2026-11-09	归因修正(原 2026-11-07 理由「SUS_PATH 隐藏会把被授予 app 一起隐藏」未经实测, 已作废)。本探针跑在 run-as 视角(u:r:runas_app:s0), 该域结构性不带 TIF_PROC_UMOUNTED(setuid_hook.c 的 is_zygote 门控: 只有 zygote fork 的进程在 setresuid 时打标), 因此 SUSFS 全部门控功能(SUS_PATH/SUS_MAP/OPEN_REDIRECT uid_scheme=3/SUS_MOUNT.__lookup_mnt)对该视角一律不可观测 —— 这个 FAIL 是探针方法论缺陷, 不是隐藏失效。真实 untrusted_app 域(SusfsSelfTest 广播自检, uid 10286)实测 stat /product/bin/su => exists=0, 同轮 ksu 域读该进程 /proc/<pid>/mountinfo 确认 overlay 确在它自己的 mount namespace 里 => 隐藏来自 __lookup_mnt 路径拦截且确实生效。仍存的真实边界(非本探针能测): /product/bin/su 对 shell(2000)/ksu 域/模块加载前已完成 setuid 的进程路径可达 —— su 必须对 shell 可 exec 属 ABI 约束, 后者只能靠「模块加载后重启 app」规避而非结构保证。探针改造待决(改记 INFO, 或新增 app 域视角只采信 exists)。
+B4	2026-11-09	归因修正(原 2026-11-07 理由「SUS_PATH 隐藏会把被授予 app 一起隐藏」未经实测, 已作废)。本探针跑在 run-as 视角(u:r:runas_app:s0), 该域结构性不带 TIF_PROC_UMOUNTED(setuid_hook.c 的 is_zygote 门控: 只有 zygote fork 的进程在 setresuid 时打标), 因此 SUSFS 全部门控功能(SUS_PATH/SUS_MAP/OPEN_REDIRECT uid_scheme=3/SUS_MOUNT.__lookup_mnt)对该视角一律不可观测 —— 这个 FAIL 是探针方法论缺陷, 不是隐藏失效。真实 untrusted_app 域(SusfsSelfTest 广播自检, uid 10286)实测 stat /product/bin/su => exists=0, 同轮 ksu 域读该进程 /proc/<pid>/mountinfo 确认 overlay 确在它自己的 mount namespace 里 => 隐藏来自 __lookup_mnt 路径拦截且确实生效。仍存的真实边界(非本探针能测): /product/bin/su 对 shell(2000)/ksu 域/模块加载前已完成 setuid 的进程路径可达 —— su 必须对 shell 可 exec 属 ABI 约束, 后者只能靠「模块加载后重启 app」规避而非结构保证。探针改造待决(改记 INFO, 或新增 app 域视角只采信 exists)。【2026-11-09 更新】/product/bin overlay 已退役, 该探针实测转 PASS(run-as 域 ls => No such file or directory), 本行仅作回归兜底保留。
 D1	2026-11-07	persist.adb.tcp.port=5555 是无线 adb / WAN 通道的 bootstrap 前置。属性服务拒 setprop(即使 Permissive), 只能预写 /data/property 且下次 boot 生效 —— 「按需临时开」不可行。当前设备无 Wi-Fi(仅 rmnet), USB 是唯一通道; 保留作为将来出现 Wi-Fi/tailnet 时的救回通道。

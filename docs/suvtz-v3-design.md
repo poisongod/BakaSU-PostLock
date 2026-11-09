@@ -26,10 +26,15 @@ v3 的核心主张有两句，一句是能力，一句是自限：
    | 唯一入口 | `SMC` → EL3 | 固定协议（su socket / `ksud` supercall） |
    | 入口监控 | EL3 每次检查、可拒绝、可记录 | 入口鉴权 + 审计（T1 用 TEE 加强） |
 
-   **关键推论**：TrustZone 里 Secure World 的状态"不可观测"，不是因为被过滤，而是因为 Normal World 没有"读它"的接口——唯一的跨界动作是 `SMC`，而 `SMC` 是**请求服务**，不是**读取状态**。所以正确的工程动作是"让 `W` 的状态不出现在 `N` 的数据结构里"（结构性隔离），而不是"数据在、过滤在"（出口过滤）。过滤层永远漏，漏一个就是一条 grep 定性——这正是 4 个"已接受"暴露面里 3 个的性质（§5.3；第 4 个是**扫描器** `B4`（`/product/bin/su`），属承诺范围外的 `runas` 视角，见 §4.1 易错点；扫描器编号与设计表编号的对应见 §5.3.1）。**边界不画在特权级上**——EL1 里既有 `W` 的守卫（`ksu` 域、SUSFS、`oplus_check_suppress`），也有 `W` 的敌人（ocs 的 `force_sig` 与 `kevent_send_to_user`），所以承诺对象是默认世界 `N` 里我们真正承诺的那部分（§2.2.1）。
+   **关键推论**：TrustZone 里 Secure World 的状态"不可观测"，不是因为被过滤，而是因为 Normal World 没有"读它"的接口——唯一的跨界动作是 `SMC`，而 `SMC` 是**请求服务**，不是**读取状态**。所以正确的工程动作是"让 `W` 的状态不出现在 `N` 的数据结构里"（结构性隔离），而不是"数据在、过滤在"（出口过滤）。过滤层永远漏，漏一个就是一条 grep 定性——这正是「已接受」暴露面里 A1/A2/D1 三个的性质（§5.3；原先第 4 个**扫描器** `B4`（`/product/bin/su`）已于 2026-11-09 随 overlay 退役转为 PASS，见 §4.2；扫描器编号与设计表编号的对应见 §5.3.1）。**边界不画在特权级上**——EL1 里既有 `W` 的守卫（`ksu` 域、SUSFS、`oplus_check_suppress`），也有 `W` 的敌人（ocs 的 `force_sig` 与 `kevent_send_to_user`），所以承诺对象是默认世界 `N` 里我们真正承诺的那部分（§2.2.1）。
 2. **在本设备的硬件与启动链条件下，T2 不可达，T1 受限于 3 个未验证前提，T0 是唯一可交付的级别**。任何声称做到 T1/T2 的软件方案都是假的——这一条本身是设计的一部分。
 
-**当前交付状态（诚实标注，2026-11-09）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离为零**（P1-2 常被误记为结构性隔离，实际只做到挂载视图过滤 + 路径解析拦截：`/proc/self/mountinfo` 里看不到 overlay，真实 `untrusted_app` 域也 `stat` 不到 `/product/bin/su`；但挂载对象仍在 app 自己的 mount namespace 里，拦截是**解析时按进程标志过滤**，不带标志的进程——`shell`、`run-as`、模块加载前就完成 `setuid` 的进程——路径照常可达）、**入口收敛与审计缺失**。`tools/suvtz/scan.sh` 的 35 个探针是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。
+**当前交付状态（诚实标注，2026-11-09 第二轮）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离仍为零**（namespace 化未做）、**入口收敛完成第 1 项**（`/product/bin` overlay 已退役，`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点，见 §4.2）、**审计缺失**。两处必须拆开说清楚：
+
+- **退役 ≠ 结构性隔离**。退役是把对象**删掉**（`N` 与 `W` 都没有），不是把对象迁进 `W` 的独立 namespace。它消除的是「`/product/bin/su` 对 `shell` / `run-as` / 模块加载前 `setuid` 的进程可达」这个过滤层兜不住的缺口（见下方易错点），代价是 `W` 侧也失去该文件入口——这正好符合「入口应收敛到指令级」的判据（§2.2.3）。
+- **P1-2 已随对象消失而失去意义**。原先的「在 `ksu` 域建 overlay + 伪 mnt_id + `__lookup_mnt` 拦截」是过滤层手段（挂载对象仍在 app 的 mount namespace 里，靠进程标志过滤解析）；现在没有 overlay 要隐藏，`hide_sus_mnts_for_non_su_procs` 也不再打开（它会让非 `ksu` 域看不到伪 id 挂载，反而害死同 boot 重跑的 restore——本 boot 实测叠层 bug）。
+
+`tools/suvtz/scan.sh` 的 35 个探针是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。退役的实测影响面：扫描器 `B4`（`/product/bin/su` 存在）由 FAIL\* 转 PASS（探针实测 `absent`），`B9` / `E2` / `E3` / `X3` 保持 PASS，`B5`（`/system/bin/su` 在 `run-as` 视角）退役前后均 PASS（sucompat 的 `stat` 伪造只对 allow-listed uid 生效，`run-as` 域实测 `ENOENT`）。
 
 ---
 
@@ -101,8 +106,8 @@ ARM TrustZone 做的事情可以抽象成一句话：
 | | 出口过滤（当前大部分实现） | 世界隔离（Virtual TrustZone） |
 |---|---|---|
 | `/proc/modules` 里的 `kernelsu` | 数据在，SUSFS 把行过滤掉 | 模块不出现在 `N` 可见的链表里 |
-| overlay 挂载 | **P1-2 现状**：在 `ksu` 域建 + 伪 mnt_id，`/proc/self/mountinfo` 里看不到，真实 `untrusted_app` 域 `stat /product/bin/su` 也 `ENOENT`（`__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦截）。但挂载对象仍在 app 自己的 mount namespace 里（`ksu` 域读 `/proc/<pid>/mountinfo` 可见），拦截是解析时按进程标志过滤——`shell` / `run-as` / 模块加载前 `setuid` 的进程路径照常可达 | overlay 建在 `N` 之外的独立 mount namespace，`N` 里连路径都不存在 |
-| `su` 二进制 | 在 `/product/bin` 的 overlay 里；对带 `TIF_PROC_UMOUNTED` 的 app 由 `__lookup_mnt` 拦成 `ENOENT`（不是 DAC——属主 root:root 0755，DAC 谁都能 exec），对 `shell` / `ksu` 域照常可达；执行时另有 wrapper 侧鉴权 | 在 `W` 的文件树里，`N` 没有这个路径 |
+| overlay 挂载 | **已退役（2026-11-09）**：不再建。此前的 P1-2 形态（`ksu` 域建 + 伪 mnt_id + `__lookup_mnt` 按 `TIF_PROC_UMOUNTED` 拦截）只是挂载视图过滤——挂载对象仍在 app 自己的 mount namespace 里，`shell` / `run-as` / 模块加载前 `setuid` 的进程路径照常可达 | overlay 建在 `N` 之外的独立 mount namespace，`N` 里连路径都不存在 |
+| `su` 二进制 | **入口已收敛（2026-11-09）**：`/product/bin/su`（412B wrapper）退役，只剩 `/system/bin/su`——它不是文件，是 sucompat 在 `sys_enter` 把 allow-listed uid 的 `execve` 改写成 `ksud`（`stat` 解析到 ksud inode、`open` 回 `ENOENT`、`exec` 成功）。`run-as` 视角实测 `ls /system/bin/su` → `ENOENT` | 在 `W` 的文件树里，`N` 没有这个路径 |
 | 保证来源 | 枚举完整性（漏一个就失效） | 结构（`N` 里根本没有这个对象） |
 | 检测方视角 | 「被藏起来了」 | 「不存在」 |
 | 失效模式 | 漏一个观测面 = 一条 `grep` 定性 | 漏一项迁移 = 该对象仍属 `N`（可被探针发现） |
@@ -181,7 +186,7 @@ SUVTZ 的入口是软的：它靠「我们不给第二个入口」来保证单�
 
 | 要求 | 现状 |
 |---|---|
-| 入口存在 | ✅ su socket（`/product/bin/su` → ksud）、`ksud` supercall |
+| 入口存在 | ✅ sucompat（`execve("/system/bin/su")` → `ksud`，内核改写，无文件载体）、`ksud` supercall |
 | 入口收敛 | ❌ 入口事实上不止一个：`ksud` 的 `debug su` 管道、`libksud.so` 的 `reboot` magic、`ksu_debug_manager_appid` 参数写、SUSFS 的 `reboot` 命令族各自独立，没有统一的分发点与准入判定 |
 | 入口鉴权 | ⚠️ 分散在 `ksu_is_manager_uid` / allowlist / SELinux 域判定，没有单一的「谁能跨界、跨界做什么」的策略表 |
 | 入口审计 | ❌ 只有 `dmesg`/`printk` 级记录（`susfs:[uid][pid][func] CMD_... -> ret`、`install fd for ksu manager`），没有结构化、可离线核验、不可否认的审计链（T1 才补得上，§6.4） |
@@ -267,24 +272,64 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 | 层 | 手段 | 保证来源 | 失效模式 | 当前覆盖（2026-11-09） |
 |---|---|---|---|---|
-| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **零项**。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤（见「过滤层」行与下方易错点） |
-| **过滤层** | ① SUSFS 九项 hook（输出过滤，靠枚举完整性）② DAC / SELinux（访问控制：对象在，访问被内核拒） | 枚举完整性（①）/ 内核权限模型（②） | ① 漏一个观测面 = 一条 `grep` 定性；② 策略写错 = 一条路径可达 | **较完整**：九项 feature 全部实现并实测；**P1-2 属此层**（`/product/bin` overlay 在 `ksu` 域建 + 伪 mnt_id `2000000240` → `mountinfo` 三面过滤）；4 个「已接受」暴露面里 3 个是枚举缺口、**扫描器** `B4`（`/product/bin/su`）是承诺范围外的 `runas` 视角（§4.1 易错点） |
-| **入口 + 审计** | su socket / `ksud` supercall 收敛 + 鉴权 + 记录 | 协议设计 + 调用点唯一 | 多一个 magic = 多一个绕过入口的通道 | **缺失**：入口存在但未收敛、未审计（§2.2.3） |
+| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **零项**（namespace 化未做）。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤；**该对象已于 2026-11-09 退役**（删掉而非迁走，见 §4.2） |
+| **过滤层** | ① SUSFS 九项 hook（输出过滤，靠枚举完整性）② DAC / SELinux（访问控制：对象在，访问被内核拒） | 枚举完整性（①）/ 内核权限模型（②） | ① 漏一个观测面 = 一条 `grep` 定性；② 策略写错 = 一条路径可达 | **较完整**：九项 feature 全部实现并实测；~~P1-2 属此层~~（**2026-11-09 随 overlay 退役消失**——没有对象可过滤）；「已接受」暴露面 4 → **3 项**（A1/A2/D1），**扫描器** `B4`（`/product/bin/su`）退役后实测转 PASS、登记行仅作回归兜底（§4.1 易错点） |
+| **入口 + 审计** | su socket / `ksud` supercall 收敛 + 鉴权 + 记录 | 协议设计 + 调用点唯一 | 多一个 magic = 多一个绕过入口的通道 | **部分收敛**：文件入口已收敛到 sucompat 单点（2026-11-09）；协议入口仍分散（`ksud debug su` 管道 / `libksud.so` reboot magic / `ksu_debug_manager_appid` 参数 / SUSFS reboot 命令族），**审计缺失**（§2.2.3） |
 
 **优先级 = 结构性隔离 > 过滤层 > 入口审计。** 理由：结构性隔离的失效模式是「漏了一项」，过滤层的失效模式是「漏了一个观测面」，而观测面的数量随内核版本与厂商定制增长（本项目实测 35 项还不够，见 §5.3）。入口审计本身不产生隔离，它产生**可归因性**——那是 T1 的真实收益（§6.4）。
 
 **为什么过滤层不能替代结构性隔离**：过滤是「数据在、看不见」，结构隔离是「数据不在这个世界」。前者靠枚举完整，后者靠对象归属。枚举永远不完备（内核每加一个 `/proc` 节点、厂商每加一个 sysfs 属性，都要重新枚举一次），而对象归属只需要在创建时决定一次。这就是容器用 namespace 而不是 `LD_PRELOAD` 隐藏进程的原因。
 
-**当前交付的真实等级**：结构性隔离 **0 项**、过滤层较完整、入口与审计基本没有。所以准确的说法是「**T0 的过滤层基本可用，世界隔离还没开始**」——不是「SUVTZ 已实现」。
+**当前交付的真实等级**：结构性隔离 **0 项**（namespace 化未做）、过滤层较完整、入口**部分收敛**（文件入口 1 项已收敛，协议入口未收敛）、审计缺失。所以准确的说法是「**T0 的过滤层基本可用，入口收敛刚起步，世界隔离还没开始**」——不是「SUVTZ 已实现」。
 
-**为什么 P1-2 不算结构隔离（易错点，2026-11-09 复核 + 实测修正）**：它用 `runcon u:r:ksu:s0` 建挂载，只是换了**建挂载时的域**（打上伪 mnt_id 的前提），mount namespace 并未分裂——`app` / `zygote64` / `shell` 是三个不同的 mount namespace（本机实测 inode `4026534122` / `4026533851` / `4026533362`），app 的那个是全局 `shared:65` 的 **slave**（`master:65`），overlay 经**挂载传播**进入它。所以 overlay 对象确实在 app 自己的 namespace 里（`ksu` 域读 `/proc/<app_pid>/mountinfo` 可见 `2000000003 … /product/bin … overlay`），`N` 侧只是**看不见 / 打不开**它。可见性的改善来自两处**过滤**：`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 三个 kprobe 按伪 id 隐藏（开关 `hide_sus_mnts_for_non_su_procs`，对全体非 `ksu` 域生效），以及 `__lookup_mnt` 按 `TIF_PROC_UMOUNTED && uid>=10000` 拦截路径解析（**只对带标志的进程生效**，`lookup_hook` 可关）。
+**为什么 P1-2 不算结构隔离（易错点，2026-11-09 复核 + 实测修正；该机制已于同日随 overlay 退役，以下为历史归因，保留作将来重启 P1-2 时的判据）**：它用 `runcon u:r:ksu:s0` 建挂载，只是换了**建挂载时的域**（打上伪 mnt_id 的前提），mount namespace 并未分裂——`app` / `zygote64` / `shell` 是三个不同的 mount namespace（本机实测 inode `4026534122` / `4026533851` / `4026533362`），app 的那个是全局 `shared:65` 的 **slave**（`master:65`），overlay 经**挂载传播**进入它。所以 overlay 对象确实在 app 自己的 namespace 里（`ksu` 域读 `/proc/<app_pid>/mountinfo` 可见 `2000000003 … /product/bin … overlay`），`N` 侧只是**看不见 / 打不开**它。可见性的改善来自两处**过滤**：`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 三个 kprobe 按伪 id 隐藏（开关 `hide_sus_mnts_for_non_su_procs`，对全体非 `ksu` 域生效），以及 `__lookup_mnt` 按 `TIF_PROC_UMOUNTED && uid>=10000` 拦截路径解析（**只对带标志的进程生效**，`lookup_hook` 可关）。
 
 两层事实必须分开（2026-11-09 实测，boot `13b5a48a`）：
 
 - **真实 `untrusted_app` 域：拦截生效**。zygote fork 的 app 进程（`u:r:untrusted_app:s0`，uid 10286）经 `SusfsSelfTest` 广播自检，`stat /product/bin/su` → `exists=0`；同轮 `ksu` 域读该进程 `/proc/<pid>/mountinfo`，overlay 确实在它自己的 namespace 里 → `ENOENT` 只能来自 `__lookup_mnt` 拦截，这同时证明该进程带 `TIF_PROC_UMOUNTED`。
 - **`run-as` 近似域：结构性不可观测**。`run-as` 是 shell fork + `setuid`，域为 `u:r:runas_app:s0`；`setuid_hook.c` 的 `if (!is_zygote(current_cred())) return 0` 使它**永远不带** `TIF_PROC_UMOUNTED` → 拦截永不适用 → 恒见 `/product/bin/su`（412 字节）。`B4` 探针跑的就是这个视角，它的 FAIL 是**探针方法论缺陷**，不是「隐藏失效」；同理 `run-as` 对 `SUS_PATH` / `SUS_MAP` / `OPEN_REDIRECT`(`uid_scheme=3`) 这些同样依赖该标志的功能一律不可观测。
 
-**仍是真的覆盖缺口（不是探针问题）**：`TIF_PROC_UMOUNTED` 只在 `setresuid` 那一刻打；若某个 app 进程在模块加载**之前**就完成 `setuid`，它终生不带标志，路径拦截对它失效（本 boot 的当前 app 进程启动于模块加载之后，故带标志）。这类进程只能靠「模块加载后重启 app」规避，不是结构保证——所以 P1-2 仍归过滤层。要做成真正的结构性隔离，得让 `W` 的挂载落在独立 mount namespace 里（例如由 `ksu` 域 `unshare` 后再建，且 `N` 的进程从不进入该 namespace）——这一步尚未做。
+**仍是真的覆盖缺口（不是探针问题）——已于 2026-11-09 随 overlay 退役消失**：`TIF_PROC_UMOUNTED` 只在 `setresuid` 那一刻打；若某个 app 进程在模块加载**之前**就完成 `setuid`，它终生不带标志，路径拦截对它失效（本 boot 的当前 app 进程启动于模块加载之后，故带标志）。退役后不存在需要拦截的挂载对象，这个缺口自然闭合——**同时也失去了 P1-2 提供的「`W` 侧文件入口」**，那正是入口收敛的代价。注意这仍不是结构性隔离：真正的结构性隔离得让 `W` 的挂载落在独立 mount namespace 里（例如由 `ksu` 域 `unshare` 后再建，且 `N` 的进程从不进入该 namespace），这一步仍未做（§7 路径 B）。
+
+### 4.2 入口收敛第 1 项：`/product/bin` overlay 退役（2026-11-09）
+
+**判据来自 §2.2.3**：TrustZone 的唯一入口是**指令级**的（`smc #0`），在 Normal World 的命名空间里不占任何位置——没有文件、没有设备节点、没有 `/proc` 条目。所以「`W` 的入口是一个可被 `ls` 看到、可被 `execve` 直接调用的文件」本身就是与硬件结构不一致的设计。`/product/bin/su` 是这样一个文件入口，它带来两个代价而只换来一个便利：
+
+| | 退役前 | 退役后 |
+|---|---|---|
+| 入口数量 | 2（overlay 里的 `/product/bin/su` 412B wrapper + sucompat 的 `/system/bin/su` 伪造） | **1**（只有 sucompat） |
+| `shell` / `run-as` 可见性 | 可见（属主 root:root 0755，DAC 谁都能 exec） | **不可见**（对象不存在） |
+| `untrusted_app` 可见性 | `ENOENT`（靠 `__lookup_mnt` + `TIF_PROC_UMOUNTED` 拦截） | `ENOENT`（**对象不存在**，不靠过滤） |
+| 保证来源 | 进程标志（枚举/时序敏感） | **结构**（没有对象） |
+| `W` 侧能力 | 有独立 `su` 文件（wrapper 可做鉴权/日志） | 无（鉴权/日志归 sucompat + `ksud`） |
+
+**退役了什么**（`tools/postlock.sh` 与 app `assets/postlock/restore.sh` 两处同源改动）：
+
+1. 原「建 `/product/bin` overlay」整块 → 换成**退役块**：先 `ksud susfs hide_sus_mnts_for_non_su_procs 0`（best-effort），再对 `/product/bin`、`$TMP/ovl/lower`、`$TMP/ovl/tmp` 做**多轮**（3 轮）`mountpoint -q` + 普通 `umount`（`umount -f` 兜底；toybox 0.8.4 无 `-l`），只有三处都不再是挂载点才 `rm -rf $TMP/ovl`，否则打 `WARN-suvtz-overlay-residual`。多轮是必需的：同 boot 重跑时 lower 上会叠两层 bind（实测）。
+2. **删 P1-2 的 hide 段**：不再 `ksud susfs hide_sus_mnts_for_non_su_procs 1`。原因不只是「没有对象」——该开关让非 `ksu` 域（**包括 restore 自己的 `kernel:s0`**）看不到伪 id 挂载，于是同 boot 重跑时 `mountpoint -q` 判否，退役块会把 overlay **bind 到自己的 lower 上**（本 boot 实测到的叠层 bug）。
+3. **删 DAC ovl 段**（原 `chmod`/`chcon` 那个 overlay 目录树）。
+4. verify 段与所有 host 侧 root 通道：`/product/bin/su` → **`/system/bin/su`**。
+
+**退役后实测影响面（boot `13b5a48a`，同一 boot 内手动执行 + 验证）**：
+
+| 项 | 结果 |
+|---|---|
+| `/product/bin` | 回原厂 4 文件（`init.oplus.nandswap.sh` / `init.qti.display.sh` / `nandswap_tool` / `qvirtmgr`），**无 `su` / `ksud`** |
+| `/data/local/tmp/ovl` | 不存在 |
+| 三挂载点 | `mountpoint -q` 全 `not-mount` |
+| root 通道 | shell 默认 `PATH` 与干净 `PATH` 均 `/system/bin/su -c id` → `uid=0 context=u:r:ksu:s0` |
+| `mountinfo` | shell 与 `ksu` 域均无 `product/bin` 条目 |
+| 管理器蓝卡 | 不受影响：root 域全扫确认管理器进程（pid 25450）**持有 `ksu_driver` fd**，`ksu_debug_manager_appid=10277` == `pm` 实读 uid |
+| SUSFS | 九项 feature 全部仍列出（`ksud susfs show enabled_features`） |
+| 扫描器 | `B4` FAIL\* → **PASS**；`B9`/`E2`/`E3`/`X3` 保持 PASS；`B5` 退役前后均 PASS |
+
+**这不是结构性隔离**（重复强调，因为最容易在这里自我欺骗）：结构性隔离的定义是「对象属于另一个世界」——即 `W` 的挂载在 `N` 从不进入的 mount namespace 里。退役是「对象不存在于任何世界」。两者在 `N` 侧的观测结果相同（都看不到），但：
+
+- 退役**失去**了 `W` 侧的对应能力（没有独立 `su` 文件，wrapper 的鉴权/日志点消失，这些职责回到 sucompat + `ksud`）；
+- 结构性隔离**保留** `W` 侧能力（对象在 `W` 的 namespace 里正常存在、正常使用）；
+- 所以退役是「以能力换纯净」，结构性隔离是「以工程换纯净」——前者可以立刻做且零风险，后者需要 `ksu` 域 `unshare` + stage 迁移 + bootstrap 重构（§7 路径 B）。
+
+**为什么不干脆把 overlay 迁进独立 namespace 而是删掉**：因为 `/product/bin` 这个挂载点的全部价值就是「让 `su` 出现在 `PATH` 里」。而 `PATH` 是 `N` 侧的概念——把它迁进 `W` 的 namespace 后，`N` 里的进程连 `PATH` 都走不到它，等价于删掉。真正需要 namespace 隔离的是**那些 `N` 与 `W` 都要用的对象**（stage 物料、`ksud`、`ksu_kaslr` 等）——那是下一步（§7 路径 B）。
 
 ---
 
@@ -341,7 +386,7 @@ Dev_rooted = 本项目的设备状态
 
 按检测方的实际能力分 7 类。状态列：✅ 正常 / ❌ 泄漏 / ⚠️ 待测 / 🚫 不可覆盖。
 
-> **时效声明**：以下 A/B/C/D/E 表是 2026-11-03（boot `5394a404`）的实测快照，包名与状态保留当时真值。其后有三处变化：① app 于 2026-11-07 合并为单应用 `com.postlock`（`com.postlock.boot` / `com.postlock.privateapp` 已不存在）；② **扫描器** `A1/A2/B4/D1` 于 2026-11-07 被显式裁决为「已接受暴露面」（`tools/suvtz/accepted.tsv`），**状态仍记 ❌，判定不变**——接受是威胁模型取舍，不是事实改变（注意：本表的设计项 `B4` 是 `/sdcard/chain*.log`，与扫描器 `B4` 不是同一项，见 §5.3.1）；③ **扫描器 `B4` 的定性于 2026-11-09 修正**：它跑在 `run-as`（`u:r:runas_app:s0`）视角，该域结构性不带 `TIF_PROC_UMOUNTED`（§4.1 易错点），因此它的 FAIL 是**探针方法论缺陷 + 承诺范围外**（§5.1），不是 `untrusted_app` 边界的缺口——真实 app 域实测 `/product/bin/su` `exists=0`。可执行探针与编号以扫描器为准（§5.3.1）。
+> **时效声明**：以下 A/B/C/D/E 表是 2026-11-03（boot `5394a404`）的实测快照，包名与状态保留当时真值。其后有三处变化：① app 于 2026-11-07 合并为单应用 `com.postlock`（`com.postlock.boot` / `com.postlock.privateapp` 已不存在）；② **扫描器** `A1/A2/B4/D1` 于 2026-11-07 被显式裁决为「已接受暴露面」（`tools/suvtz/accepted.tsv`），**状态仍记 ❌，判定不变**——接受是威胁模型取舍，不是事实改变（注意：本表的设计项 `B4` 是 `/sdcard/chain*.log`，与扫描器 `B4` 不是同一项，见 §5.3.1）；③ **扫描器 `B4` 的定性于 2026-11-09 修正**：它跑在 `run-as`（`u:r:runas_app:s0`）视角，该域结构性不带 `TIF_PROC_UMOUNTED`（§4.1 易错点），因此它的 FAIL 是**探针方法论缺陷 + 承诺范围外**（§5.1），不是 `untrusted_app` 边界的缺口——真实 app 域实测 `/product/bin/su` `exists=0`。④ **同日 `/product/bin` overlay 退役**（§4.2）：`B3`（`/product/bin/su`）与 `E3`/`E4`（overlay 的 `mountinfo`/`mounts` 视图）因对象删除而闭合，扫描器 `B4` 实测转 PASS。可执行探针与编号以扫描器为准（§5.3.1）。
 
 #### A. 包与进程（优先级最高：一条命令定性）
 
@@ -362,7 +407,7 @@ Dev_rooted = 本项目的设备状态
 |---|---|---|---|---|
 | B1 | `/data/local/tmp/ksu_boot/*` | **可读全套物料** | `add_sus_path` | ❌ |
 | B2 | `/data/adb/ksu`、`/data/adb/modules` | app 域 DAC 拒（0700 root） | SUS_PATH 补强（防 shell/其他 uid） | ✅ |
-| B3 | `/product/bin/su`（overlay 上层） | shell 可见 | `add_sus_path` + `add_sus_path_loop` | ❌ |
+| B3 | ~~`/product/bin/su`（overlay 上层）~~ **已退役（2026-11-09）** | — | 对象删除（入口收敛到 sucompat） | ✅ |
 | B4 | `/sdcard/chain*.log` | 已清 | 纪律性清理 | ✅ |
 | B5 | `/data/local/tmp/ksud`、`preload.so` | 同 B1 | 同 B1 | ❌ |
 
@@ -401,8 +446,8 @@ Dev_rooted = 本项目的设备状态
 |---|---|---|---|---|
 | E1 | `/sys/fs/selinux/enforce` | `1`（严格） | 不降级（改了反而更可疑） | ✅ |
 | E2 | `getenforce` | Enforcing | 同上 | ✅ |
-| E3 | `/proc/self/mountinfo` 里的 overlay | `kernel:s0` 建的 mount 不打标 | 需确认 app 命名空间里看不到 | ⚠️ |
-| E4 | `/proc/mounts` 中的 `tmpfs`（overlay upper） | 同上 | 同上 | ⚠️ |
+| E3 | ~~`/proc/self/mountinfo` 里的 overlay~~ **已退役（2026-11-09）** | — | 对象删除 | ✅ |
+| E4 | ~~`/proc/mounts` 中的 `tmpfs`（overlay upper）~~ **已退役（2026-11-09）** | — | 对象删除 | ✅ |
 
 #### F. 行为侧信道（部分不可覆盖）
 
@@ -453,10 +498,10 @@ Dev_rooted = 本项目的设备状态
 | A6 `dumpsys package` | — | 普通 app 无 DUMP 权限，恒 ✅ |
 | B1 `/data/local/tmp/ksu_boot` | B1 + X4 | 加物料目录双通道 |
 | B2 `/data/adb/ksu` | B3 | `/data/adb` 整体测 |
-| B3 `/product/bin/su` | B4 | 同义 |
+| B3 `/product/bin/su` | B4 | 同义。**2026-11-09 对象已退役**（§4.2）：`B4` 探针保留作回归兜底，实测 `absent` → PASS |
 | B4 `/sdcard/chain*.log` | — | 已清理，属纪律项不设探针 |
 | B5 `/data/local/tmp/ksud`、`preload.so` | B2 + B7 | 目录可枚举 + 单文件可读 |
-| — | B5 / B6 / B8 / B9 / B10 / B11 | 设计里没有的补充面（`/system/bin/su`、物料 ko、链日志、overlay upper、`ksu_kaslr`、`restore.sh`） |
+| — | B5 / B6 / B8 / B9 / B10 / B11 | 设计里没有的补充面（`/system/bin/su`、物料 ko、链日志、overlay upper、`ksu_kaslr`、`restore.sh`）。其中 `B9` 测的 `ovl/tmp/upper` 随 overlay 退役（§4.2）恒 `absent` → PASS |
 | C1 `/proc/modules` | C3 + X1 | 同义 + 双通道 |
 | C2 `/sys/module/kernelsu` | C1 + C5 | 同义（C5 测 `parameters` 子目录） |
 | C3 `/sys/module/oplus_check_suppress` | C2 | 同义 |
@@ -577,6 +622,7 @@ Keeper(root, ksu 域)
 | **P1d** | 属性面：D1 使用后清理 + policy 收紧 | 零 | 需验证 | 0.5 天 | ⏸ 待裁决（D1 通道 bootstrap 依赖） |
 | **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | ⚠ 部分落地（2026-11-07）：**每 boot 自跑已挂在 `tools/postlock.sh` 尾部**（旁路、WARN-only、`SUVTZ_SCAN=0` 关闭、台账 `history.tsv`）；「app 自身代码自跑同一套探针」随 PostLock-Boot 冻结而未做，判据仍是 `runas_app` 近似 |
 | **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 | 未开始 |
+| **P1-5** | **入口收敛第 1 项：退役 `/product/bin` overlay**（§4.2）——`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点 | 零 | 无 | 0.5 天 | ✅ 已完成（2026-11-09）：`tools/postlock.sh` + app `assets/postlock/restore.sh` 同源改动，退役块设备端 no-op 实测通过，本 boot 手动执行影响面全通 |
 
 **P0 必须先行**：没有基线，"修好了"和"本来就正常"分不清。这也是项目历史上多次"假绿"的根源（verify 被上一轮遗留撑绿）。
 
