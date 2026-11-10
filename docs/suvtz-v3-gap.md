@@ -199,6 +199,34 @@ SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。�
 自己的状态。链关键集留在 `N` 不是妥协，是域墙的必然结果 —— 除非将来让链
 本体跑在 `W` 里，而那要求 `W` 先存在，与 bootstrap 顺序矛盾。
 
+**迁移的执行前提（2026-11-10 实测）**：迁移要让 restore 在 `W` 里跑
+`finitmod` 载入模块。这里有个容易想错的点 —— **命令本体不必在 `W` 里**：
+`wns run <pid> <cmd>...` 是「进 `W` 的 ns 后 exec」，所以 `finitmod` 可以留在
+`N`（`/data/local/tmp/ksu_boot/finitmod`），只有它的 `.ko` 参数需要解析到 `W`
+（进 ns 后 `/data/local/tmp/.w/stage/x.ko` 就指向 tmpfs）。于是前提收敛成一句：
+**`kernel:s0` 能否 `setns` 进 `W` 并 exec**。
+
+这个前提**无法从外部探测**（实测三条）：
+
+| 探测方式 | 结果 |
+|---|---|
+| `su -c 'runcon u:r:kernel:s0 /system/bin/id'` | `runcon: exec /system/bin/id: Permission denied` —— ksu 域连 `kernel` 域都进不去，与 `W` 无关 |
+| `su -c 'runcon u:r:kernel:s0 $WNSBIN run 5970 /system/bin/true'` | 同上 `Permission denied`（失败在 runcon 的 exec 转换，不是 `setns`） |
+| `su -c '$WNSBIN run 5970 /system/bin/true'`（ksu 域） | ✅ 成功（与 W4 判据一致） |
+
+即 `u:r:kernel:s0` 的唯一实例就是 restore 自己，只能在 restore 内部观测。
+故在 holder 段 mountpoint 检查之后加了一条 WARN-only 探针
+（`tools/postlock.sh`，2026-11-10）：
+
+```
+suvtz-w: exec=yes           restore 自己进了 W 并 exec —— 迁移可行
+suvtz-w: exec=yes-via-su    只有 ksu 域能进（迁移得走 ksu 而非 restore）
+WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
+```
+
+探针结果决定下一轮是否按 §2.4 的「可迁 `W`」清单动手；在拿到 `exec=yes`
+之前不写迁移代码。
+
 ### 2.5 迁移的代价
 
 | 代价 | 说明 |
@@ -319,7 +347,7 @@ SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工（需 holder 提前到模块加载之前，见 §2.4） |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工 —— 先等执行前提探针（`suvtz-w: exec=yes`，`1e3e4ef1`）的实测结果，见 §2.4 |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
