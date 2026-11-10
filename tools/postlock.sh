@@ -71,18 +71,6 @@ ADB_BIN=$(pick_adb)
 ab() {
   if [ -n "${SERIAL:-}" ]; then "$ADB_BIN" -s "$SERIAL" "$@"; else "$ADB_BIN" "$@"; fi
 }
-# 多设备时必须显式指定：WSL 里跑 Windows 的 adb.exe，ANDROID_SERIAL 不会被
-# 传进去（实测仍报 more than one device），只能靠 ab() 加 -s。
-# 本机常连着另一台 401e909a（PD2020，非本项目，勿动）——所以这条不是可选优化。
-if [ -z "${SERIAL:-}" ]; then
-  NDEV=$(ab devices 2>/dev/null | tr -d '\r' | awk 'NR>1 && $2=="device"' | grep -c . || true)
-  if [ "$NDEV" -gt 1 ]; then
-    die "检测到 $NDEV 台设备，请用 SERIAL=<序列号> 指定目标（错设备 401e909a 勿动）"
-  fi
-fi
-[ "$(ab get-state 2>/dev/null | tr -d '\r')" = device ] || die "no device"
-BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | cut -c1-8)
-[ -n "$BOOT8" ] || BOOT8='????????'
 
 # --- channel resilience (2026-11-10, v35 round 2) -----------------------
 # During the chain the device runs fork storms and the adb transport can
@@ -93,6 +81,10 @@ BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | 
 # the host round went blind and could not read a restore marker even if one
 # had been written.  Every long poll therefore re-connects first, and the
 # poll budget below is only consumed while the transport is up.
+#
+# It is also the very first thing the script does: a round started while the
+# transport is momentarily gone used to die on "no device" without trying
+# (observed 2026-11-10 21:29, the device had slept its Wi-Fi).
 CH_RECONNECTS=0
 ab_channel() {
   local st
@@ -114,6 +106,19 @@ ab_channel() {
   echo "  channel reconnected (n=$CH_RECONNECTS, state was down)"
   return 0
 }
+
+# 多设备时必须显式指定：WSL 里跑 Windows 的 adb.exe，ANDROID_SERIAL 不会被
+# 传进去（实测仍报 more than one device），只能靠 ab() 加 -s。
+# 本机常连着另一台 401e909a（PD2020，非本项目，勿动）——所以这条不是可选优化。
+if [ -z "${SERIAL:-}" ]; then
+  NDEV=$(ab devices 2>/dev/null | tr -d '\r' | awk 'NR>1 && $2=="device"' | grep -c . || true)
+  if [ "$NDEV" -gt 1 ]; then
+    die "检测到 $NDEV 台设备，请用 SERIAL=<序列号> 指定目标（错设备 401e909a 勿动）"
+  fi
+fi
+ab_channel || die "no device"
+BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | cut -c1-8)
+[ -n "$BOOT8" ] || BOOT8='????????'
 
 # --- host artifacts ----------------------------------------------------
 step "check host artifacts"
