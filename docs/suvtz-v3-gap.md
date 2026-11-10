@@ -261,6 +261,9 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 **待一次 host 侧驱动的 fresh boot 验收**补齐 Phase B 判据（`staged ocsk=1
 pub=1 pp=1`、`*-finitmod-ok-w`、`adb-keys-from-w`、`pp-from-w`、
 `su-fallback-skipped (ocsk not loaded)`）——在此之前只算「代码已落、未实测」。
+核对器：`bash tools/suvtz/check_phaseb.sh <outdir>`（6 行，全部是「W 路径真的
+被走到」的正向信号；FAIL = 静默回退 N，boot 仍可用但迁移未验证）。它与
+`tools/suvtz/check_accept.sh` 的 17 项分开计数，不改变验收项总数。
 
 ### 2.5 迁移的代价
 
