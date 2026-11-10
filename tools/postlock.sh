@@ -566,6 +566,20 @@ else
     else
       log WARN-suvtz-w-mountpoint
     fi
+    # Prerequisite for material migration (gap section 6 item 2): restore has
+    # to be able to run a command inside W.  The command binary itself may
+    # stay in N (finitmod) -- only its .ko argument must resolve inside W --
+    # so "exec works" is exactly "setns + exec works".  Measured 2026-11-10:
+    # runcon cannot reach u:r:kernel:s0 from the ksu domain at all (even
+    # /system/bin/id is exec-denied), so this cannot be probed from outside;
+    # it has to be observed here, in the only kernel:s0 process there is.
+    if \$WNSBIN run \$WPID /system/bin/true >/dev/null 2>&1; then
+      log "suvtz-w: exec=yes"
+    elif [ -x /system/bin/su ] && /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/true" >/dev/null 2>&1; then
+      log "suvtz-w: exec=yes-via-su"
+    else
+      log WARN-suvtz-w-exec
+    fi
     if [ -e \$WMP/stage ]; then
       log WARN-suvtz-w-visible-in-n
     else
