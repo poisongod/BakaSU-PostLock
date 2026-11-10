@@ -1,0 +1,27 @@
+== SUVTZ v3 acceptance check ==
+outdir=/tmp/opencode/accept_watch/v36_phasec/round1
+  postlock.log             2365 bytes
+  postlock_restore.log     3576 bytes
+  postlock_chain.log       1848240 bytes
+
+PASS    RETIRE-0 [59eeb053 06:43:17] suvtz: overlay-retired mounts=0
+PASS    RETIRE-RESID no WARN-suvtz-overlay-residual
+PASS    RETIRE-NOBUILD overlay 创建块已删除（mount -t overlay 计数 0）
+PASS    W-HOLDER [59eeb053 06:43:09] suvtz-w: holder pid=26603 ns=mnt:[4026534152] mp=/data/local/tmp/.w by=kernel
+PASS    W-NS     ns 已解析（非 unknown）
+PASS    W-BY     by=kernel（direct kernel:s0 优先路径成功）
+PASS    W-MP     [59eeb053 06:43:09] suvtz-w: mountpoint=yes
+PASS    W-EXEC   [59eeb053 06:43:09] suvtz-w: exec=yes
+PASS    W-NABSENT [59eeb053 06:43:09] suvtz-w: n-side-absent stage=ENOENT
+PASS    RESTORE-OK POSTLOCK-RESTORE-OK x1
+PASS    STRICT-OK SELINUX-STRICT-OK x1
+PASS    EXIT0    postlock.sh rc=0
+PASS    SU-PROBE [host-verify] probe: uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+PASS    CHAIN-ROOT done=1 root=1 x3
+PASS    CHAIN-ROUTE route done success=1
+PASS    SCAN     FAIL=0 (另有已接受 3)  PASS=37  INFO=0  总计=40  runas=ok  (/tmp/opencode/suvtz/auto_59eeb053/stdout.txt)
+        modules: p6: modules=kernelsu=YES oplus_check_suppress=YES kernelsu_hotload_init=NO 
+PASS    HIDE-OFF 退役块已执行 ⇒ hide 0 已静默下发（同段，无独立日志）
+
+== summary: PASS=17 FAIL=0 UNKNOWN=0 ==
+RESULT: OK（无 FAIL）

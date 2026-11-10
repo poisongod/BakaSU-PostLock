@@ -1,0 +1,10 @@
+== SUVTZ Phase C (N-copy purge) check ==
+outdir=/tmp/opencode/accept_watch/v36_phasec/round1
+  postlock_restore.log     3576 bytes
+
+PASS    PC-CKSUM   cksum 一致文件数=3（ocsk/pub/pp 至少三项）: [59eeb053 06:43:10] suvtz-w: cksum ok oplus_check_suppress.ko 1995826726 238160
+PASS    PC-PURGE   [59eeb053 06:43:18] suvtz-w: n-side-purged oplus_check_suppress.ko postlock_adbkey.pub pp_adb_tcp.bin
+PASS    PC-VERIFY  无 purge/cksum 告警
+PASS    PC-KEEP    [59eeb053 06:43:18] suvtz-w: n-side-kept kernelsu.ko finitmod preload.so ksud sep_enforce1.txt
+
+PASS=4 FAIL=0 UNKNOWN=0 总计=4

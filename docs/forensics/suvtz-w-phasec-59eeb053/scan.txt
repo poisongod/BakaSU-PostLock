@@ -1,0 +1,1 @@
+FAIL=0 (另有已接受 3)  PASS=37  INFO=0  总计=40  runas=ok

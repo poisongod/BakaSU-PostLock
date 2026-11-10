@@ -1,0 +1,13 @@
+== SUVTZ Phase B/C out-of-band transport fidelity ==
+time=2026-11-10T22:43:44Z
+boot=59eeb053-8fd8-4c64-b980-b5591c45c09f
+holder_pid=26603
+holder_ns=mnt:[4026534152]
+n_side_stage=ENOENT
+ocsk=loaded
+
+OK    oplus_check_suppress.ko  ref=in-band cksum=1995826726 238160
+OK    postlock_adbkey.pub  ref=in-band cksum=2123509450 719
+OK    pp_adb_tcp.bin  ref=in-band cksum=2332106405 30
+
+RESULT=PASS (live W copies match their references)

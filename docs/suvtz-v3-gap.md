@@ -319,7 +319,7 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
 （`wns: run ns=... cmd=...`）就打在 stderr 上，解析 cksum 输出前必须
 `grep -v '^wns:'` 过滤，否则 `$1 $2` 取到的是诊断行。
 
-**Phase C 已落码（2026-11-11，待 fresh boot 验收）**：Phase B 只是「W 优先、N
+**Phase C 已验收（2026-11-11，fresh boot `59eeb053`）**：Phase B 只是「W 优先、N
 兜底」，`N` 里的副本仍在 ⇒ 隔离不成立。Phase C 在 restore 尾部把 `N` 副本删掉，
 并在此之前做 in-band 逐字节校验：
 
@@ -352,6 +352,26 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
 `check_phaseb.sh` 分开计数，同样不改变 17 项验收总数。out-of-band 核对器
 `tools/suvtz/phaseb_oob.sh` 在 Phase C 之后会看到 `N` 副本消失，此时改用
 **in-band 记录的 crc** 作参照与活着的 `W` 副本比对（仍能证伪「记录值造假」）。
+
+**验收实测（2026-11-11，fresh boot `59eeb053`，restore 生成物 39713B / 682 行 /
+sha1 `1585c985…`）**：`check_phasec.sh` **PASS=4 FAIL=0**；restore 侧 in-band 原文
+
+```
+suvtz-w: n-side-absent stage=ENOENT
+suvtz-w: cksum ok oplus_check_suppress.ko 1995826726 238160
+suvtz-w: cksum ok postlock_adbkey.pub     2123509450 719
+suvtz-w: cksum ok pp_adb_tcp.bin          2332106405 30
+suvtz-w: staged ocsk=1 pub=1 pp=1 hotload=0
+suvtz-w: n-side-purged oplus_check_suppress.ko postlock_adbkey.pub pp_adb_tcp.bin
+suvtz-w: n-side-kept kernelsu.ko finitmod preload.so ksud sep_enforce1.txt
+```
+
+**零 `WARN-suvtz-w-*`**；`phaseb_oob` 以 `ref=in-band` PASS（三件活 `W` 字节与记录
+一致）；主判据仍 17/17，扫描器 `PASS=37 INFO=0`（已接受 3）；设备侧独立复核
+`/data/local/tmp/ksu_boot/` 与 `/data/local/tmp/` 三件均 `ABSENT`。取证
+`docs/forensics/suvtz-w-phasec-59eeb053/`。附带收益：`PB-PUB` / `PB-PP` 由上一轮的
+UNKNOWN 转 PASS（in-band `cksum` 行同时充当传输保真证据），`check_phaseb.sh`
+6/6 无 UNKNOWN。
 
 ### 2.5 迁移的代价
 
@@ -473,7 +493,7 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`）；**Phase B 物料迁移已验收**（`0c0704ba` / `cebb2e5`，fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` / `oplus_check_suppress-finitmod-ok-w` / out-of-band `cksum` 三件逐字节一致；取证 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`）；**su-gate 门控 in-band 判据已实测**（fresh boot `8539f035`：`su-gate closed (domain=other …)` / `check_phaseb` PASS=4），**Phase C（删 N 副本成真隔离）已落码待验收**（2026-11-11：填充期 in-band `cksum` 校验 + restore 尾部 purge + `n-side-kept` 保留集判据；核对器 `tools/suvtz/check_phasec.sh`，默认开、`SUVTZ_W_PURGE=0` 可关） |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`）；**Phase B 物料迁移已验收**（`0c0704ba` / `cebb2e5`，fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` / `oplus_check_suppress-finitmod-ok-w` / out-of-band `cksum` 三件逐字节一致；取证 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`）；**su-gate 门控 in-band 判据已实测**（fresh boot `8539f035`：`su-gate closed (domain=other …)` / `check_phaseb` PASS=4），**Phase C（删 N 副本成真隔离）已验收**（2026-11-11，fresh boot `59eeb053`：填充期 in-band `cksum` 校验 + restore 尾部 purge + `n-side-kept` 保留集判据；核对器 `tools/suvtz/check_phasec.sh` PASS=4、默认开 `SUVTZ_W_PURGE=0` 可关；`N` 侧三件设备侧独立复核均 `ABSENT`，零 `WARN-suvtz-w-*`；取证 `docs/forensics/suvtz-w-phasec-59eeb053/`） |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
