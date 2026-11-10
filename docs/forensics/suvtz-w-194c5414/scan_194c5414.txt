@@ -1,0 +1,67 @@
+==================================================================
+SUVTZ 观测面扫描  boot=194c5414-230e-4fbf-8548-fe556268bb21  device=100.120.155.127:5555
+app 域代理包=com.postlock  runas_ok=1  runas_exec=1  device_locked=0
+时间: 2026-11-10T06:17:52+08:00
+------------------------------------------------------------------
+视角说明: shell = 对照 (能力远超检测方);
+          runas = app uid + runas_app 域 (DAC 精确, SELinux 域不等价于
+          untrusted_app) => runas 的 PASS 是必要条件, 不是充分条件,
+          真正判据需 app 自身代码复测。
+期望值来源: docs/suvtz-v3-design.md §5.3 定义的 stock 期望 (非实测对照机)。
+类别: A 包与进程  B 文件系统  C 内核符号与模块  D 系统属性  E SELinux 与挂载
+      W 世界隔离 (独立 mount ns: N 侧空挂载点, W 侧自有 tmpfs)
+      X 成对交叉验证 (同一事实两条独立通道, 要求同向; 分歧=FAIL)
+判定: PASS / FAIL / INFO ; FAIL* = 已显式裁决接受的 FAIL (仍计 FAIL, 单独列出)
+      接受表: /home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/suvtz/accepted.tsv
+==================================================================
+ID    类 观测面                                判定 实测/原因
+------------------------------------------------------------------
+A1    A   管理器包可枚举                    FAIL*  package:com.resukisu.resukisu  (可见)  (已接受: 不立项(保留包名 com.resukisu.resukisu)。套壳需换证书重签(manager_sign.h 加自签 hash+size 并重编 ko)+ ksud 带 KSU_PACKAGE_NAME 重编, 且此后无法覆盖安装上游新版; 包名可见只给出「存在性」信号, 不泄露 root 能力。若将来立项, 删本行即可。)
+A2    A   工具包可枚举                       FAIL*  package:com.postlock  (可见)  (已接受: 保留 com.postlock(2026-11-07 单应用合并后唯一载体: com.postlock.boot 与 com.postlock.privateapp 已卸载, 自检载体职责转入 com.postlock)。它是 SUSFS app 域自检唯一载体: 隐藏门控是 TIF_PROC_UMOUNTED+uid>=10000, 只有 zygote fork 的真 app 进程可观测, 卸载会削弱回归能力; 包名可见的影响同 A1。探针枚举数由 2 变 1(数值变更已重新裁决, 结论不变)。)
+A3    A   其它 root 工具包                    PASS   -  (不可见(rc=1))
+A4    A   app 可见 ksud 进程                   PASS   0  (0)
+A5    A   app 可见 tailscaled                    PASS   0  (0)
+B1    B   物料目录 /data/local/tmp/ksu_boot    PASS   ls: /data/local/tmp/ksu_boot: Permission denied  (拒绝/不存在)
+B2    B   /data/local/tmp 可枚举                PASS   ls: /data/local/tmp: Permission denied  (拒绝/不存在)
+B3    B   /data/adb 可枚举                      PASS   ls: /data/adb: Permission denied  (拒绝/不存在)
+B4    B   /product/bin/su 存在                   PASS   ls: /product/bin/su: No such file or directory  (拒绝/不存在)
+B5    B   /system/bin/su 存在                    PASS   ls: /system/bin/su: No such file or directory  (拒绝/不存在)
+B6    B   物料 ko 可读                         PASS   ls: /data/local/tmp/ksu_boot/kernelsu.ko: Permission denied  (拒绝/不存在)
+B7    B   ksud 二进制可读                     PASS   sh: can't open /data/local/tmp/ksud: Permission denied  (拒绝/不存在)
+B8    B   链日志可读                          PASS   head: /data/local/tmp/postlock_chain.log: Permission denied  (拒绝/不存在)
+B9    B   overlay upper 可列                     PASS   ls: /data/local/tmp/ovl/tmp/upper: No such file or directory  (拒绝/不存在)
+B10   B   KASLR 参考可读                       PASS   cat: /data/local/tmp/ksu_kaslr: Permission denied  (拒绝/不存在)
+B11   B   restore.sh 可读                        PASS   head: /data/local/tmp/ksu_boot/restore.sh: Permission denied  (拒绝/不存在)
+C1    C   /sys/module/kernelsu                     PASS   ls: /sys/module/kernelsu: Permission denied  (拒绝/不存在)
+C2    C   /sys/module/oplus_check_suppress         PASS   ls: /sys/module/oplus_check_suppress: Permission denied  (拒绝/不存在)
+C3    C   /proc/modules 含 kernelsu               PASS   grep: /proc/modules: Permission denied  (源不可读(拒绝))
+C4    C   /proc/kallsyms 含 ksu_/susfs_           PASS   grep: /proc/kallsyms: Permission denied  (源不可读(拒绝))
+C5    C   ksu 参数文件可读                   PASS   ls: /sys/module/kernelsu/parameters: Permission denied  (拒绝/不存在)
+D1    D   persist.adb.tcp.port                     FAIL*  5555  (有值)  (已接受: persist.adb.tcp.port=5555 是无线 adb / WAN 通道的 bootstrap 前置。属性服务拒 setprop(即使 Permissive), 只能预写 /data/property 且下次 boot 生效 —— 「按需临时开」不可行。当前设备无 Wi-Fi(仅 rmnet), USB 是唯一通道; 保留作为将来出现 Wi-Fi/tailnet 时的救回通道。)
+D2    D   wrap.* 注入属性                      PASS   0  (0)
+D3    D   ro.debuggable                            PASS   0  (0)
+D4    D   ro.build.type                            PASS   user  (user)
+D5    D   verifiedbootstate                        PASS   green  (green)
+D6    D   sys.oem_unlock_allowed                   PASS   0  (0)
+E1    E   SELinux enforce 可读                   PASS   cat: /sys/fs/selinux/enforce: Permission denied  (拒绝/不存在)
+E2    E   mountinfo 暴露 overlay                 PASS   0  (0)
+E3    E   mountinfo 暴露 tmpfs upper             PASS   0  (0)
+X1    X   模块面双通道(/proc/modules vs /sys/module) PASS   A=grep: /proc/modules: Permission denied | B=ls: /sys/module/kernelsu: Permission den  (两通道同为不可见)
+X2    X   符号面双通道(/proc/kallsyms vs /proc/modules) PASS   A=grep: /proc/kallsyms: Permission denied | B=grep: /proc/modules: Permission denied  (两通道同为不可见)
+X3    X   挂载视图双通道(mountinfo vs mounts) PASS   A=0 | B=0  (两通道同为不可见)
+X4    X   物料目录双通道(父目录 vs 物料目录) PASS   A=ls: /data/local/tmp: Permission denied | B=ls: /data/local/tmp/ksu_boot: Permission  (两通道同为不可见)
+X5    X   进程面双通道(ps vs 直接枚举 /proc) PASS   A=0 | B=0  (两通道同为不可见)
+W1    W   W 内 stage 对 app 不可见            PASS   ls: /data/local/tmp/.w/stage: No such file or directory  (拒绝/不存在)
+W2    W   N 侧挂载点为空目录               PASS   -  (空)
+W3    W   app 域 mountinfo 无 W 挂载           PASS   0  (0)
+W4    W   W 侧 tmpfs 可自证(setns)             PASS   yes  (yes)
+W5    W   app 域经 /proc 不可穿越            PASS   ls: /proc/5970/root/data/local/tmp/.w/stage: Permission denied  (拒绝/不存在)
+------------------------------------------------------------------
+FAIL=0 (另有已接受 3)  PASS=37  INFO=0  总计=40  runas=ok
+
+已接受暴露面 (判定仍为 FAIL, 经显式裁决接受; 表: /home/yang1/Downloads/CVE-2026-43499-root-KernelSU/tools/suvtz/accepted.tsv):
+  A1    不立项(保留包名 com.resukisu.resukisu)。套壳需换证书重签(manager_sign.h 加自签 hash+size 并重编 ko)+ ksud 带 KSU_PACKAGE_NAME 重编, 且此后无法覆盖安装上游新版; 包名可见只给出「存在性」信号, 不泄露 root 能力。若将来立项, 删本行即可。
+  A2    保留 com.postlock(2026-11-07 单应用合并后唯一载体: com.postlock.boot 与 com.postlock.privateapp 已卸载, 自检载体职责转入 com.postlock)。它是 SUSFS app 域自检唯一载体: 隐藏门控是 TIF_PROC_UMOUNTED+uid>=10000, 只有 zygote fork 的真 app 进程可观测, 卸载会削弱回归能力; 包名可见的影响同 A1。探针枚举数由 2 变 1(数值变更已重新裁决, 结论不变)。
+  D1    persist.adb.tcp.port=5555 是无线 adb / WAN 通道的 bootstrap 前置。属性服务拒 setprop(即使 Permissive), 只能预写 /data/property 且下次 boot 生效 —— 「按需临时开」不可行。当前设备无 Wi-Fi(仅 rmnet), USB 是唯一通道; 保留作为将来出现 Wi-Fi/tailnet 时的救回通道。
+
+结果: /tmp/opencode/suvtz/auto_194c5414/scan_194c5414.txt

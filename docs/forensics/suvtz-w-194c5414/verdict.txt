@@ -1,0 +1,27 @@
+== verdict (2026-11-10 06:29:29) ==
+boot_before=194c5414-230e-4fbf-8548-fe556268bb21 boot_after=194c5414-230e-4fbf-8548-fe556268bb21
+postlock_rc=0 enforce=1
+# postlock_rc 为推断值：本轮为手动 detached 起链（run.sh 已于 02:20:40 P3 CHANNEL_TIMEOUT 退出），
+# postlock.sh 执行至末尾且无 die/ERROR，rc 未直接捕获；其余各项均为实测计数。
+hostlog[suvtz-w: holder]=0
+hostlog[suvtz-w: mountpoint]=0
+hostlog[suvtz-w: n-side-absent]=0
+hostlog[WARN-suvtz-w]=0
+hostlog[POSTLOCK-RESTORE-OK]=1
+hostlog[SELINUX-STRICT-OK]=1
+hostlog[POSTLOCK-EXIT]=0
+restorelog[suvtz-w: holder]=1
+restorelog[suvtz-w: mountpoint]=1
+restorelog[suvtz-w: n-side-absent]=1
+restorelog[WARN-suvtz-w]=0
+restorelog[POSTLOCK-RESTORE-OK]=1
+restorelog[SELINUX-STRICT-OK]=1
+restorelog[driver-already-loaded]=1
+restorelog[oplus_check_suppress-already-loaded]=0
+restorelog[hotload-skipped]=1
+-- suvtz-w lines --
+[194c5414 06:17:40] suvtz-w: holder pid=5970 ns=mnt:[4026534144] mp=/data/local/tmp/.w by=kernel
+[194c5414 06:17:40] suvtz-w: mountpoint=yes
+[194c5414 06:17:40] suvtz-w: n-side-absent stage=ENOENT
+-- overlay-retire lines --
+[194c5414 06:17:39] suvtz: overlay-retired mounts=0

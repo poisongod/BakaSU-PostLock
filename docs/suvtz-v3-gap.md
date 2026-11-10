@@ -12,12 +12,12 @@
 | 维度 | 现状 | 离 TrustZone 还差 |
 |---|---|---|
 | **世界标记** | 有（per-task flag + per-inode flag），但**软件变量**、打标时机敏感、跨 boot 不持久 | 硬件 NS bit 不可得（§2.2.1）；软件侧只能收敛写入点 + 承认可伪造 |
-| **世界隔离** | **结构性 1 项**（`W` 独立 mount namespace，已落码、待 fresh boot 端到端验收）；其余可见性仍靠过滤层（DAC/MAC/SUSFS） | `W` 的挂载落在 `N` 从不进入的 mount namespace；对象从「N 里路径可达但被拒」变成「N 里路径不存在」——`W` 已做到，物料迁入未开工 |
+| **世界隔离** | **结构性 1 项**（`W` 独立 mount namespace，已落码并于 fresh boot 端到端验收通过）；其余可见性仍靠过滤层（DAC/MAC/SUSFS） | `W` 的挂载落在 `N` 从不进入的 mount namespace；对象从「N 里路径可达但被拒」变成「N 里路径不存在」——`W` 已做到，物料迁入未开工 |
 | **唯一入口** | 文件入口已收敛为 1（sucompat）；**协议入口仍 4 条各自为政** | 单一分发点 + 单一准入判定表 |
 | **入口监控** | 只有 `printk`/`dmesg` 级记录 | 结构化、可离线核验、不可否认（T1 才补，§6.4） |
 
 **当前交付等级 = T0 的过滤层基本可用 + 入口收敛第 1 项完成 + 世界隔离已起步（1 项落码）+ 审计缺失。**
-准确的自我描述是「T0 的过滤层基本可用，入口收敛刚起步，世界隔离刚起步（1 项落码待验收）」，
+准确的自我描述是「T0 的过滤层基本可用，入口收敛刚起步，世界隔离刚起步（1 项落码且已验收）」，
 不是「SUVTZ 已实现」（§4.1 末段原文）。
 
 ---
@@ -54,7 +54,7 @@
 
 ## 2. 世界隔离（当前的主战场）
 
-### 2.1 现状：结构性隔离 1 项（已落码，待 fresh boot 端到端验收）
+### 2.1 现状：结构性隔离 1 项（已落码，fresh boot 端到端验收通过）
 
 | 层 | 手段 | 强度 | 失效模式 |
 |---|---|---|---|
@@ -66,8 +66,11 @@
 **落码位置与验收状态**：`tools/wns`（helper，`08af3e91…`）+ `tools/postlock.sh`
 holder 段（`3150d75f`）+ 扫描器 `W1`-`W5`（`08cdacc6`）。真机原语（`hold`/`run`/
 `stat`）与扫描器三态已在 boot `13b5a48a` 验过；**生产路径 = restore 在
-`kernel:s0` 起的 holder + restore 自己消费**，尚未经过 fresh boot 端到端验收，
-故本行强度标「高」是**设计强度**，不是已验收结论。
+`kernel:s0` 起的 holder + restore 自己消费**，已于 fresh boot `194c5414`
+端到端验收通过（`by=kernel` + `mountpoint=yes` + `n-side-absent`，零
+`WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`），故本行强度标「高」是**已验收结论**，
+不再只是设计强度。取证全文：`docs/forensics/suvtz-w-194c5414/`（含 `README.md`
+判读表、`verdict.txt`、`check.txt`、40 探针产物、链/restore 日志、蓝卡截图）。
 
 **覆盖范围仅限 restore 世界**：受 SELinux 域墙约束（见 §2.4），链（`shell:s0`）
 无法进入 `kernel:s0` 的 holder，且链是引导、`W` 是引导的产物 —— 所以 `W` 的
@@ -82,10 +85,13 @@ shell `4026533362`，app 的是全局 `shared:65` 的 **slave**（`master:65`）
 结构性隔离的定义是：`W` 的挂载落在 `N` **从不进入**的 mount namespace 里。
 实现它需要 `CAP_SYS_ADMIN` + `unshare(CLONE_NEWNS)`。**restore 自己
 （`kernel:s0` = init 域）就有 `CAP_SYS_ADMIN`**，`unshare` 能力面已有历史实测
-（P1-2 之前 restore 长期成功在 `shell_data_file` 下挂 tmpfs/overlay），但
-`by=kernel` 这条判据行**尚未取得**——本 boot 无法自造 `kernel:s0` 进程
-（`su -c "runcon u:r:kernel:s0 id"` → `Permission denied`），故 `kernel` 侧的
-`unshare` 只能在 fresh boot 的生产 restore 里首验。`su -c`（`ksu` 域）是
+（P1-2 之前 restore 长期成功在 `shell_data_file` 下挂 tmpfs/overlay）。
+`by=kernel` 这条判据行**已于 fresh boot `194c5414` 取得**：生产 restore 在
+`kernel:s0` 里 direct 起 holder 成功（`suvtz-w: holder pid=5970
+ns=mnt:[4026534144] mp=/data/local/tmp/.w by=kernel` + `mountpoint=yes` +
+`n-side-absent stage=ENOENT`），**未走 `su -c` 回落**。此前的顾虑（本 boot 无法
+自造 `kernel:s0` 进程，`su -c "runcon u:r:kernel:s0 id"` → `Permission denied`）
+只说明「不能预演」，不影响生产路径本身。`su -c`（`ksu` 域）保留为
 **回落路径**（`by=ksu`），其 `unshare -m` + tmpfs + 写 marker 已实测（C7），
 因为 `ksu` 域可用性本身依赖 ocsk 先加载，见下面这条硬因果链：
 
@@ -312,7 +318,7 @@ SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），**待 fresh boot 端到端验收**；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工（需 holder 提前到模块加载之前，见 §2.4） |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工（需 holder 提前到模块加载之前，见 §2.4） |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
@@ -332,11 +338,16 @@ SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。�
   挂载点本身在 `N` 侧是空目录，见 §2.3）
 - 扫描器的判据是 `PASS`（app 域看不到某个具体对象）
 
-当前口径（2026-11-09，退役 + `W1`-`W5` 落码后）：共 40 项。
+当前口径（2026-11-10，fresh boot `194c5414` 生产路径验收后）：共 40 项。
 
 - 无 `W` holder（未跑恢复流程）：`FAIL=0 (另有已接受 3) PASS=32 INFO=5`
   —— 5 个 `W` 探针全 INFO（**没有 W 就没有可验证的事实，给 PASS 属于 vacuous PASS**）
-- 有 `W` holder（本 boot 用 ksu 域 holder 实测）：`FAIL=0 (另有已接受 3) PASS=37 INFO=0`
+- 有 `W` holder（fresh boot `194c5414`，`by=kernel` 生产 holder 实测）：
+  `FAIL=0 (另有已接受 3) PASS=37 INFO=0`
+
+两轮原始产物：`docs/forensics/suvtz-w-194c5414/scan_194c5414.{txt,tsv}`（有 holder）
+与同目录 `README.md` 记录的口径；无 holder 口径见 boot `13b5a48a` 三态验证记录。
+
 其中 A1/A2/D1 是**过滤层**的已接受暴露面，不是结构性缺口。
 `B4` 转 PASS 是「对象不存在」的直接结果——如果将来重新引入 overlay，
 它会自动转 FAIL，`accepted.tsv` 的登记行保留作回归兜底。
