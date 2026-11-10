@@ -333,11 +333,20 @@ echo 262144 > /proc/sys/fs/pipe-user-pages-soft
 [ -f /data/adb/modules/oh_my_keymint/injector.toml.bak ] && cp /data/adb/modules/oh_my_keymint/injector.toml.bak /data/adb/modules/oh_my_keymint/injector.toml && log OMK-ROLLED-BACK || log WARN-no-omk-bak
 # rm-before-cp keeps reruns safe: unlink-then-copy never hits ETXTBSY on
 # a binary some previous round left mapped/executing.
+# Missing source is tolerated: Phase C deletes some N copies on purpose, so a
+# same-boot re-run of this script sees a stage without them.  A hard cp under
+# set -e would kill the whole restore in that case.
 for f in kernelsu.ko finitmod oplus_check_suppress.ko preload.so; do
+  if [ ! -f $STAGE/\$f ]; then
+    log "suvtz: n-copy-absent \$f"
+    continue
+  fi
   rm -f $TMP/\$f
-  cp $STAGE/\$f $TMP/\$f
+  cp $STAGE/\$f $TMP/\$f || log "WARN-copy-failed \$f"
 done
-chmod 755 $TMP/kernelsu.ko $TMP/finitmod $TMP/oplus_check_suppress.ko $TMP/preload.so
+for f in kernelsu.ko finitmod oplus_check_suppress.ko preload.so; do
+  if [ -f $TMP/\$f ]; then chmod 755 $TMP/\$f; fi
+done
 # hotload companion is legacy-only (see the load block below): copy it only
 # when the stage actually carries it.  Keeping it in the loop above would make
 # a stage built without ../kernelsu-hotload-init kill the restore under set -e.
@@ -387,6 +396,9 @@ WMIG_OCSK=0
 WMIG_PUB=0
 WMIG_PP=0
 WMIG_HL=0
+# Files whose W copy passed the in-band cksum comparison.  Phase C may only
+# delete an N copy that appears here (gap section 6 item 2).
+WCKO=
 # su is only safe once oplus_check_suppress is loaded: without it the detector
 # force-signals the escalation and the popup reboots the device 15s later.
 # This block now runs BEFORE module load, so the su fallback below is gated on
@@ -503,6 +515,19 @@ else
       if [ ! -f $STAGE/\$f ]; then continue; fi
       if timeout 15 \$WNSBIN run \$WPID /system/bin/cp -f $STAGE/\$f \$WMP/stage/\$f >/dev/null 2>&1 && timeout 15 \$WNSBIN run \$WPID /system/bin/test -f \$WMP/stage/\$f >/dev/null 2>&1; then
         log "suvtz-w: staged \$f"
+        # Transport fidelity in-band: "test -f inside W" only proves a file
+        # exists there.  cksum runs on both sides (toybox symlink present in
+        # N and in W) and the filename column is dropped so the two strings
+        # compare directly.  This is the precondition for Phase C: the N copy
+        # may only be deleted once the W copy is proven identical.
+        WCN=\$(/system/bin/cksum $STAGE/\$f 2>/dev/null | awk '{print \$1" "\$2}')
+        WCW=\$(timeout 15 \$WNSBIN run \$WPID /system/bin/cksum \$WMP/stage/\$f 2>/dev/null | awk '{print \$1" "\$2}')
+        if [ -n "\$WCN" ] && [ "\$WCN" = "\$WCW" ]; then
+          WCKO="\$WCKO \$f"
+          log "suvtz-w: cksum ok \$f \$WCN"
+        else
+          log "WARN-suvtz-w-cksum \$f n=[\$WCN] w=[\$WCW]"
+        fi
         case \$f in
           oplus_check_suppress.ko) WMIG_OCSK=1 ;;
           postlock_adbkey.pub) WMIG_PUB=1 ;;
@@ -516,6 +541,14 @@ else
       if timeout 15 \$WNSBIN run \$WPID /system/bin/cp -f $STAGE/kernelsu_hotload_init.ko \$WMP/stage/kernelsu_hotload_init.ko >/dev/null 2>&1 && timeout 15 \$WNSBIN run \$WPID /system/bin/test -f \$WMP/stage/kernelsu_hotload_init.ko >/dev/null 2>&1; then
         log "suvtz-w: staged kernelsu_hotload_init.ko"
         WMIG_HL=1
+        HCN=\$(/system/bin/cksum $STAGE/kernelsu_hotload_init.ko 2>/dev/null | awk '{print \$1" "\$2}')
+        HCW=\$(timeout 15 \$WNSBIN run \$WPID /system/bin/cksum \$WMP/stage/kernelsu_hotload_init.ko 2>/dev/null | awk '{print \$1" "\$2}')
+        if [ -n "\$HCN" ] && [ "\$HCN" = "\$HCW" ]; then
+          WCKO="\$WCKO kernelsu_hotload_init.ko"
+          log "suvtz-w: cksum ok kernelsu_hotload_init.ko \$HCN"
+        else
+          log "WARN-suvtz-w-cksum kernelsu_hotload_init.ko n=[\$HCN] w=[\$HCW]"
+        fi
       else
         log "WARN-suvtz-w-stage kernelsu_hotload_init.ko"
       fi
@@ -690,6 +723,45 @@ if ! mountpoint -q /product/bin 2>/dev/null \
   log "suvtz: overlay-retired mounts=\$retired"
 else
   log "WARN-suvtz-overlay-residual mounts=\$retired"
+fi
+# ---- Phase C: purge the N copy (gap section 6 item 2) ---------------------
+# Phase B deliberately kept the N copy as a fallback; Phase C is the actual
+# isolation step.  The material may now exist in W only, because:
+#   * the W copy is proven byte-identical in-band (see "cksum ok" above), and
+#   * every consumer of these files has already run (module load, adb_keys
+#     append, persistent_properties append) -- this block sits after them.
+# Scope is a fixed whitelist of restore-only assets.  The chain's critical set
+# (kernelsu.ko / finitmod / preload.so / ksud / skbdelta / sep_enforce1.txt)
+# MUST stay in N: the chain consumes it before a holder exists, and root.c's
+# self path finitmods $STAGE/kernelsu.ko itself.
+# W is per-boot (the holder's tmpfs dies with the holder), so the next boot
+# refills from whoever pushes the stage: the host push_if_changed re-pushes a
+# missing file, and the app's StageDeploy re-copies from its media copy (the
+# purge never touches media, only $STAGE and $TMP).
+if [ "\${SUVTZ_W_PURGE:-1}" = 1 ] && [ -n "\$WCKO" ]; then
+  purged=
+  for f in oplus_check_suppress.ko kernelsu_hotload_init.ko postlock_adbkey.pub pp_adb_tcp.bin; do
+    case " \$WCKO " in *" \$f "*) ;; *) continue ;; esac
+    rm -f $STAGE/\$f 2>/dev/null
+    rm -f $TMP/\$f 2>/dev/null
+    if [ -e $STAGE/\$f ] || [ -e $TMP/\$f ]; then
+      log "WARN-suvtz-w-purge-residual \$f"
+    else
+      purged="\$purged \$f"
+    fi
+  done
+  if [ -n "\$purged" ]; then
+    log "suvtz-w: n-side-purged\$purged"
+  else
+    log WARN-suvtz-w-purge-empty
+  fi
+  kept=
+  for f in kernelsu.ko finitmod preload.so ksud sep_enforce1.txt; do
+    if [ -f $STAGE/\$f ]; then kept="\$kept \$f"; fi
+  done
+  log "suvtz-w: n-side-kept\$kept"
+else
+  log "suvtz-w: purge-skipped switch=\${SUVTZ_W_PURGE:-unset} cksum=[\$WCKO]"
 fi
 # $TMP/ksud is the shell/root-facing copy (restore + host triage use it;
 # $TMP is shell_data_file so shell can exec it).

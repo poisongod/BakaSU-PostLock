@@ -71,6 +71,12 @@ if has 'adb-keys-from-w'; then
 	row PASS PB-PUB "$(g1 'adb-keys-from-w')"
 elif has 'WARN-adb-keys-append'; then
 	row FAIL PB-PUB "N 兜底 append 失败: $(g1 'WARN-adb-keys-append')"
+elif has 'suvtz-w: cksum ok postlock_adbkey.pub '; then
+	# The append block is idempotent and skips when the key is already in
+	# adb_keys, so "no adb-keys-from-w" does not mean the W path is broken.
+	# The in-band cksum proves the W copy is byte-identical to the N original,
+	# which is exactly what the consumer would have read.
+	row PASS PB-PUB "akey 已就位（append 幂等跳过）；W 副本校验: $(g1 'suvtz-w: cksum ok postlock_adbkey.pub ')"
 elif has 'suvtz-w: staged ocsk='; then
 	# The adb_keys block is skipped entirely when the key is already present
 	# (idempotent), so absence of adb-keys-from-w with pub=1 means "skipped".
@@ -85,6 +91,8 @@ if has 'pp-from-w'; then
 	row PASS PB-PP "$(g1 'pp-from-w')"
 elif has 'WARN-pp-append'; then
 	row FAIL PB-PP "N 兜底 append 失败: $(g1 'WARN-pp-append')"
+elif has 'suvtz-w: cksum ok pp_adb_tcp.bin '; then
+	row PASS PB-PP "persistent_properties 已含该键（append 幂等跳过）；W 副本校验: $(g1 'suvtz-w: cksum ok pp_adb_tcp.bin ')"
 elif has 'suvtz-w: staged ocsk='; then
 	row UNKNOWN PB-PP "persistent_properties 已含该键，本轮未走 append 路径"
 else

@@ -42,7 +42,10 @@ v3 的核心主张有两句，一句是能力，一句是自限：
   `kernelsu.ko` / `finitmod` / `trigger.b64` / `skbdelta`）**必须留在 `N`**（链在 `shell`
   域跑，`root.c` 还要用 `KS_KO=$STAGE/kernelsu.ko` 自己 `finitmod`）。`sep_enforce1.txt`
   同样留 `N`（`ksud sepolicy apply <file>` 在 `N` 执行，先拷出来再删只是瞬时暴露）。
-  Phase B 是「W 优先、N 兜底」的可逆形态，删 `N` 副本（Phase C）才是真隔离。
+  Phase B 是「W 优先、N 兜底」的可逆形态；**Phase C（删 `N` 副本）已落码待验收**
+  （2026-11-11：填充期 in-band `cksum` 逐字节校验 + restore 尾部 purge
+  `ocsk` / `pub` / `pp` 的 `N` 与 `$TMP` 副本 + `n-side-kept` 保留集判据；
+  核对器 `tools/suvtz/check_phasec.sh`），删完才算真隔离。
   判据与实测见 `docs/suvtz-v3-gap.md` §2.4、
   `docs/forensics/suvtz-w-phaseb-c0a9c70b/`（迁移本体）与
   `docs/forensics/suvtz-w-sugate-8539f035/`（su-gate in-band 判据）。
@@ -286,7 +289,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 | 层 | 手段 | 保证来源 | 失效模式 | 当前覆盖（2026-11-09） |
 |---|---|---|---|---|
-| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **1 项已验收 + 迁移已落码**：`W` 的独立 mount namespace（`tools/wns hold` = `unshare(CLONE_NEWNS)` → `/` 设 `MS_REC\|MS_PRIVATE` → 已存在目录上 tmpfs），boot `9101e66c` fresh boot 端到端通过（`by=kernel`、`N` 侧 `<mp>/stage` = `ENOENT`、`exec=yes`）；**物料迁入 = Phase B 已验收**（fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` + 从 `W` 消费 + out-of-band `cksum` 一致；su-gate in-band 判据 fresh boot `8539f035` PASS）。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤；**该对象已于 2026-11-09 退役**（删掉而非迁走，见 §4.2） |
+| **结构性隔离** | namespace（mount / pid / fs 视图）、独立文件树、独立挂载点 | `N` 里根本不存在该对象 | 漏一项迁移 = 该对象仍属 `N` | **1 项已验收 + 迁移已落码**：`W` 的独立 mount namespace（`tools/wns hold` = `unshare(CLONE_NEWNS)` → `/` 设 `MS_REC\|MS_PRIVATE` → 已存在目录上 tmpfs），boot `9101e66c` fresh boot 端到端通过（`by=kernel`、`N` 侧 `<mp>/stage` = `ENOENT`、`exec=yes`）；**物料迁入 = Phase B 已验收**（fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` + 从 `W` 消费 + out-of-band `cksum` 一致；su-gate in-band 判据 fresh boot `8539f035` PASS；**Phase C 删 `N` 副本已落码待验收**）。P1-2 常被误记为已做结构性隔离，实际只做到挂载视图过滤；**该对象已于 2026-11-09 退役**（删掉而非迁走，见 §4.2） |
 | **过滤层** | ① SUSFS 九项 hook（输出过滤，靠枚举完整性）② DAC / SELinux（访问控制：对象在，访问被内核拒） | 枚举完整性（①）/ 内核权限模型（②） | ① 漏一个观测面 = 一条 `grep` 定性；② 策略写错 = 一条路径可达 | **较完整**：九项 feature 全部实现并实测；~~P1-2 属此层~~（**2026-11-09 随 overlay 退役消失**——没有对象可过滤）；「已接受」暴露面 4 → **3 项**（A1/A2/D1），**扫描器** `B4`（`/product/bin/su`）退役后实测转 PASS、登记行仅作回归兜底（§4.1 易错点） |
 | **入口 + 审计** | su socket / `ksud` supercall 收敛 + 鉴权 + 记录 | 协议设计 + 调用点唯一 | 多一个 magic = 多一个绕过入口的通道 | **部分收敛**：文件入口已收敛到 sucompat 单点（2026-11-09）；协议入口仍分散（`ksud debug su` 管道 / `libksud.so` reboot magic / `ksu_debug_manager_appid` 参数 / SUSFS reboot 命令族），**审计缺失**（§2.2.3） |
 
@@ -294,7 +297,7 @@ T0 承诺「`N` 观测不到 `W`」，但这句话可以靠三种完全不同的
 
 **为什么过滤层不能替代结构性隔离**：过滤是「数据在、看不见」，结构隔离是「数据不在这个世界」。前者靠枚举完整，后者靠对象归属。枚举永远不完备（内核每加一个 `/proc` 节点、厂商每加一个 sysfs 属性，都要重新枚举一次），而对象归属只需要在创建时决定一次。这就是容器用 namespace 而不是 `LD_PRELOAD` 隐藏进程的原因。
 
-**当前交付的真实等级**：结构性隔离 **1 项已验收**（`W` 的独立 mount namespace 已建并在 fresh boot `9101e66c` 上端到端通过）+ **物料迁移已验收**（Phase B，fresh boot `c0a9c70b`；su-gate in-band 判据 fresh boot `8539f035` PASS；链关键集因「一个 `W` 只能服务一个域」必须留 `N`）、过滤层较完整、入口**部分收敛**（文件入口 1 项已收敛，协议入口未收敛）、审计缺失。所以准确的说法是「**T0 的过滤层基本可用，入口收敛刚起步，世界隔离已建成并搬进了第一批物件（可逆形态）**」——不是「SUVTZ 已实现」。
+**当前交付的真实等级**：结构性隔离 **1 项已验收**（`W` 的独立 mount namespace 已建并在 fresh boot `9101e66c` 上端到端通过）+ **物料迁移已验收**（Phase B，fresh boot `c0a9c70b`；su-gate in-band 判据 fresh boot `8539f035` PASS；链关键集因「一个 `W` 只能服务一个域」必须留 `N`）、过滤层较完整、入口**部分收敛**（文件入口 1 项已收敛，协议入口未收敛）、审计缺失。所以准确的说法是「**T0 的过滤层基本可用，入口收敛刚起步，世界隔离已建成并搬进了第一批物件（Phase C 删 `N` 副本已落码待验收，验收后即脱离可逆形态）**」——不是「SUVTZ 已实现」。
 
 **为什么 P1-2 不算结构隔离（易错点，2026-11-09 复核 + 实测修正；该机制已于同日随 overlay 退役，以下为历史归因，保留作将来重启 P1-2 时的判据）**：它用 `runcon u:r:ksu:s0` 建挂载，只是换了**建挂载时的域**（打上伪 mnt_id 的前提），mount namespace 并未分裂——`app` / `zygote64` / `shell` 是三个不同的 mount namespace（本机实测 inode `4026534122` / `4026533851` / `4026533362`），app 的那个是全局 `shared:65` 的 **slave**（`master:65`），overlay 经**挂载传播**进入它。所以 overlay 对象确实在 app 自己的 namespace 里（`ksu` 域读 `/proc/<app_pid>/mountinfo` 可见 `2000000003 … /product/bin … overlay`），`N` 侧只是**看不见 / 打不开**它。可见性的改善来自两处**过滤**：`show_vfsmnt`/`show_mountinfo`/`show_vfsstat` 三个 kprobe 按伪 id 隐藏（开关 `hide_sus_mnts_for_non_su_procs`，对全体非 `ksu` 域生效），以及 `__lookup_mnt` 按 `TIF_PROC_UMOUNTED && uid>=10000` 拦截路径解析（**只对带标志的进程生效**，`lookup_hook` 可关）。
 
@@ -637,7 +640,7 @@ Keeper(root, ksu 域)
 | **P2** | 探针全量接入 P0 的扫描器，每 boot 自跑，结果落盘 | 零 | P1 | 0.5 天 | ⚠ 部分落地（2026-11-07）：**每 boot 自跑已挂在 `tools/postlock.sh` 尾部**（旁路、WARN-only、`SUVTZ_SCAN=0` 关闭、台账 `history.tsv`）；「app 自身代码自跑同一套探针」随 PostLock-Boot 冻结而未做，判据仍是 `runas_app` 近似 |
 | **P3** | TEE 三实验（E1/E2/E3）→ 过了才做 T1 | 零 | APK 测试代码 | 0.5 天 | 未开始 |
 | **P1-5** | **入口收敛第 1 项：退役 `/product/bin` overlay**（§4.2）——`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点 | 零 | 无 | 0.5 天 | ✅ 已完成（2026-11-09）：`tools/postlock.sh` + app `assets/postlock/restore.sh` 同源改动，退役块设备端 no-op 实测通过，本 boot 手动执行影响面全通 |
-| **P1-6** | **结构性隔离第 1 项：`W` 独立 mount namespace**（`docs/suvtz-v3-gap.md` §2.3）——restore 在 `kernel:s0` 起 holder（`unshare(CLONE_NEWNS)` + `MS_REC\|MS_PRIVATE` + 自有 tmpfs），`N` 侧路径不存在 | 零（helper `tools/wns` 419776B） | 无 | 1 天 | ✅ 已验收（2026-11-10，boot `9101e66c`）：`by=kernel` + `n-side-absent stage=ENOENT` + `exec=yes`，扫描器 `PASS=37 INFO=0`；**物料迁入 = Phase B 已验收**（boot `c0a9c70b`，`W` 优先 / `N` 兜底；su-gate in-band 判据 boot `8539f035` PASS；链关键集受「一个 `W` 只服务一个域」约束必须留 `N`，§2.4） |
+| **P1-6** | **结构性隔离第 1 项：`W` 独立 mount namespace**（`docs/suvtz-v3-gap.md` §2.3）——restore 在 `kernel:s0` 起 holder（`unshare(CLONE_NEWNS)` + `MS_REC\|MS_PRIVATE` + 自有 tmpfs），`N` 侧路径不存在 | 零（helper `tools/wns` 419776B） | 无 | 1 天 | ✅ 已验收（2026-11-10，boot `9101e66c`）：`by=kernel` + `n-side-absent stage=ENOENT` + `exec=yes`，扫描器 `PASS=37 INFO=0`；**物料迁入 = Phase B 已验收**（boot `c0a9c70b`，`W` 优先 / `N` 兜底；su-gate in-band 判据 boot `8539f035` PASS；**Phase C 删 `N` 副本已落码待验收**；链关键集受「一个 `W` 只服务一个域」约束必须留 `N`，§2.4） |
 
 **P0 必须先行**：没有基线，"修好了"和"本来就正常"分不清。这也是项目历史上多次"假绿"的根源（verify 被上一轮遗留撑绿）。
 
