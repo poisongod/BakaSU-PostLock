@@ -265,6 +265,24 @@ pub=1 pp=1`、`*-finitmod-ok-w`、`adb-keys-from-w`、`pp-from-w`、
 被走到」的正向信号；FAIL = 静默回退 N，boot 仍可用但迁移未验证）。它与
 `tools/suvtz/check_accept.sh` 的 17 项分开计数，不改变验收项总数。
 
+**判读纪律：`PB-PUB` / `PB-PP` 预期是 in-band UNKNOWN，不是失败。** 这两项对应
+`adb-keys-from-w` / `pp-from-w`，而它们的宿主块是幂等的「缺失才写」：设备一旦
+provisioned（`/data/misc/adb/adb_keys` 含 `postlock_bootstrap`、
+`/data/local/tmp/ksu_boot/pp_adb_tcp.bin` 的内容早写进
+`persistent_properties`），restore 里整个 append 块被跳过，这两行**永远不会
+出现**。此时唯一诚实的记法是 UNKNOWN，不能为了凑绿去改判据或强写。
+
+补证走 **out-of-band 传输保真校验**：以 `ksu` 域（`su -c`，实测可进
+`kernel:s0` holder 的 ns，W4 `value:yes`）对**活着的** holder 执行
+`timeout 20 $STAGE/wns run <holder_pid> /system/bin/cksum $WMP/stage/<f>`，与
+N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里的副本与 N 原件
+逐字节一致」，比 `test -f` 强，也不依赖 append 块是否被跳过。判据是 crc **和**
+字节数都相等；两者任一不等即 FAIL（拷贝被截断或转义破坏）。
+
+注意 `adb shell` 会把 stderr 并进 stdout，而 `wns run` 的诊断行
+（`wns: run ns=... cmd=...`）就打在 stderr 上，解析 cksum 输出前必须
+`grep -v '^wns:'` 过滤，否则 `$1 $2` 取到的是诊断行。
+
 ### 2.5 迁移的代价
 
 | 代价 | 说明 |
