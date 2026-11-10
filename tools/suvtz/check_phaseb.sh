@@ -97,9 +97,24 @@ fi
 if has 'suvtz-w: su-fallback-skipped (ocsk not loaded)'; then
 	row PASS PB-SUGATE "$(g1 'suvtz-w: su-fallback-skipped')"
 elif has 'suvtz-w: staged ocsk='; then
-	# Phase B present but the gate never fired: the only legitimate cause is a
-	# same-boot re-run, where ocsk is already loaded so WSUOK=1 by design.
-	row UNKNOWN PB-SUGATE "ocsk 已加载（同 boot 重跑），门控按设计未触发"
+	# Phase B ran but the gate line is absent.  Two legitimate causes, and
+	# they mean different things, so tell them apart from the log itself:
+	#   a) same-boot re-run -> ocsk already loaded -> WSUOK=1 by design, the
+	#      gate branch is never taken (su is legal here, it was just not
+	#      needed because by=kernel succeeded).
+	#   b) fresh boot where /system/bin/su is not executable yet (the chain's
+	#      self path did not finitmod kernelsu before restore) -> the outer
+	#      `[ -x /system/bin/su ]` is false, so no line is printed at all.
+	# Both are UNKNOWN, never PASS: the gate was not observed firing.
+	# Only "already-loaded" means ocsk predates this restore (same-boot
+	# re-run).  Do NOT test for "-finitmod-ok" here: that string is a
+	# substring of "-finitmod-ok-w", which is the normal Phase B success
+	# line, and matching it would swallow the fresh-boot case below.
+	if has 'oplus_check_suppress-already-loaded'; then
+		row UNKNOWN PB-SUGATE "ocsk 已加载（同 boot 重跑），门控按设计未触发"
+	else
+		row UNKNOWN PB-SUGATE "门控未触发：holder 段时 /system/bin/su 不可执行（kernelsu 尚未加载）"
+	fi
 elif has 'suvtz-w: holder'; then
 	row FAIL PB-SUGATE "旧版 restore（有 holder、无 Phase B 迁移段）"
 else
