@@ -254,6 +254,40 @@ USB / tailnet 两条通道，裸 `adb` 一律报 `more than one device`。
 | tailnet 上有历史僵尸节点（`node`/`node-1`/`postlock`/`oppo-a96-5g`） | 管理台噪音 | 需在 tailscale 管理台网页删除（无 CLI 凭证） |
 | 锁屏期 app 域读不到 `ts.state` | 节点名迁移（`hostname=boot`）在锁屏期不生效 | 部署时已把 Hostname 烘进 `/data/local/tmp/ts.state`，故无实际影响 |
 | 无 tailnet 凭证轮换机制 | 设备私钥长期不变 | 如需轮换，重跑 install 覆盖 `ts.state` |
+| ~~熄屏后 Wi-Fi 休眠 → 节点整体 offline~~ | 熄屏即断通道 | 已修并实测，见 §8.1 |
+
+### 8.1 熄屏断网与 WifiLock（2026-11-10 实测）
+
+**失效模式**：屏幕熄灭后设备 Wi-Fi 进入休眠，tailnet 节点 `boot` 整体
+`offline`（不是 daemon wedge——`tailscaled` 进程健康、`cgroup` 也不在
+`frozen`），host 侧 adb 直接 `error: closed`。`svc power stayon true` 在
+**未充电时不生效**，历史上只能靠「`screen_off_timeout` 拉到
+2147483647 + 定期 `KEYCODE_WAKEUP`」硬顶，副作用是长时间亮屏耗电到
+`shutdown,battery`。
+
+**产品侧对策**：`WanChannel.ensure` 在服务开关检查通过后 acquire
+`WIFI_MODE_FULL_HIGH_PERF` 的 `WifiLock`（tag `postlock:wan`），
+`stop`/`uninstall` 时 release。WifiLock 是系统服务侧的登记（binder token），
+**app 进程被 HANS 冻结不影响它**——这正是它能盖住熄屏窗口的原因。
+
+**实测（boot `c0a9c70b`，vc86/1.86，`screen_off_timeout=60000`、
+`svc power stayon false`、按 HOME 退到后台）**：
+
+| 观测 | 结果 |
+|---|---|
+| `dumpsys wifi` 锁登记 | `WifiLock{postlock:wan type=3 uid=1000 workSource=WorkSource{10286}}`（type=3 = HIGH_PERF） |
+| 采样（30 次 × 30s ≈ 15 min） | **`adb get-state` 30/30 = `device`，零掉线** |
+| 屏幕状态 | 28 次 `wake=Asleep`、2 次 `Awake`（切灭屏前后） |
+| `tailscaled` | pid 5382 恒定、`5:freezer:/`（**未被冻结**） |
+| app 进程 | pid 23948 恒定、`5:freezer:/frozen`（**HANS 照常冻结，属预期**） |
+
+即「app 被冻 + 屏幕熄灭」同时成立时通道仍在——说明保住 Wi-Fi 的不是 app 活着，
+而是系统侧的 WifiLock 登记。收尾仍需把 `screen_off_timeout` 与
+`svc power stayon` 恢复常规值（长亮屏会耗电）。
+
+**未覆盖的边界**：app 进程被 o-kill **杀掉**（不是冻结）时 binder token 失效、
+锁会被系统释放——那时只剩 Direct Boot 的 `LOCKED_BOOT_COMPLETED` 重新部署，
+期间窗口内仍会掉线。
 
 ---
 
