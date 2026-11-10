@@ -1,0 +1,17 @@
+total 29004
+-rwxr-xr-x 1 shell shell  2139184 2026-10-07 23:35 finitmod
+-rw-r--r-- 1 shell shell 15493824 2026-11-05 22:34 kernelsu.ko
+-rw-r--r-- 1 shell shell   144208 2026-11-05 19:42 kernelsu_hotload_init.ko
+-rwxr-xr-x 1 shell shell  4104136 2026-11-05 22:34 ksud
+-rw-rw-rw- 1 shell shell     6285 2026-11-10 19:25 ksud.log
+-rw-r--r-- 1 shell shell   238160 2026-10-29 11:55 oplus_check_suppress.ko
+-rw-r--r-- 1 shell shell      719 2026-10-23 07:15 postlock_adbkey.pub
+-rw-r--r-- 1 shell shell       30 2026-10-20 01:46 pp_adb_tcp.bin
+-rwxr-xr-x 1 shell shell  7052024 2026-11-08 21:29 preload.so
+-rw-r--r-- 1 shell shell    30621 2026-11-10 19:23 restore.sh
+-rw-r--r-- 1 shell shell      687 2026-10-28 04:24 sep_enforce1.txt
+-rw-rw-rw- 1 shell shell       56 2026-11-10 19:26 skbdelta
+-rw-rw-rw- 1 shell shell      712 2026-11-10 06:16 trigger.b64
+-rwxr-xr-x 1 shell shell      559 2026-11-10 19:25 trigger.sh
+-rw-rw-rw- 1 shell shell      147 2026-11-10 19:27 wan_deploy.sh
+-rwxr-xr-x 1 shell shell   419776 2026-11-09 19:09 wns

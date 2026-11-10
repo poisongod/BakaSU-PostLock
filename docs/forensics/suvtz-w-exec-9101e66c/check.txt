@@ -1,0 +1,26 @@
+== SUVTZ v3 acceptance check ==
+outdir=/tmp/opencode/accept_watch/boot9101e66c
+  postlock.log             MISSING
+  postlock_restore.log     2751 bytes
+  postlock_chain.log       255391 bytes
+
+PASS    RETIRE-0 [9101e66c 19:26:56] suvtz: overlay-retired mounts=0
+PASS    RETIRE-RESID no WARN-suvtz-overlay-residual
+PASS    RETIRE-NOBUILD overlay 创建块已删除（mount -t overlay 计数 0）
+PASS    W-HOLDER [9101e66c 19:26:57] suvtz-w: holder pid=20646 ns=mnt:[4026534154] mp=/data/local/tmp/.w by=kernel
+PASS    W-NS     ns 已解析（非 unknown）
+PASS    W-BY     by=kernel（direct kernel:s0 优先路径成功）
+PASS    W-MP     [9101e66c 19:26:57] suvtz-w: mountpoint=yes
+PASS    W-EXEC   [9101e66c 19:26:57] suvtz-w: exec=yes
+PASS    W-NABSENT [9101e66c 19:26:57] suvtz-w: n-side-absent stage=ENOENT
+PASS    RESTORE-OK POSTLOCK-RESTORE-OK x1
+PASS    STRICT-OK SELINUX-STRICT-OK x1
+UNKNOWN EXIT0    无 rc 证据（verdict.txt / watch.log 均缺失）
+PASS    SU-PROBE [host-verify] probe: uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+PASS    CHAIN-ROOT done=1 root=1 x3
+PASS    CHAIN-ROUTE route done success=1
+PASS    SCAN     FAIL=0 (另有已接受 3)  PASS=37  INFO=0  总计=40  runas=ok  (/tmp/opencode/accept_watch/boot9101e66c/scan_9101e66c.txt)
+PASS    HIDE-OFF 退役块已执行 ⇒ hide 0 已静默下发（同段，无独立日志）
+
+== summary: PASS=16 FAIL=0 UNKNOWN=1 ==
+RESULT: OK（无 FAIL）

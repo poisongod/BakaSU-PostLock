@@ -1,0 +1,80 @@
+[70af622a 20:25:18.042] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[70af622a 20:25:18.112] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[70af622a 20:25:18.125] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[70af622a 20:25:20.026] stage deploy (media copy=true): CP su | CP restore.sh | DEPLOY changed=2 skipped=9 failed=0
+[70af622a 20:25:20.032] shellchain SHELL:部署 stage | DEPLOY changed=2 skipped=9 failed=0（media 同步）
+[70af622a 20:25:20.049] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[70af622a 20:36:14.065] shellchain SHELL:等待系统静默 | quiet after 30s（load=1.84）-> GO
+[70af622a 20:36:14.117] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[70af622a 20:36:14.360] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[70af622a 20:36:14.534] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[70af622a 20:36:17.566] shellchain SHELL:链运行中 | 已跑 659s · 尾行：NOT LINK EXECUTABLE "/system/bin/sh": library "/data/local/tmp/ksu_boot/preload.so" not found: needed by main executable
+[581a1272 21:29:17.452] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[581a1272 21:29:17.569] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[581a1272 21:29:17.582] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[581a1272 21:29:18.775] stage deploy (media copy=false): CP preload.so | DEPLOY changed=1 skipped=10 failed=0
+[581a1272 21:29:18.779] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[581a1272 21:29:18.788] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[581a1272 21:34:48.407] shellchain SHELL:等待系统静默 | 仍在等：load=5.59（120s）
+[581a1272 21:35:54.511] shellchain SHELL:等待系统静默 | quiet after 180s（load=4.93）-> GO
+[581a1272 21:35:54.533] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[581a1272 21:35:54.740] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[581a1272 21:35:54.928] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[581a1272 21:35:57.952] shellchain SHELL:链运行中 | 已跑 400s · 尾行：[b581a1272 21:35:57] [33m[*][t19061] [0mapprox_time=8 thr=80
+[581a1272 21:36:12.990] shellchain SHELL:链运行中 | 已跑 415s · 尾行：[b581a1272 21:36:12] [33m[*][t17733] [0mmain cmp_requeue ret=-1 errno=35
+[581a1272 21:36:28.028] shellchain SHELL:链运行中 | 已跑 430s · 尾行：[b581a1272 21:36:27] [33m[*][t23271] [0mcfgfs write fd=66 target=ffffffb380651079 len=8 set=0 wr=8 errno=0
+[581a1272 21:36:37.062] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[581a1272 21:36:43.095] shellchain SHELL:恢复中 | 已跑 445s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:36:58.137] shellchain SHELL:恢复中 | 已跑 460s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:13.199] shellchain SHELL:恢复中 | 已跑 475s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:28.270] shellchain SHELL:恢复中 | 已跑 490s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:43.346] shellchain SHELL:恢复中 | 已跑 505s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:58.424] shellchain SHELL:恢复中 | 已跑 520s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:13.505] shellchain SHELL:恢复中 | 已跑 536s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:28.572] shellchain SHELL:恢复中 | 已跑 551s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:43.647] shellchain SHELL:恢复中 | 已跑 566s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:58.720] shellchain SHELL:恢复中 | 已跑 581s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:39:07.771] shellchain SHELL:恢复中 | 链已退出 150s 仍无 restore marker（判定失败）
+[581a1272 21:39:07.919] shellchain SHELL:恢复中 | 失败：restore 未完成（无 POSTLOCK-RESTORE-OK）（日志已收紧）
+[13b5a48a 21:48:24.480] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[13b5a48a 21:48:24.538] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[13b5a48a 21:48:24.558] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[13b5a48a 21:48:26.274] stage deploy (media copy=true): CP restore.sh | DEPLOY changed=1 skipped=10 failed=0
+[13b5a48a 21:48:26.279] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[13b5a48a 21:48:26.292] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[13b5a48a 21:50:28.018] shellchain SHELL:等待系统静默 | 仍在等：load=6.13（120s）
+[13b5a48a 21:51:44.238] shellchain SHELL:等待系统静默 | quiet after 180s（load=4.85）-> GO
+[13b5a48a 21:51:44.259] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[13b5a48a 21:51:44.525] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[13b5a48a 21:51:44.703] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[13b5a48a 21:51:47.781] shellchain SHELL:链运行中 | 已跑 203s · 尾行：[b13b5a48a 21:51:47] [33m[*][t14096] [0mapprox_time=8 thr=80
+[13b5a48a 21:52:02.882] shellchain SHELL:链运行中 | 已跑 218s · 尾行：[b13b5a48a 21:51:58] [33m[*][t18263] [0m[  7] start finding mm_struct [ffffffd400000000-ffffffe000000000]
+[13b5a48a 21:52:17.968] shellchain SHELL:链运行中 | 已跑 233s · 尾行：[b13b5a48a 21:52:17] [33m[*][t18284] [0mks_fetch64 cfgfs fallback fd=66 addr=ffffff8890991051 val=ffffffd1313e2434
+[13b5a48a 21:52:33.064] shellchain SHELL:链运行中 | 已跑 248s · 尾行：13b5a48a 21:52:32] [33m[*][t18332] [0mpipe wavepostfork w=9 +20=ffffff891fc18000 +28=0000000080220000 inuse=0 frozen=1
+[13b5a48a 21:52:36.088] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[13b5a48a 21:52:48.184] shellchain SHELL:恢复中 | 已跑 263s · 尾行：CHAIN_EXIT_DONE
+[13b5a48a 21:53:03.308] shellchain SHELL:恢复中 | restore 双 OK 已落盘（adb 读取；本地不可读）
+[13b5a48a 21:53:03.327] shellchain SHELL:恢复中 | 已跑 278s · 尾行：CHAIN_EXIT_DONE
+[13b5a48a 21:53:03.696] shellchain SHELL:恢复中 | verify: SU_OK | ENFORCE=1
+[9101e66c 19:23:21.578] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[9101e66c 19:23:21.704] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[9101e66c 19:23:21.727] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[9101e66c 19:23:23.621] stage deploy (media copy=true): CP restore.sh | DEPLOY changed=1 skipped=10 failed=0
+[9101e66c 19:23:23.624] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[9101e66c 19:23:23.635] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[9101e66c 19:25:10.192] shellchain SHELL:等待系统静默 | quiet after 90s（load=4.91）-> GO
+[9101e66c 19:25:10.217] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[9101e66c 19:25:10.485] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[9101e66c 19:25:10.672] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[9101e66c 19:25:13.763] shellchain SHELL:链运行中 | 已跑 112s · 尾行：[b9101e66c 19:25:13] [33m[*][t14145] [0mapprox_time=8 thr=80
+[9101e66c 19:25:28.872] shellchain SHELL:链运行中 | 已跑 127s · 尾行：[b9101e66c 19:25:28] [33m[*][t12814] [0mphase2 forensics: prepare storm i=256/1088
+[9101e66c 19:25:43.995] shellchain SHELL:链运行中 | 已跑 142s · 尾行：c 19:25:43] [33m[*][t12814] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[9101e66c 19:25:59.108] shellchain SHELL:链运行中 | 已跑 157s · 尾行：[b9101e66c 19:25:58] [33m[*][t30707] [0mtarget_time=2486 thr=60
+[9101e66c 19:26:14.218] shellchain SHELL:链运行中 | 已跑 172s · 尾行：[b9101e66c 19:26:13] [33m[*][t7278] [0mfound 5 collisisons
+[9101e66c 19:26:29.320] shellchain SHELL:链运行中 | 已跑 187s · 尾行：[b9101e66c 19:26:29] [33m[*][t13740] [0mpipe child prep memfds done
+[9101e66c 19:26:44.404] shellchain SHELL:链运行中 | 已跑 202s · 尾行：[b9101e66c 19:26:44] [33m[*][t13536] [0mks_fetch64 cfgfs fallback fd=159 addr=ffffff8745939051 val=ffffffd459be2434
+[9101e66c 19:26:50.431] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[9101e66c 19:26:59.527] shellchain SHELL:恢复中 | 已跑 217s · 尾行：CHAIN_EXIT_DONE
+[9101e66c 19:27:14.663] shellchain SHELL:恢复中 | restore 双 OK 已落盘（adb 读取；本地不可读）
+[9101e66c 19:27:14.706] shellchain SHELL:恢复中 | 已跑 232s · 尾行：CHAIN_EXIT_DONE
+[9101e66c 19:27:15.107] shellchain SHELL:恢复中 | verify: SU_OK | ENFORCE=1

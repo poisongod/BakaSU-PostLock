@@ -310,6 +310,165 @@ if [ -f $STAGE/kernelsu_hotload_init.ko ]; then
   cp $STAGE/kernelsu_hotload_init.ko $TMP/kernelsu_hotload_init.ko
   chmod 755 $TMP/kernelsu_hotload_init.ko
 fi
+# --- SUVTZ W world: structural isolation #1 (2026-11-09) ---------------
+# SUVTZ is defined as two execution worlds with a structural boundary, not
+# as a filter (docs/suvtz-v3-design.md).  W lives in its own mount
+# namespace: a tmpfs mounted on $TMP/.w inside a private namespace, so its
+# contents (stage/log/state) have no path in N at all -- N sees only the
+# empty mountpoint directory.  That is the observable difference between
+# "structurally absent" (ENOENT) and "hidden by a filter" (EACCES), and it
+# is what makes this a boundary rather than another layer of masking.
+#
+# Order is load-bearing (measured C7): unshare(CLONE_NEWNS), then
+# mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL), then the tmpfs.  Without the
+# second step the mount propagates back into N's namespace through
+# shared:1 and the boundary does not exist.  wns hold does all three.
+#
+# Who owns the holder: W is consumed by this very script (the stage payload
+# is the future content), i.e. u:r:kernel:s0 uid 0 with full caps, so a
+# direct start is tried first.  The ksu-domain start is the fallback for a
+# domain that cannot unshare; measured 2026-11-09: ksu can open its own
+# namespace, shell cannot, so cross-domain access is never assumed.
+#
+# Position: this block runs BEFORE the first module load below, because the
+# modules it stages into W are consumed by that load (Phase B material
+# migration).  W is still created by this script only -- the chain runs as
+# shell and cannot unshare, so a W it could enter does not exist.
+#
+# WARN-only by construction: W is an addition.  A boot without a holder
+# still reaches POSTLOCK-RESTORE-OK.
+WMP=$TMP/.w
+WLOG=$TMP/wns_hold.log
+WNSBIN=$STAGE/wns
+WPID=
+WBY=
+WNS=
+# Phase B material migration (docs/suvtz-v3-gap.md section 6 item 2).  These
+# track which restore-only assets actually landed inside W; 0 means "not
+# staged", and every consumer then falls back to the N copy.  That fallback is
+# the point of Phase B -- a broken W must never cost a boot its recovery path.
+WMIG_OCSK=0
+WMIG_PUB=0
+WMIG_PP=0
+WMIG_HL=0
+# su is only safe once oplus_check_suppress is loaded: without it the detector
+# force-signals the escalation and the popup reboots the device 15s later.
+# This block now runs BEFORE module load, so every su fallback below is gated
+# on "ocsk already loaded" (same-boot re-run) instead of being assumed safe.
+WSUOK=0
+if [ -x /system/bin/su ]; then
+  if [ -d /sys/module/oplus_check_suppress ]; then WSUOK=1; else log "suvtz-w: su-fallback-skipped (ocsk not loaded)"; fi
+fi
+if [ ! -x \$WNSBIN ]; then
+  log WARN-suvtz-w-wns-missing
+else
+  WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+  if [ -n "\$WPID" ]; then
+    WBY=reused
+  else
+    rm -f \$WLOG 2>/dev/null || true
+    setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &
+    i=0
+    while [ \$i -lt 50 ]; do
+      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+      if [ -n "\$WPID" ]; then break; fi
+      sleep 0.2
+      i=\$((i+1))
+    done
+    if [ -n "\$WPID" ]; then WBY=kernel; fi
+  fi
+  if [ -z "\$WPID" ] && [ "\$WSUOK" = 1 ]; then
+    # Keep whatever the direct attempt wrote: if unshare(CLONE_NEWNS) was
+    # denied there, that line is the only evidence for why we fell back.
+    /system/bin/su -c "setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &" >/dev/null 2>&1 || true
+    i=0
+    while [ \$i -lt 50 ]; do
+      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
+      if [ -n "\$WPID" ]; then break; fi
+      sleep 0.2
+      i=\$((i+1))
+    done
+    if [ -n "\$WPID" ]; then WBY=ksu; fi
+  fi
+  if [ -z "\$WPID" ]; then
+    log WARN-suvtz-w-holder-missing
+    if [ -s \$WLOG ]; then
+      log "WARN-suvtz-w-hold-log: \$(tail -n3 \$WLOG 2>/dev/null | tr '\n' '|')"
+    fi
+  else
+    # The holder prints its ns right after mounting, but pgrep can see the
+    # process a few ms earlier, so read the namespace from procfs (we own the
+    # process) and only fall back to the log line.
+    WNS=\$(readlink /proc/\$WPID/ns/mnt 2>/dev/null || true)
+    if [ -z "\$WNS" ]; then
+      WNS=\$(grep -o 'mnt:\[[0-9]*\]' \$WLOG 2>/dev/null | tail -n1)
+    fi
+    if [ -z "\$WNS" ]; then WNS=unknown; fi
+    log "suvtz-w: holder pid=\$WPID ns=\$WNS mp=\$WMP by=\$WBY"
+    if \$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP >/dev/null 2>&1; then
+      log "suvtz-w: mountpoint=yes"
+    elif [ "\$WSUOK" = 1 ] && /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP" >/dev/null 2>&1; then
+      log "suvtz-w: mountpoint=yes-via-su"
+    else
+      log WARN-suvtz-w-mountpoint
+    fi
+    # Prerequisite for material migration (gap section 6 item 2): restore has
+    # to be able to run a command inside W.  The command binary itself may
+    # stay in N (finitmod) -- only its .ko argument must resolve inside W --
+    # so "exec works" is exactly "setns + exec works".  Measured 2026-11-10:
+    # runcon cannot reach u:r:kernel:s0 from the ksu domain at all (even
+    # /system/bin/id is exec-denied), so this cannot be probed from outside;
+    # it has to be observed here, in the only kernel:s0 process there is.
+    if \$WNSBIN run \$WPID /system/bin/true >/dev/null 2>&1; then
+      log "suvtz-w: exec=yes"
+    elif [ "\$WSUOK" = 1 ] && /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/true" >/dev/null 2>&1; then
+      log "suvtz-w: exec=yes-via-su"
+    else
+      log WARN-suvtz-w-exec
+    fi
+    if [ -e \$WMP/stage ]; then
+      log WARN-suvtz-w-visible-in-n
+    else
+      log "suvtz-w: n-side-absent stage=ENOENT"
+    fi
+
+    # ---- Phase B: restore-only material lives in W (gap section 6 item 2) --
+    # One W serves one SELinux domain, so only what THIS script consumes can
+    # move.  The chain's critical set stays in N by necessity:
+    #   kernelsu.ko  root.c's self path finitmods $STAGE/kernelsu.ko itself
+    #   finitmod     exec'd by restore AND by the chain
+    #   preload.so   LD_PRELOAD'd by the shell-domain trigger
+    #   ksud         exec'd by the shell-domain trigger and by sucompat
+    # sep_enforce1.txt also stays: ksud parses that path in N, so copying it
+    # out first would be a momentary exposure, not a boundary.
+    # The fill reads from N and writes into W's tmpfs, so the binary copy runs
+    # in W (cp/test are toybox symlinks present on both sides -- measured
+    # 2026-11-10).  wns run prints its diagnostic line on stderr, hence the
+    # full redirection: only the exit status is meaningful here.
+    for f in oplus_check_suppress.ko postlock_adbkey.pub pp_adb_tcp.bin; do
+      if [ ! -f $STAGE/\$f ]; then continue; fi
+      if timeout 15 \$WNSBIN run \$WPID /system/bin/cp -f $STAGE/\$f \$WMP/stage/\$f >/dev/null 2>&1 && timeout 15 \$WNSBIN run \$WPID /system/bin/test -f \$WMP/stage/\$f >/dev/null 2>&1; then
+        log "suvtz-w: staged \$f"
+        case \$f in
+          oplus_check_suppress.ko) WMIG_OCSK=1 ;;
+          postlock_adbkey.pub) WMIG_PUB=1 ;;
+          pp_adb_tcp.bin) WMIG_PP=1 ;;
+        esac
+      else
+        log "WARN-suvtz-w-stage \$f"
+      fi
+    done
+    if [ "\${KS_HOTLOAD_LEGACY:-0}" = 1 ] && [ -f $STAGE/kernelsu_hotload_init.ko ]; then
+      if timeout 15 \$WNSBIN run \$WPID /system/bin/cp -f $STAGE/kernelsu_hotload_init.ko \$WMP/stage/kernelsu_hotload_init.ko >/dev/null 2>&1 && timeout 15 \$WNSBIN run \$WPID /system/bin/test -f \$WMP/stage/kernelsu_hotload_init.ko >/dev/null 2>&1; then
+        log "suvtz-w: staged kernelsu_hotload_init.ko"
+        WMIG_HL=1
+      else
+        log "WARN-suvtz-w-stage kernelsu_hotload_init.ko"
+      fi
+    fi
+    log "suvtz-w: staged ocsk=\$WMIG_OCSK pub=\$WMIG_PUB pp=\$WMIG_PP hotload=\$WMIG_HL"
+  fi
+fi
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
 # kernelsu_hotload_init (hotload companion) is no longer needed: kernelsu.ko
 # now reports its real load timing (current->pid != 1) and therefore takes the
@@ -318,7 +477,7 @@ if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/fi
 # companion on top of that would run the same steps twice.  Kept as an opt-in
 # fallback for older kernelsu.ko builds: KS_HOTLOAD_LEGACY=1.
 if [ "\${KS_HOTLOAD_LEGACY:-0}" = 1 ]; then
-  if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif [ ! -f $TMP/kernelsu_hotload_init.ko ]; then log WARN-hotload-missing-stage; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
+  if grep -q ^kernelsu_hotload_init /proc/modules; then log hotload-already-loaded; elif [ "\$WMIG_HL" = 1 ] && timeout 30 \$WNSBIN run \$WPID $TMP/finitmod \$WMP/stage/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok-w; elif [ ! -f $TMP/kernelsu_hotload_init.ko ]; then log WARN-hotload-missing-stage; elif $TMP/finitmod $TMP/kernelsu_hotload_init.ko 0; then log hotload-finitmod-ok; else log WARN-hotload-finitmod-failed; fi
 else
   log hotload-skipped-late-init-selfsufficient
 fi
@@ -326,7 +485,10 @@ fi
 # restarts below -- without it libksud.so setuid(0) trips the detector
 # and force_sig kills the app (round 60 verified 61/61 kills intercepted).
 # WARN-only: sig_enforce is 0 on this boot because the chain just ran.
-if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; elif $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok; else log WARN-oplus_check_suppress-finitmod-failed; fi
+# Phase B: the .ko is staged inside W, so load it from there when the fill
+# succeeded (init_module is namespace-agnostic; only the path has to resolve
+# inside W).  The N copy stays as the fallback for this round.
+if grep -q ^oplus_check_suppress /proc/modules; then log oplus_check_suppress-already-loaded; elif [ "\$WMIG_OCSK" = 1 ] && timeout 30 \$WNSBIN run \$WPID $TMP/finitmod \$WMP/stage/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok-w; elif $TMP/finitmod $TMP/oplus_check_suppress.ko 0 arm=1; then log oplus_check_suppress-finitmod-ok; else log WARN-oplus_check_suppress-finitmod-failed; fi
 # popup-suppress diagnostics (2026-10-29, oplus_check_suppress): restore's own ksud execve trips
 # oplus_exec_block and was reported -> popup forced-reboot wiped the boot
 # right after POSTLOCK-RESTORE-OK (pstore kevent_send_to_user:execve x3 at
@@ -374,7 +536,14 @@ if grep -q "^2048 " /data/misc/adb/adb_keys 2>/dev/null || ! grep -qF postlock_b
   grep -v "^2048 " /data/misc/adb/adb_keys > $TMP/adb_keys.new 2>/dev/null || true
   cat $TMP/adb_keys.new > /data/misc/adb/adb_keys 2>/dev/null || true
   rm -f $TMP/adb_keys.new
-  cat $STAGE/postlock_adbkey.pub >> /data/misc/adb/adb_keys || log WARN-adb-keys-append
+  # Phase B: read the key from inside W when staged (the redirection is
+  # opened here in N, so the bytes pass through fd1 untouched -- the file is
+  # plain text, but the same shape carries the binary protobuf below).
+  if [ "\$WMIG_PUB" = 1 ] && timeout 15 \$WNSBIN run \$WPID /system/bin/cat \$WMP/stage/postlock_adbkey.pub >> /data/misc/adb/adb_keys 2>/dev/null; then
+    log adb-keys-from-w
+  else
+    cat $STAGE/postlock_adbkey.pub >> /data/misc/adb/adb_keys || log WARN-adb-keys-append
+  fi
   chmod 640 /data/misc/adb/adb_keys || true
   chown root:shell /data/misc/adb/adb_keys || true
 fi
@@ -384,7 +553,11 @@ fi
 # persisted value itself at boot and adbd then listens on [::]:5555.
 # Takes effect from the NEXT reboot; harmless when already present.
 if ! grep -qF persist.adb.tcp.port /data/property/persistent_properties 2>/dev/null; then
-  cat $STAGE/pp_adb_tcp.bin >> /data/property/persistent_properties || log WARN-pp-append
+  if [ "\$WMIG_PP" = 1 ] && timeout 15 \$WNSBIN run \$WPID /system/bin/cat \$WMP/stage/pp_adb_tcp.bin >> /data/property/persistent_properties 2>/dev/null; then
+    log pp-from-w
+  else
+    cat $STAGE/pp_adb_tcp.bin >> /data/property/persistent_properties || log WARN-pp-append
+  fi
 fi
 # phantom-process killer off (persist): AMS culled the app-uid chain's
 # >32 clone children as "Trimming phantom processes" (rounds 1/2/4 silent
@@ -484,108 +657,6 @@ fi
 if [ -x $STAGE/ksud ] && [ ! -e /data/adb/ksud ]; then
   cp -f $STAGE/ksud /data/adb/ksud 2>/dev/null && chmod 755 /data/adb/ksud 2>/dev/null \
     && log su-driver-ksud-provisioned || log WARN-su-driver-ksud-cp
-fi
-# --- SUVTZ W world: structural isolation #1 (2026-11-09) ---------------
-# SUVTZ is defined as two execution worlds with a structural boundary, not
-# as a filter (docs/suvtz-v3-design.md).  W lives in its own mount
-# namespace: a tmpfs mounted on $TMP/.w inside a private namespace, so its
-# contents (stage/log/state) have no path in N at all -- N sees only the
-# empty mountpoint directory.  That is the observable difference between
-# "structurally absent" (ENOENT) and "hidden by a filter" (EACCES), and it
-# is what makes this a boundary rather than another layer of masking.
-#
-# Order is load-bearing (measured C7): unshare(CLONE_NEWNS), then
-# mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL), then the tmpfs.  Without the
-# second step the mount propagates back into N's namespace through
-# shared:1 and the boundary does not exist.  wns hold does all three.
-#
-# Who owns the holder: W is consumed by this very script (the stage payload
-# is the future content), i.e. u:r:kernel:s0 uid 0 with full caps, so a
-# direct start is tried first.  The ksu-domain start is the fallback for a
-# domain that cannot unshare; measured 2026-11-09: ksu can open its own
-# namespace, shell cannot, so cross-domain access is never assumed.
-#
-# WARN-only by construction: W is an addition.  A boot without a holder
-# still reaches POSTLOCK-RESTORE-OK.
-WMP=$TMP/.w
-WLOG=$TMP/wns_hold.log
-WNSBIN=$STAGE/wns
-WPID=
-WBY=
-WNS=
-if [ ! -x \$WNSBIN ]; then
-  log WARN-suvtz-w-wns-missing
-else
-  WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
-  if [ -n "\$WPID" ]; then
-    WBY=reused
-  else
-    rm -f \$WLOG 2>/dev/null || true
-    setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &
-    i=0
-    while [ \$i -lt 50 ]; do
-      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
-      if [ -n "\$WPID" ]; then break; fi
-      sleep 0.2
-      i=\$((i+1))
-    done
-    if [ -n "\$WPID" ]; then WBY=kernel; fi
-  fi
-  if [ -z "\$WPID" ] && [ -x /system/bin/su ]; then
-    # Keep whatever the direct attempt wrote: if unshare(CLONE_NEWNS) was
-    # denied there, that line is the only evidence for why we fell back.
-    /system/bin/su -c "setsid \$WNSBIN hold \$WMP >> \$WLOG 2>&1 < /dev/null &" >/dev/null 2>&1 || true
-    i=0
-    while [ \$i -lt 50 ]; do
-      WPID=\$(pgrep -f "^\$WNSBIN hold " 2>/dev/null | head -n1)
-      if [ -n "\$WPID" ]; then break; fi
-      sleep 0.2
-      i=\$((i+1))
-    done
-    if [ -n "\$WPID" ]; then WBY=ksu; fi
-  fi
-  if [ -z "\$WPID" ]; then
-    log WARN-suvtz-w-holder-missing
-    if [ -s \$WLOG ]; then
-      log "WARN-suvtz-w-hold-log: \$(tail -n3 \$WLOG 2>/dev/null | tr '\n' '|')"
-    fi
-  else
-    # The holder prints its ns right after mounting, but pgrep can see the
-    # process a few ms earlier, so read the namespace from procfs (we own the
-    # process) and only fall back to the log line.
-    WNS=\$(readlink /proc/\$WPID/ns/mnt 2>/dev/null || true)
-    if [ -z "\$WNS" ]; then
-      WNS=\$(grep -o 'mnt:\[[0-9]*\]' \$WLOG 2>/dev/null | tail -n1)
-    fi
-    if [ -z "\$WNS" ]; then WNS=unknown; fi
-    log "suvtz-w: holder pid=\$WPID ns=\$WNS mp=\$WMP by=\$WBY"
-    if \$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP >/dev/null 2>&1; then
-      log "suvtz-w: mountpoint=yes"
-    elif /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP" >/dev/null 2>&1; then
-      log "suvtz-w: mountpoint=yes-via-su"
-    else
-      log WARN-suvtz-w-mountpoint
-    fi
-    # Prerequisite for material migration (gap section 6 item 2): restore has
-    # to be able to run a command inside W.  The command binary itself may
-    # stay in N (finitmod) -- only its .ko argument must resolve inside W --
-    # so "exec works" is exactly "setns + exec works".  Measured 2026-11-10:
-    # runcon cannot reach u:r:kernel:s0 from the ksu domain at all (even
-    # /system/bin/id is exec-denied), so this cannot be probed from outside;
-    # it has to be observed here, in the only kernel:s0 process there is.
-    if \$WNSBIN run \$WPID /system/bin/true >/dev/null 2>&1; then
-      log "suvtz-w: exec=yes"
-    elif [ -x /system/bin/su ] && /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/true" >/dev/null 2>&1; then
-      log "suvtz-w: exec=yes-via-su"
-    else
-      log WARN-suvtz-w-exec
-    fi
-    if [ -e \$WMP/stage ]; then
-      log WARN-suvtz-w-visible-in-n
-    else
-      log "suvtz-w: n-side-absent stage=ENOENT"
-    fi
-  fi
 fi
 # --- SUVTZ P1-1: DAC hygiene (2026-11-03) -----------------------------
 # The P0 baseline (docs/suvtz-p0-baseline.md, 30 probes) measured what a

@@ -1,0 +1,32 @@
+[9101e66c 19:26:49] == restore start 2026-11-10 19:26:49 pid=20520 uid=0
+uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012 context=u:r:kernel:s0
+drwxrwx--x 69 system system  4096 2026-11-10 19:21 /data
+drwxr-x--x  5 root   root    3452 1973-04-16 01:41 /data/local
+drwxrwx--x  9 shell  shell  20480 2026-11-10 19:26 /data/local/tmp
+Permissive
+[9101e66c 19:26:50] chain already exited (reparented to init) - skip exit-wait
+[9101e66c 19:26:50] WARN-no-omk-bak
+[9101e66c 19:26:51] driver-already-loaded
+[9101e66c 19:26:51] hotload-skipped-late-init-selfsufficient
+[9101e66c 19:26:51] oplus_check_suppress-finitmod-ok
+[9101e66c 19:26:51] oplus_check_suppress-state: oplus_check_suppress-v14 arm=1 smod=960|ret.entry=0|entry=ffffffd459cea620|anchor tries=0 word=d4200080|dgx=ffffffd459cfc0a4 fs=ffffffd459d0b500 cfijt=ffffffd45b139e2c|kill.words @268=94004607 @a30=94004415|kill.scan[0] off=268 word=94004607 t=ffffffd459cfc0a4|kill.scan[1] off=a30 word=94004415 t=ffffffd459cfc0a4|kill.scan sites=2|ret.kill off=268 ret=0|kill.word.after=d4200080 patched=1|ret.kill off=a30 ret=0|kill.word.after=d4200080 patched=1|exec=ffffffd459cea898 kevent=ffffffd459ceace0 cfijt=ffffffd45b1238e4|rep.scan[0] off=1b8 word=940000a4|rep.scan[1] off=25c word=9400007b|rep.scan[2] off=3c0 word=94000022|rep.scan sites=3|ret.rep1 off=1b8 ret=0|ret.rep2 off=25c ret=0|rep armed=2||
+[9101e66c 19:26:53] kallsyms-ors: 0000000000000000 T oplus_root_check_succ|
+[9101e66c 19:26:54] kallsyms-oeb: 0000000000000000 T oplus_exec_block|
+[9101e66c 19:26:54] oplus_check_suppress-kill-armed
+[9101e66c 19:26:55] oplus_check_suppress-rep-armed
+[9101e66c 19:26:55] manager-appid=10277
+[9101e66c 19:26:55] WARN-phantom-settings
+[9101e66c 19:26:56] suvtz: overlay-retired mounts=0
+[9101e66c 19:26:57] suvtz-w: holder pid=20646 ns=mnt:[4026534154] mp=/data/local/tmp/.w by=kernel
+[9101e66c 19:26:57] suvtz-w: mountpoint=yes
+[9101e66c 19:26:57] suvtz-w: exec=yes
+[9101e66c 19:26:57] suvtz-w: n-side-absent stage=ENOENT
+[9101e66c 19:26:59] suvtz-b10: ksu_kaslr mode=600 (want 0600)
+[9101e66c 19:26:59] suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)
+[9101e66c 19:27:01] su-triage: dmesg + ksu_dbg params + root ksud probe captured
+[9101e66c 19:27:01] sepolicy enforce1 rules applied
+cmd: Can't find service: activity
+[9101e66c 19:27:02] selinux strict: flipping (builtin-only markers follow)
+[9101e66c 19:27:03] SELINUX-STRICT-OK enforce=1 probe=host-verify
+[9101e66c 19:27:03] POSTLOCK-RESTORE-OK
+[host-verify] probe: uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0

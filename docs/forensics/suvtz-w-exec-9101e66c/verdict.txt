@@ -1,0 +1,22 @@
+== verdict (2026-11-10 19:31) ==
+boot_before=9101e66c-2b13-45c7-a3e8-ba6b47e15764 boot_after=9101e66c-2b13-45c7-a3e8-ba6b47e15764
+# 本轮执行者 = app 侧 ShellChain（com.postlock LAUNCH 广播 -> MODE_SHELL），
+# host 侧 tools/postlock.sh 未运行，故 postlock_rc 无法直接捕获（EXIT0 记 UNKNOWN）。
+# app 侧终态（files/loopback_state.txt）：DONE:shell 域 root=1 + restore 双 OK + verify 通过
+enforce=1
+chain_root_lines=4
+restorelog[suvtz-w: holder]=1
+restorelog[suvtz-w: mountpoint]=1
+restorelog[suvtz-w: exec=]=1
+restorelog[suvtz-w: n-side-absent]=1
+restorelog[WARN-suvtz-w]=0
+restorelog[POSTLOCK-RESTORE-OK]=1
+restorelog[SELINUX-STRICT-OK]=1
+restorelog[driver-already-loaded]=1
+restorelog[oplus_check_suppress-finitmod-ok]=1
+restorelog[hotload-skipped]=1
+-- suvtz-w lines --
+[9101e66c 19:26:57] suvtz-w: holder pid=20646 ns=mnt:[4026534154] mp=/data/local/tmp/.w by=kernel
+[9101e66c 19:26:57] suvtz-w: mountpoint=yes
+[9101e66c 19:26:57] suvtz-w: exec=yes
+[9101e66c 19:26:57] suvtz-w: n-side-absent stage=ENOENT
