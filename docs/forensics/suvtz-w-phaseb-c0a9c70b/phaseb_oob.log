@@ -1,0 +1,13 @@
+== Phase B out-of-band transport fidelity ==
+time=2026-11-10T14:48:13Z
+boot=c0a9c70b-00aa-4e90-866a-20c618ebe72a
+holder_pid=30739
+holder_ns=mnt:[4026534126]
+n_side_stage=ENOENT
+ocsk=loaded
+
+OK    oplus_check_suppress.ko  cksum=1995826726 238160
+OK    postlock_adbkey.pub  cksum=2123509450 719
+OK    pp_adb_tcp.bin  cksum=2332106405 30
+
+RESULT=PASS (W copies byte-identical to N originals)

@@ -236,9 +236,24 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
   加载，此时跑 `su` 会触发 OPLUS_ROOT_CHECK → `kevent_send_to_user:execve`
   上报 → 弹窗 → 15s 强制重启。故新增 `WSUOK=1` 仅当
   `[ -x /system/bin/su ] && [ -d /sys/module/oplus_check_suppress ]`，
-  holder 回落 / mountpoint 回落 / exec 回落三处一律走它；跳过时打
-  `suvtz-w: su-fallback-skipped (ocsk not loaded)`。同 boot 重跑时 ocsk
-  已加载 → 门控自然放行。
+  holder 回落 / mountpoint 回落 / exec 回落三处一律走它。
+- **`WSUOK` 在本设备上恒为 0（源码 + 实测定案，取代旧说法「uid 0 恒允许」）**：
+  `../BakaSU/kernel/policy/allowlist.c:271` `__ksu_is_allow_uid()` 先过
+  `forbid_system_uid()`（`:129`，`uid < 2000 && uid != 1000`）——**对 uid 0 为真**；
+  `:301` `__ksu_is_allow_uid_for_current(0)` 返回 `is_ksu_domain()`。
+  `../BakaSU/kernel/feature/sucompat.c:194` 的 stat 假象与 execve 改写**都**以
+  它为门控 ⇒ **uid 0 只在 `u:r:ksu:s0` 内被放行**。restore 永远跑在
+  `u:r:kernel:s0`，于是 `test -x /system/bin/su` 看到真实缺失的文件（实体不存在）
+  → 恒假；即便绕过 `-x`，`su -c` 也会 ENOENT。
+  dmesg 里 22 条 `newfstatat ... su -> /data/adb/ksud` 来自 **shell uid 2000**
+  （`allow_shell=true`，`CONFIG_KSU_DEBUG=y`），不是 restore。
+  **因此「同 boot 重跑时 ocsk 已加载 → 门控自然放行」不成立**（restore 永远是
+  `kernel:s0`），旧注释与判据里基于该假设的分支已订正。
+- **门控必须 in-band 可观测**（否则判据永远是 UNKNOWN）：三条日志
+  `suvtz-w: su-gate closed (domain=$WCTX su-visible=no; sucompat excludes uid 0
+  outside ksu domain)` / `suvtz-w: su-gate open (domain=ksu ocsk=yes)` /
+  `suvtz-w: su-fallback-skipped (ocsk not loaded)`。三者都表示「门控确实 firing」
+  → 判据一律 PASS。`WCTX` 由 `grep -q 'ksu:s0' /proc/self/attr/current` 判定。
 - **填充 = 读 `N`、写 `W`**：`wns run $WPID /system/bin/cp -f <N 路径>
   $WMP/stage/<名>`，不需要改 `wns.c`（W 是 N 的完整视图 + `.w` 上叠 tmpfs，
   所以 `cp` 的源在 N 侧可见、目标落在 tmpfs）。每个文件填充后立刻用
@@ -258,9 +273,20 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 `tools/check_restore_heredoc.sh` 均通过；生成器产出的 assets `restore.sh`
 35042 字节 / 592 行 / sha1 `979a284f…`（`sh -n` 由生成器内部校验），
 `PAYLOAD_VERSION` = `v35-w-migrate-phaseb-20261110`，APK 已装机（vc84/1.84）。
-**待一次 host 侧驱动的 fresh boot 验收**补齐 Phase B 判据（`staged ocsk=1
-pub=1 pp=1`、`*-finitmod-ok-w`、`adb-keys-from-w`、`pp-from-w`、
-`su-fallback-skipped (ocsk not loaded)`）——在此之前只算「代码已落、未实测」。
+
+**Phase B 已验收（2026-11-10，fresh boot `c0a9c70b`，host 驱动一轮）**：
+`tools/suvtz/check_phaseb.sh` = **PASS=3 FAIL=0 UNKNOWN=3 / 6**；主判据
+`check_accept.sh` = **PASS=17 FAIL=0 UNKNOWN=0 → OK**；40 探针
+`FAIL=0（另有已接受 3）PASS=37 INFO=0 runas=ok`。实测 in-band 证据：
+`staged oplus_check_suppress.ko` / `staged postlock_adbkey.pub` /
+`staged pp_adb_tcp.bin` / `staged ocsk=1 pub=1 pp=1 hotload=0` /
+`oplus_check_suppress-finitmod-ok-w`（ocsk 真从 `W` 里消费）+
+`hotload-skipped-late-init-selfsufficient`。三个 UNKNOWN 全部是**预期内
+观测不到**：`PB-PUB`/`PB-PP`（两个 append 块因已 provisioned 而整体跳过）与
+`PB-SUGATE`（旧版 restore 的静默门控；in-band 版已在本轮之后落地，待下一轮
+fresh boot 复验）。传输保真用 out-of-band `cksum` 补证：
+`RESULT=PASS（三个 W 副本与 N 原件逐字节一致）`。取证
+`docs/forensics/suvtz-w-phaseb-c0a9c70b/`。
 核对器：`bash tools/suvtz/check_phaseb.sh <outdir>`（6 行，全部是「W 路径真的
 被走到」的正向信号；FAIL = 静默回退 N，boot 仍可用但迁移未验证）。它与
 `tools/suvtz/check_accept.sh` 的 17 项分开计数，不改变验收项总数。
@@ -403,7 +429,7 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`，17/17 判据核对的 16 PASS + 1 UNKNOWN）；**Phase B 物料迁移已应用并装机**（`0c0704ba` / `cebb2e5`，见 §2.4），**待一次 host 侧 fresh boot 验收** |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`）；**Phase B 物料迁移已验收**（`0c0704ba` / `cebb2e5`，fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` / `oplus_check_suppress-finitmod-ok-w` / out-of-band `cksum` 三件逐字节一致；取证 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`），**Phase C（删 N 副本成真隔离）待做** |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
@@ -423,15 +449,16 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
   挂载点本身在 `N` 侧是空目录，见 §2.3）
 - 扫描器的判据是 `PASS`（app 域看不到某个具体对象）
 
-当前口径（2026-11-10，fresh boot `194c5414` 生产路径验收后）：共 40 项。
+当前口径（2026-11-10，fresh boot `c0a9c70b` Phase B 验收轮复核后）：共 40 项。
 
 - 无 `W` holder（未跑恢复流程）：`FAIL=0 (另有已接受 3) PASS=32 INFO=5`
   —— 5 个 `W` 探针全 INFO（**没有 W 就没有可验证的事实，给 PASS 属于 vacuous PASS**）
-- 有 `W` holder（fresh boot `194c5414`，`by=kernel` 生产 holder 实测）：
-  `FAIL=0 (另有已接受 3) PASS=37 INFO=0`
+- 有 `W` holder（fresh boot `194c5414` / `c0a9c70b`，`by=kernel` 生产 holder
+  实测，两轮同口径）：`FAIL=0 (另有已接受 3) PASS=37 INFO=0`
 
-两轮原始产物：`docs/forensics/suvtz-w-194c5414/scan_194c5414.{txt,tsv}`（有 holder）
-与同目录 `README.md` 记录的口径；无 holder 口径见 boot `13b5a48a` 三态验证记录。
+两轮原始产物：`docs/forensics/suvtz-w-194c5414/scan_194c5414.{txt,tsv}` 与
+`docs/forensics/suvtz-w-phaseb-c0a9c70b/scan_c0a9c70b.txt`（均有 holder）；
+无 holder 口径见 boot `13b5a48a` 三态验证记录。
 
 其中 A1/A2/D1 是**过滤层**的已接受暴露面，不是结构性缺口。
 `B4` 转 PASS 是「对象不存在」的直接结果——如果将来重新引入 overlay，

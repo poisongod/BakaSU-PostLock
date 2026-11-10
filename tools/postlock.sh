@@ -389,11 +389,29 @@ WMIG_PP=0
 WMIG_HL=0
 # su is only safe once oplus_check_suppress is loaded: without it the detector
 # force-signals the escalation and the popup reboots the device 15s later.
-# This block now runs BEFORE module load, so every su fallback below is gated
-# on "ocsk already loaded" (same-boot re-run) instead of being assumed safe.
+# This block now runs BEFORE module load, so the su fallback below is gated on
+# "su is actually reachable AND ocsk already loaded" instead of assumed safe.
+#
+# Measured 2026-11-10 (boot c0a9c70b, source-verified): the gate can never
+# open in this domain.  sucompat only rewrites /system/bin/su for allow-listed
+# uids, and uid 0 is allowed only inside u:r:ksu:s0
+# (policy/allowlist.c __ksu_is_allow_uid_for_current -> is_ksu_domain()).
+# Restore runs as u:r:kernel:s0, so both the stat facade and the execve rewrite
+# are skipped: "test -x /system/bin/su" sees the real, absent file, and a
+# "su -c" from here would not be rewritten either.  Record the closed state and
+# its reason in-band instead of leaving the gate silently absent (the old
+# silent form made the Phase B gate unobservable, i.e. permanently UNKNOWN).
 WSUOK=0
-if [ -x /system/bin/su ]; then
-  if [ -d /sys/module/oplus_check_suppress ]; then WSUOK=1; else log "suvtz-w: su-fallback-skipped (ocsk not loaded)"; fi
+WCTX=other
+if grep -q 'ksu:s0' /proc/self/attr/current 2>/dev/null; then WCTX=ksu; fi
+if [ "\$WCTX" = ksu ] && [ -x /system/bin/su ]; then
+  if [ -d /sys/module/oplus_check_suppress ]; then
+    WSUOK=1; log "suvtz-w: su-gate open (domain=ksu ocsk=yes)"
+  else
+    log "suvtz-w: su-fallback-skipped (ocsk not loaded)"
+  fi
+else
+  log "suvtz-w: su-gate closed (domain=\$WCTX su-visible=no; sucompat excludes uid 0 outside ksu domain)"
 fi
 if [ ! -x \$WNSBIN ]; then
   log WARN-suvtz-w-wns-missing

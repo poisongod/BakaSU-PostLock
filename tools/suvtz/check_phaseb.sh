@@ -94,26 +94,40 @@ fi
 
 # 5. the su fallback must be gated off before ocsk is loaded (ungated su
 #    trips OPLUS_ROOT_CHECK -> popup -> 15s forced reboot).
-if has 'suvtz-w: su-fallback-skipped (ocsk not loaded)'; then
+#
+#    Observed states (restore.sh >= v36-w-su-gate):
+#      "su-gate closed (domain=other su-visible=no; ...)" -> the gate fired and
+#         refused: this is the normal, safe outcome on a fresh boot.
+#      "su-gate open (domain=ksu ocsk=yes)"             -> gate fired and allowed
+#         (only possible if restore ever runs inside u:r:ksu:s0).
+#      "su-fallback-skipped (ocsk not loaded)"          -> gate fired and refused
+#         because the module was not loaded yet.
+#    All three are a *fired* gate, so all three are PASS.
+#
+#    Why the gate can never open on this device (measured 2026-11-10, boot
+#    c0a9c70b, source-verified in ../BakaSU): sucompat rewrites
+#    /system/bin/su only for allow-listed uids, and uid 0 is allowed only
+#    inside u:r:ksu:s0 (policy/allowlist.c __ksu_is_allow_uid_for_current ->
+#    is_ksu_domain()).  Restore runs as u:r:kernel:s0, so the stat facade and
+#    the execve rewrite are both skipped: the real /system/bin/su does not
+#    exist, so "test -x" is false and "su -c" would be ENOENT.  Old restore
+#    versions tested only "-x" and printed nothing on the false branch, which
+#    is why the gate looked UNKNOWN instead of closed.
+if has 'suvtz-w: su-gate closed'; then
+	row PASS PB-SUGATE "$(g1 'suvtz-w: su-gate closed')"
+elif has 'suvtz-w: su-gate open'; then
+	row PASS PB-SUGATE "$(g1 'suvtz-w: su-gate open')"
+elif has 'suvtz-w: su-fallback-skipped (ocsk not loaded)'; then
 	row PASS PB-SUGATE "$(g1 'suvtz-w: su-fallback-skipped')"
 elif has 'suvtz-w: staged ocsk='; then
-	# Phase B ran but the gate line is absent.  Two legitimate causes, and
-	# they mean different things, so tell them apart from the log itself:
-	#   a) same-boot re-run -> ocsk already loaded -> WSUOK=1 by design, the
-	#      gate branch is never taken (su is legal here, it was just not
-	#      needed because by=kernel succeeded).
-	#   b) fresh boot where /system/bin/su is not executable yet (the chain's
-	#      self path did not finitmod kernelsu before restore) -> the outer
-	#      `[ -x /system/bin/su ]` is false, so no line is printed at all.
-	# Both are UNKNOWN, never PASS: the gate was not observed firing.
-	# Only "already-loaded" means ocsk predates this restore (same-boot
-	# re-run).  Do NOT test for "-finitmod-ok" here: that string is a
-	# substring of "-finitmod-ok-w", which is the normal Phase B success
-	# line, and matching it would swallow the fresh-boot case below.
+	# Phase B ran on an old restore whose gate was silent.  The gate *was*
+	# closed (it cannot open in kernel:s0, see above), but it left no
+	# evidence, so this stays UNKNOWN -- never PASS.  Re-run with a restore
+	# that carries the in-band line to convert it.
 	if has 'oplus_check_suppress-already-loaded'; then
-		row UNKNOWN PB-SUGATE "ocsk 已加载（同 boot 重跑），门控按设计未触发"
+		row UNKNOWN PB-SUGATE "旧版 restore（静默门控，无 su-gate 行）：ocsk 已加载，门控无法从日志证实"
 	else
-		row UNKNOWN PB-SUGATE "门控未触发：holder 段时 /system/bin/su 不可执行（kernelsu 尚未加载）"
+		row UNKNOWN PB-SUGATE "旧版 restore（静默门控，无 su-gate 行）：kernel:s0 看不到 /system/bin/su，门控结构性关闭但无 in-band 证据"
 	fi
 elif has 'suvtz-w: holder'; then
 	row FAIL PB-SUGATE "旧版 restore（有 holder、无 Phase B 迁移段）"

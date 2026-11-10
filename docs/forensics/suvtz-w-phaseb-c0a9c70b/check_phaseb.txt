@@ -1,0 +1,12 @@
+== SUVTZ Phase B (W material migration) check ==
+outdir=docs/forensics/suvtz-w-phaseb-c0a9c70b
+  postlock_restore.log     3042 bytes
+
+PASS    PB-STAGE   [c0a9c70b 22:47:43] suvtz-w: staged ocsk=1 pub=1 pp=1 hotload=0
+PASS    PB-OCSK    [c0a9c70b 22:47:43] oplus_check_suppress-finitmod-ok-w
+UNKNOWN PB-PUB     adb_keys 已含 postlock_bootstrap，本轮未走 append 路径
+UNKNOWN PB-PP      persistent_properties 已含该键，本轮未走 append 路径
+UNKNOWN PB-SUGATE  旧版 restore（静默门控，无 su-gate 行）：kernel:s0 看不到 /system/bin/su，门控结构性关闭但无 in-band 证据
+PASS    PB-HOTLOAD [c0a9c70b 22:47:43] hotload-skipped-late-init-selfsufficient
+
+PASS=3 FAIL=0 UNKNOWN=3 总计=6

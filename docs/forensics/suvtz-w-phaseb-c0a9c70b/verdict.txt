@@ -1,0 +1,5 @@
+postlock_rc=0
+boot_before=c0a9c70b-00aa-4e90-866a-20c618ebe72a
+boot_after=c0a9c70b-00aa-4e90-866a-20c618ebe72a
+enforce=1
+p6: modules=kernelsu=YES oplus_check_suppress=YES kernelsu_hotload_init=NO 

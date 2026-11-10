@@ -29,12 +29,12 @@ v3 的核心主张有两句，一句是能力，一句是自限：
    **关键推论**：TrustZone 里 Secure World 的状态"不可观测"，不是因为被过滤，而是因为 Normal World 没有"读它"的接口——唯一的跨界动作是 `SMC`，而 `SMC` 是**请求服务**，不是**读取状态**。所以正确的工程动作是"让 `W` 的状态不出现在 `N` 的数据结构里"（结构性隔离），而不是"数据在、过滤在"（出口过滤）。过滤层永远漏，漏一个就是一条 grep 定性——这正是「已接受」暴露面里 A1/A2/D1 三个的性质（§5.3；原先第 4 个**扫描器** `B4`（`/product/bin/su`）已于 2026-11-09 随 overlay 退役转为 PASS，见 §4.2；扫描器编号与设计表编号的对应见 §5.3.1）。**边界不画在特权级上**——EL1 里既有 `W` 的守卫（`ksu` 域、SUSFS、`oplus_check_suppress`），也有 `W` 的敌人（ocs 的 `force_sig` 与 `kevent_send_to_user`），所以承诺对象是默认世界 `N` 里我们真正承诺的那部分（§2.2.1）。
 2. **在本设备的硬件与启动链条件下，T2 不可达，T1 受限于 3 个未验证前提，T0 是唯一可交付的级别**。任何声称做到 T1/T2 的软件方案都是假的——这一条本身是设计的一部分。
 
-**当前交付状态（诚实标注，2026-11-10 第四轮）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离第 1 项已 fresh boot 验收**（`W` 的独立 mount namespace：`tools/wns` holder 已接入 restore，boot `9101e66c` 端到端通过——`by=kernel`、`n-side-absent stage=ENOENT`、`exec=yes`）、**物料迁入（Phase B）已落码待验收**（4 个纯 restore 消费对象进 `W`，见 `docs/suvtz-v3-gap.md` §2.4）、**入口收敛完成第 1 项**（`/product/bin` overlay 已退役，`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点，见 §4.2）、**审计缺失**。三处必须拆开说清楚：
+**当前交付状态（诚实标注，2026-11-10 第五轮）**：T0 的三层实现（§4.1）里，过滤层较完整（SUSFS 九项 + DAC/MAC）、**结构性隔离第 1 项已 fresh boot 验收**（`W` 的独立 mount namespace：`tools/wns` holder 已接入 restore，boot `9101e66c` 端到端通过——`by=kernel`、`n-side-absent stage=ENOENT`、`exec=yes`）、**物料迁入（Phase B）已验收**（fresh boot `c0a9c70b`：4 个纯 restore 消费对象里 3 个实际迁入并从 `W` 消费——`staged ocsk=1 pub=1 pp=1` + `oplus_check_suppress-finitmod-ok-w` + out-of-band `cksum` 逐字节一致；`hotload` 因 late-init 自给而不加载；见 `docs/suvtz-v3-gap.md` §2.4）、**入口收敛完成第 1 项**（`/product/bin` overlay 已退役，`su` 入口从「overlay 文件 + sucompat 伪造」双路径收敛为 sucompat 单点，见 §4.2）、**审计缺失**。三处必须拆开说清楚：
 
 - **退役 ≠ 结构性隔离**。退役是把对象**删掉**（`N` 与 `W` 都没有），不是把对象迁进 `W` 的独立 namespace。它消除的是「`/product/bin/su` 对 `shell` / `run-as` / 模块加载前 `setuid` 的进程可达」这个过滤层兜不住的缺口（见下方易错点），代价是 `W` 侧也失去该文件入口——这正好符合「入口应收敛到指令级」的判据（§2.2.3）。
 - **有了 `W` 的 namespace ≠ 迁移完成**。第 1 项交付的是「世界存在」：`W` 的 tmpfs
   挂在自己的 mount namespace 里，`N` 侧看 `<mountpoint>/stage` 是 `ENOENT`（路径不存在，
-  不是被拒）。**物料迁入 = Phase B（2026-11-10 已落码，待 fresh boot 验收）**，但迁移面
+  不是被拒）。**物料迁入 = Phase B（2026-11-10 已验收，boot `c0a9c70b`）**，但迁移面
   受一条硬约束限制：**一个 `W` 只能服务一个 SELinux 域**（`W` 由 `kernel:s0` 的 restore
   holder 建，`shell` 域既进不去、也无法自己 `unshare -m`）。所以只有**纯 restore 消费**的
   对象能迁——`oplus_check_suppress.ko`、`kernelsu_hotload_init.ko`（仅 legacy 时）、
@@ -43,7 +43,7 @@ v3 的核心主张有两句，一句是能力，一句是自限：
   域跑，`root.c` 还要用 `KS_KO=$STAGE/kernelsu.ko` 自己 `finitmod`）。`sep_enforce1.txt`
   同样留 `N`（`ksud sepolicy apply <file>` 在 `N` 执行，先拷出来再删只是瞬时暴露）。
   Phase B 是「W 优先、N 兜底」的可逆形态，删 `N` 副本（Phase C）才是真隔离。
-  判据与实测见 `docs/suvtz-v3-gap.md` §2.4。
+  判据与实测见 `docs/suvtz-v3-gap.md` §2.4 与 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`。
 - **P1-2 已随对象消失而失去意义**。原先的「在 `ksu` 域建 overlay + 伪 mnt_id + `__lookup_mnt` 拦截」是过滤层手段（挂载对象仍在 app 的 mount namespace 里，靠进程标志过滤解析）；现在没有 overlay 要隐藏，`hide_sus_mnts_for_non_su_procs` 也不再打开（它会让非 `ksu` 域看不到伪 id 挂载，反而害死同 boot 重跑的 restore——本 boot 实测叠层 bug）。
 
 `tools/suvtz/scan.sh` 的 40 个探针（含 5 个 `W` 类世界隔离探针，见 `docs/suvtz-v3-gap.md` §7）是**边界完整性审计**（验证"有没有绕过入口的观测路径"），不是产品。退役的实测影响面：扫描器 `B4`（`/product/bin/su` 存在）由 FAIL\* 转 PASS（探针实测 `absent`），`B9` / `E2` / `E3` / `X3` 保持 PASS，`B5`（`/system/bin/su` 在 `run-as` 视角）退役前后均 PASS（sucompat 的 `stat` 伪造只对 allow-listed uid 生效，`run-as` 域实测 `ENOENT`）。

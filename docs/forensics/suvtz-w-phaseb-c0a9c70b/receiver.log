@@ -1,0 +1,268 @@
+[a0691023 22:37:58.337] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[a0691023 22:37:58.367] gate tick armed (alarm-clock 15min)
+[a0691023 22:37:58.416] panic guard passed reason=reboot
+[a0691023 22:37:58.422] skip: postlock switch=false
+[a0691023 22:37:58.446] autostart begin (1 service(s))
+[a0691023 22:37:58.458] autostart wan: started
+[a0691023 22:37:58.463] autostart done
+[ca0bb40d 05:46:11.151] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[ca0bb40d 05:46:11.186] gate tick armed (alarm-clock 15min)
+[ca0bb40d 05:46:11.259] panic guard passed reason=reboot
+[ca0bb40d 05:46:11.262] skip: postlock switch=false
+[ca0bb40d 05:46:11.298] autostart begin (1 service(s))
+[ca0bb40d 05:46:11.537] autostart wan: started
+[ca0bb40d 05:46:11.542] autostart done
+[ca0bb40d 06:07:57.980] onReceive action=com.postlock.TS_KEEPALIVE
+[ca0bb40d 06:07:58.004] gate tick armed (alarm-clock 15min)
+[652b43cb 06:25:30.938] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[652b43cb 06:25:30.981] gate tick armed (alarm-clock 15min)
+[652b43cb 06:25:31.037] panic guard passed reason=reboot
+[652b43cb 06:25:31.040] skip: postlock switch=false
+[652b43cb 06:25:31.057] autostart begin (1 service(s))
+[652b43cb 06:25:31.076] autostart wan: started
+[652b43cb 06:25:31.084] autostart done
+[ac2c3dc8 15:47:58.624] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[ac2c3dc8 15:47:58.668] gate tick armed (alarm-clock 15min)
+[ac2c3dc8 15:47:58.721] panic guard passed reason=reboot
+[ac2c3dc8 15:47:58.727] skip: postlock switch=false
+[ac2c3dc8 15:47:58.752] autostart begin (1 service(s))
+[ac2c3dc8 15:47:58.763] autostart wan: started
+[ac2c3dc8 15:47:58.765] autostart done
+[70af622a 20:25:17.970] onReceive action=com.postlock.LAUNCH
+[70af622a 20:25:17.980] gate pass isBoot=false isLaunch=true switch_postlock=false -> goAsync
+[70af622a 20:25:17.999] ChainService onStart mode=shell force=false requireGate=false gateDiag[fERR=FileNotFoundException b=70af622a-5b63-4275-8f72-d65cc24fefeb rdy=false ran=0]
+[70af622a 20:25:17.997] startForegroundService OK (mode=shell)
+[70af622a 20:25:18.007] dispatch done from com.postlock.LAUNCH
+[70af622a 20:25:18.014] goAsync finish
+[70af622a 20:25:18.015] startForeground OK
+[70af622a 20:25:18.037] ran_boot consumed for boot 70af622a-5b63-4275-8f72-d65cc24fefeb
+[70af622a 20:25:18.045] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[70af622a 20:25:18.115] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[70af622a 20:25:18.130] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[70af622a 20:25:20.038] shellchain SHELL:部署 stage | DEPLOY changed=2 skipped=9 failed=0（media 同步）
+[70af622a 20:25:20.051] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[70af622a 20:36:14.085] shellchain SHELL:等待系统静默 | quiet after 30s（load=1.84）-> GO
+[70af622a 20:36:14.121] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[70af622a 20:36:14.368] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[70af622a 20:36:14.542] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[70af622a 20:36:17.581] shellchain SHELL:链运行中 | 已跑 659s · 尾行：NOT LINK EXECUTABLE "/system/bin/sh": library "/data/local/tmp/ksu_boot/preload.so" not found: needed by main executable
+[70af622a 20:41:00.631] autostart job: schedule rc=1
+[70af622a 20:41:01.786] autostart job: fired (periodic)
+[70af622a 20:41:01.991] autostart begin (1 service(s))
+[70af622a 20:41:02.125] autostart wan: started
+[70af622a 20:41:02.127] autostart done
+[581a1272 21:29:03.766] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[581a1272 21:29:03.793] autostart job: schedule rc=1
+[581a1272 21:29:03.801] gate tick armed (alarm-clock 15min)
+[581a1272 21:29:03.831] panic guard passed reason=reboot
+[581a1272 21:29:03.833] skip: postlock switch=false
+[581a1272 21:29:03.843] autostart begin (1 service(s))
+[581a1272 21:29:03.848] autostart job: fired (periodic)
+[581a1272 21:29:03.854] autostart wan: started
+[581a1272 21:29:03.860] autostart done
+[581a1272 21:29:17.317] onReceive action=com.postlock.LAUNCH
+[581a1272 21:29:17.354] gate pass isBoot=false isLaunch=true switch_postlock=false -> goAsync
+[581a1272 21:29:17.382] startForegroundService OK (mode=shell)
+[581a1272 21:29:17.384] dispatch done from com.postlock.LAUNCH
+[581a1272 21:29:17.389] goAsync finish
+[581a1272 21:29:17.396] ChainService onStart mode=shell force=false requireGate=false gateDiag[fERR=FileNotFoundException b=581a1272-0914-4496-98fe-e16c3fee1bb1 rdy=false ran=0]
+[581a1272 21:29:17.408] startForeground OK
+[581a1272 21:29:17.446] ran_boot consumed for boot 581a1272-0914-4496-98fe-e16c3fee1bb1
+[581a1272 21:29:17.463] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[581a1272 21:29:17.571] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[581a1272 21:29:17.584] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[581a1272 21:29:18.781] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[581a1272 21:29:18.791] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[581a1272 21:34:48.417] shellchain SHELL:等待系统静默 | 仍在等：load=5.59（120s）
+[581a1272 21:35:54.518] shellchain SHELL:等待系统静默 | quiet after 180s（load=4.93）-> GO
+[581a1272 21:35:54.536] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[581a1272 21:35:54.748] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[581a1272 21:35:54.932] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[581a1272 21:35:57.957] shellchain SHELL:链运行中 | 已跑 400s · 尾行：[b581a1272 21:35:57] [33m[*][t19061] [0mapprox_time=8 thr=80
+[581a1272 21:36:12.997] shellchain SHELL:链运行中 | 已跑 415s · 尾行：[b581a1272 21:36:12] [33m[*][t17733] [0mmain cmp_requeue ret=-1 errno=35
+[581a1272 21:36:28.036] shellchain SHELL:链运行中 | 已跑 430s · 尾行：[b581a1272 21:36:27] [33m[*][t23271] [0mcfgfs write fd=66 target=ffffffb380651079 len=8 set=0 wr=8 errno=0
+[581a1272 21:36:37.067] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[581a1272 21:36:43.103] shellchain SHELL:恢复中 | 已跑 445s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:36:58.145] shellchain SHELL:恢复中 | 已跑 460s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:13.215] shellchain SHELL:恢复中 | 已跑 475s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:28.286] shellchain SHELL:恢复中 | 已跑 490s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:43.361] shellchain SHELL:恢复中 | 已跑 505s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:37:58.440] shellchain SHELL:恢复中 | 已跑 520s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:13.518] shellchain SHELL:恢复中 | 已跑 536s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:28.586] shellchain SHELL:恢复中 | 已跑 551s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:43.661] shellchain SHELL:恢复中 | 已跑 566s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:38:58.734] shellchain SHELL:恢复中 | 已跑 581s · 尾行：CHAIN_EXIT_DONE
+[581a1272 21:39:07.786] shellchain SHELL:恢复中 | 链已退出 150s 仍无 restore marker（判定失败）
+[581a1272 21:39:07.922] shellchain SHELL:恢复中 | 失败：restore 未完成（无 POSTLOCK-RESTORE-OK）（日志已收紧）
+[581a1272 21:39:07.935] shellchain done ok=false state=FAIL:restore 未完成（无 POSTLOCK-RESTORE-OK）
+[581a1272 21:44:59.518] autostart job: schedule rc=1
+[581a1272 21:45:00.560] autostart job: fired (periodic)
+[581a1272 21:45:00.725] autostart begin (1 service(s))
+[581a1272 21:45:00.781] autostart wan: started
+[581a1272 21:45:00.785] autostart done
+[581a1272 21:45:54.154] autostart job: schedule rc=1
+[581a1272 21:45:55.004] autostart job: fired (periodic)
+[581a1272 21:45:55.103] autostart begin (1 service(s))
+[581a1272 21:45:55.131] autostart wan: started
+[581a1272 21:45:55.138] autostart done
+[13b5a48a 21:48:02.931] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[13b5a48a 21:48:02.951] gate tick armed (alarm-clock 15min)
+[13b5a48a 21:48:03.024] panic guard passed reason=reboot
+[13b5a48a 21:48:03.027] skip: postlock switch=false
+[13b5a48a 21:48:03.185] autostart begin (1 service(s))
+[13b5a48a 21:48:03.238] autostart wan: started
+[13b5a48a 21:48:03.241] autostart done
+[13b5a48a 21:48:24.415] onReceive action=com.postlock.LAUNCH
+[13b5a48a 21:48:24.419] gate pass isBoot=false isLaunch=true switch_postlock=false -> goAsync
+[13b5a48a 21:48:24.448] startForegroundService OK (mode=shell)
+[13b5a48a 21:48:24.450] ChainService onStart mode=shell force=false requireGate=false gateDiag[fERR=FileNotFoundException b=13b5a48a-7e04-4c35-988f-7b414f3853e8 rdy=false ran=0]
+[13b5a48a 21:48:24.452] dispatch done from com.postlock.LAUNCH
+[13b5a48a 21:48:24.455] goAsync finish
+[13b5a48a 21:48:24.458] startForeground OK
+[13b5a48a 21:48:24.477] ran_boot consumed for boot 13b5a48a-7e04-4c35-988f-7b414f3853e8
+[13b5a48a 21:48:24.485] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[13b5a48a 21:48:24.541] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[13b5a48a 21:48:24.561] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[13b5a48a 21:48:26.282] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[13b5a48a 21:48:26.298] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[13b5a48a 21:50:28.024] shellchain SHELL:等待系统静默 | 仍在等：load=6.13（120s）
+[13b5a48a 21:51:44.244] shellchain SHELL:等待系统静默 | quiet after 180s（load=4.85）-> GO
+[13b5a48a 21:51:44.263] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[13b5a48a 21:51:44.530] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[13b5a48a 21:51:44.709] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[13b5a48a 21:51:47.787] shellchain SHELL:链运行中 | 已跑 203s · 尾行：[b13b5a48a 21:51:47] [33m[*][t14096] [0mapprox_time=8 thr=80
+[13b5a48a 21:52:02.887] shellchain SHELL:链运行中 | 已跑 218s · 尾行：[b13b5a48a 21:51:58] [33m[*][t18263] [0m[  7] start finding mm_struct [ffffffd400000000-ffffffe000000000]
+[13b5a48a 21:52:17.974] shellchain SHELL:链运行中 | 已跑 233s · 尾行：[b13b5a48a 21:52:17] [33m[*][t18284] [0mks_fetch64 cfgfs fallback fd=66 addr=ffffff8890991051 val=ffffffd1313e2434
+[13b5a48a 21:52:33.069] shellchain SHELL:链运行中 | 已跑 248s · 尾行：13b5a48a 21:52:32] [33m[*][t18332] [0mpipe wavepostfork w=9 +20=ffffff891fc18000 +28=0000000080220000 inuse=0 frozen=1
+[13b5a48a 21:52:36.093] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[13b5a48a 21:52:48.189] shellchain SHELL:恢复中 | 已跑 263s · 尾行：CHAIN_EXIT_DONE
+[13b5a48a 21:53:03.312] shellchain SHELL:恢复中 | restore 双 OK 已落盘（adb 读取；本地不可读）
+[13b5a48a 21:53:03.328] shellchain SHELL:恢复中 | 已跑 278s · 尾行：CHAIN_EXIT_DONE
+[13b5a48a 21:53:03.702] shellchain SHELL:恢复中 | verify: SU_OK | ENFORCE=1
+[13b5a48a 21:53:03.728] shellchain done ok=true state=DONE:shell 域 root=1 + restore 双 OK + verify 通过
+[13b5a48a 22:02:13.043] autostart job: fired (periodic)
+[13b5a48a 22:02:13.056] autostart begin (1 service(s))
+[13b5a48a 22:02:13.065] autostart wan: started
+[13b5a48a 22:02:13.069] autostart done
+[13b5a48a 22:03:03.001] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 22:03:03.025] gate tick armed (alarm-clock 15min)
+[13b5a48a 02:53:10.464] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 02:53:10.565] gate tick armed (alarm-clock 15min)
+[13b5a48a 03:23:13.251] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 03:23:13.286] gate tick armed (alarm-clock 15min)
+[13b5a48a 03:53:23.792] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 03:53:23.819] gate tick armed (alarm-clock 15min)
+[13b5a48a 04:23:48.156] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 04:23:48.181] gate tick armed (alarm-clock 15min)
+[13b5a48a 04:53:53.179] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 04:53:53.210] gate tick armed (alarm-clock 15min)
+[13b5a48a 05:25:43.315] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 05:25:43.343] gate tick armed (alarm-clock 15min)
+[13b5a48a 05:58:05.839] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 05:58:05.865] gate tick armed (alarm-clock 15min)
+[13b5a48a 06:28:30.912] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 06:28:30.936] gate tick armed (alarm-clock 15min)
+[13b5a48a 06:58:41.047] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 06:58:41.079] gate tick armed (alarm-clock 15min)
+[13b5a48a 07:29:10.837] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 07:29:10.869] gate tick armed (alarm-clock 15min)
+[13b5a48a 08:00:29.433] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 08:00:29.458] gate tick armed (alarm-clock 15min)
+[13b5a48a 08:30:31.703] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 08:30:31.730] gate tick armed (alarm-clock 15min)
+[13b5a48a 09:01:09.518] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 09:01:09.543] gate tick armed (alarm-clock 15min)
+[13b5a48a 09:31:12.771] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 09:31:12.792] gate tick armed (alarm-clock 15min)
+[13b5a48a 10:01:20.903] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 10:01:20.935] gate tick armed (alarm-clock 15min)
+[13b5a48a 10:32:31.272] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 10:32:31.295] gate tick armed (alarm-clock 15min)
+[13b5a48a 11:03:12.255] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 11:03:12.281] gate tick armed (alarm-clock 15min)
+[13b5a48a 11:33:46.463] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 11:33:46.487] gate tick armed (alarm-clock 15min)
+[13b5a48a 12:04:13.178] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 12:04:13.217] gate tick armed (alarm-clock 15min)
+[13b5a48a 12:07:09.342] autostart job: schedule rc=1
+[13b5a48a 12:07:10.050] autostart job: fired (periodic)
+[13b5a48a 12:07:10.149] autostart begin (1 service(s))
+[13b5a48a 12:07:10.166] autostart wan: started
+[13b5a48a 12:07:10.175] autostart done
+[13b5a48a 12:26:24.478] onReceive action=com.postlock.TS_KEEPALIVE
+[13b5a48a 12:26:24.532] gate tick armed (alarm-clock 15min)
+[13b5a48a 12:26:27.807] onReceive action=com.postlock.SUSFS_SELFTEST extras=Bundle[mParcelledData.dataSize=96]
+[13b5a48a 12:26:48.658] autostart job: fired (periodic)
+[13b5a48a 12:26:48.691] autostart begin (1 service(s))
+[13b5a48a 12:26:48.703] autostart wan: started
+[13b5a48a 12:26:48.709] autostart done
+[194c5414 06:09:25.670] onReceive action=android.intent.action.LOCKED_BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[194c5414 06:09:25.686] locked-boot: autostart only (CE sealed)
+[194c5414 06:09:25.712] autostart job: schedule rc=1
+[194c5414 06:09:25.749] autostart begin (1 service(s))
+[194c5414 06:09:25.780] autostart wan: started
+[194c5414 06:09:25.794] autostart done
+[9101e66c 19:23:03.461] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[9101e66c 19:23:03.485] gate tick armed (alarm-clock 15min)
+[9101e66c 19:23:03.520] panic guard passed reason=reboot
+[9101e66c 19:23:03.522] skip: postlock switch=false
+[9101e66c 19:23:03.533] autostart begin (1 service(s))
+[9101e66c 19:23:03.541] autostart wan: started
+[9101e66c 19:23:03.544] autostart done
+[9101e66c 19:23:21.514] onReceive action=com.postlock.LAUNCH
+[9101e66c 19:23:21.517] gate pass isBoot=false isLaunch=true switch_postlock=false -> goAsync
+[9101e66c 19:23:21.531] ChainService onStart mode=shell force=false requireGate=false gateDiag[fERR=FileNotFoundException b=9101e66c-2b13-45c7-a3e8-ba6b47e15764 rdy=false ran=0]
+[9101e66c 19:23:21.526] startForegroundService OK (mode=shell)
+[9101e66c 19:23:21.534] dispatch done from com.postlock.LAUNCH
+[9101e66c 19:23:21.536] startForeground OK
+[9101e66c 19:23:21.537] goAsync finish
+[9101e66c 19:23:21.576] ran_boot consumed for boot 9101e66c-2b13-45c7-a3e8-ba6b47e15764
+[9101e66c 19:23:21.584] shellchain SHELL:探测回环 adb | 连接回环 adbd
+[9101e66c 19:23:21.707] shellchain SHELL:探测回环 adb | shell 域就绪：uid=2000(shell) gid=2000(shell) groups=2000(shell),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(e
+[9101e66c 19:23:21.729] shellchain SHELL:部署 stage | 同步 stage（sha1 幂等）
+[9101e66c 19:23:23.627] shellchain SHELL:部署 stage | DEPLOY changed=1 skipped=10 failed=0（media 同步）
+[9101e66c 19:23:23.640] shellchain SHELL:等待系统静默 | 等待系统静默（load < 5.0，上限 20min）
+[9101e66c 19:25:10.199] shellchain SHELL:等待系统静默 | quiet after 90s（load=4.91）-> GO
+[9101e66c 19:25:10.220] shellchain SHELL:清理现场 | 清理遗留 preload / 旧日志，force-stop 管理器
+[9101e66c 19:25:10.490] shellchain SHELL:起链 | 写入 trigger.sh 并 detached 起链
+[9101e66c 19:25:10.677] shellchain SHELL:起链 | 已 detached（chain.log 0644 供面板直读）
+[9101e66c 19:25:13.769] shellchain SHELL:链运行中 | 已跑 112s · 尾行：[b9101e66c 19:25:13] [33m[*][t14145] [0mapprox_time=8 thr=80
+[9101e66c 19:25:28.880] shellchain SHELL:链运行中 | 已跑 127s · 尾行：[b9101e66c 19:25:28] [33m[*][t12814] [0mphase2 forensics: prepare storm i=256/1088
+[9101e66c 19:25:44.003] shellchain SHELL:链运行中 | 已跑 142s · 尾行：c 19:25:43] [33m[*][t12814] [0mprepare_kernel_page payload=0 mm_struct_sz=0x3c0 mm_objs_per_slab=34 order3_size=0x8000
+[9101e66c 19:25:59.113] shellchain SHELL:链运行中 | 已跑 157s · 尾行：[b9101e66c 19:25:58] [33m[*][t30707] [0mtarget_time=2486 thr=60
+[9101e66c 19:26:14.226] shellchain SHELL:链运行中 | 已跑 172s · 尾行：[b9101e66c 19:26:13] [33m[*][t7278] [0mfound 5 collisisons
+[9101e66c 19:26:29.322] shellchain SHELL:链运行中 | 已跑 187s · 尾行：[b9101e66c 19:26:29] [33m[*][t13740] [0mpipe child prep memfds done
+[9101e66c 19:26:44.409] shellchain SHELL:链运行中 | 已跑 202s · 尾行：[b9101e66c 19:26:44] [33m[*][t13536] [0mks_fetch64 cfgfs fallback fd=159 addr=ffffff8745939051 val=ffffffd459be2434
+[9101e66c 19:26:50.438] shellchain SHELL:恢复中 | 链已 root=1，等 restore 双 OK
+[9101e66c 19:26:59.531] shellchain SHELL:恢复中 | 已跑 217s · 尾行：CHAIN_EXIT_DONE
+[9101e66c 19:27:14.676] shellchain SHELL:恢复中 | restore 双 OK 已落盘（adb 读取；本地不可读）
+[9101e66c 19:27:14.713] shellchain SHELL:恢复中 | 已跑 232s · 尾行：CHAIN_EXIT_DONE
+[9101e66c 19:27:15.114] shellchain SHELL:恢复中 | verify: SU_OK | ENFORCE=1
+[9101e66c 19:27:15.139] shellchain done ok=true state=DONE:shell 域 root=1 + restore 双 OK + verify 通过
+[9101e66c 19:36:55.092] autostart job: fired (periodic)
+[9101e66c 19:36:55.106] autostart begin (1 service(s))
+[9101e66c 19:36:55.114] autostart wan: started
+[9101e66c 19:36:55.117] autostart done
+[9101e66c 20:58:06.360] onReceive action=com.postlock.TS_KEEPALIVE
+[9101e66c 20:58:06.419] gate tick armed (alarm-clock 15min)
+[190d63ed 21:01:50.409] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[190d63ed 21:01:50.435] gate tick armed (alarm-clock 15min)
+[190d63ed 21:01:50.450] panic guard passed reason=reboot
+[190d63ed 21:01:50.452] skip: postlock switch=false
+[190d63ed 21:01:50.478] autostart begin (1 service(s))
+[190d63ed 21:01:50.506] autostart wan: started
+[190d63ed 21:01:50.508] autostart done
+[b4e74fa5 21:26:11.702] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[b4e74fa5 21:26:11.739] gate tick armed (alarm-clock 15min)
+[b4e74fa5 21:26:11.765] panic guard passed reason=reboot
+[b4e74fa5 21:26:11.767] skip: postlock switch=false
+[b4e74fa5 21:26:11.776] autostart begin (1 service(s))
+[b4e74fa5 21:26:11.807] autostart wan: started
+[b4e74fa5 21:26:11.810] autostart done
+[c0a9c70b 22:44:09.916] onReceive action=android.intent.action.BOOT_COMPLETED extras=Bundle[mParcelledData.dataSize=84]
+[c0a9c70b 22:44:09.944] gate tick armed (alarm-clock 15min)
+[c0a9c70b 22:44:10.041] panic guard passed reason=
+[c0a9c70b 22:44:10.048] skip: postlock switch=false
+[c0a9c70b 22:44:10.072] autostart begin (1 service(s))
+[c0a9c70b 22:44:10.078] autostart wan: started
+[c0a9c70b 22:44:10.080] autostart done
