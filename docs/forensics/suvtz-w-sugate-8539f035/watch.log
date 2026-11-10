@@ -1,0 +1,18 @@
+[2026-11-11 05:58:20] === run4 start (max=4) ===
+[2026-11-11 05:58:22] --- attempt 1 ---
+[2026-11-11 05:58:22] a1: 当前 boot=18f3eac7-7eba-4938-9684-d5ce715a1e67 未跑过链，直接跑（不 reboot）
+[2026-11-11 05:58:23] a1: 已解锁
+[2026-11-11 05:58:23] a1: 起 tools/postlock.sh
+[2026-11-11 06:07:31] a1: postlock rc=1
+[2026-11-11 06:07:33] a1: chain_root1=0 restore_ok=0 holder=0 mountpoint=0 nside_absent=0 warn_w=0 overlay_retired=0 
+[2026-11-11 06:07:33] a1: 失败（抽签家族），reboot 重抽
+[2026-11-11 06:07:33] --- attempt 2 ---
+[2026-11-11 06:07:33] a2: prev_boot=18f3eac7-7eba-4938-9684-d5ce715a1e67 -> reboot
+[2026-11-11 06:09:07] chan i=4: 通道恢复 boot=8539f035-d22f-42ab-b860-54c741990656
+[2026-11-11 06:09:07] a2: new_boot=8539f035-d22f-42ab-b860-54c741990656
+[2026-11-11 06:09:17] unlock i=1: RUNNING_UNLOCKED
+[2026-11-11 06:09:18] a2: 起 tools/postlock.sh
+[2026-11-11 06:13:31] a2: postlock rc=0
+[2026-11-11 06:13:33] a2: chain_root1=3 restore_ok=1 holder=1 mountpoint=1 nside_absent=1 warn_w=0 overlay_retired=1 
+[2026-11-11 06:15:33] a2: PASS (boot 稳定 120s)
+[2026-11-11 06:15:34] === run4 done: PASS ===

@@ -283,10 +283,20 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 `oplus_check_suppress-finitmod-ok-w`（ocsk 真从 `W` 里消费）+
 `hotload-skipped-late-init-selfsufficient`。三个 UNKNOWN 全部是**预期内
 观测不到**：`PB-PUB`/`PB-PP`（两个 append 块因已 provisioned 而整体跳过）与
-`PB-SUGATE`（旧版 restore 的静默门控；in-band 版已在本轮之后落地，待下一轮
-fresh boot 复验）。传输保真用 out-of-band `cksum` 补证：
+`PB-SUGATE`（旧版 restore 的静默门控）。传输保真用 out-of-band `cksum` 补证：
 `RESULT=PASS（三个 W 副本与 N 原件逐字节一致）`。取证
 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`。
+
+**su-gate 判据已实测（2026-11-10，fresh boot `8539f035`，host 驱动第 2 次
+尝试轮）**：门控改写后的 in-band 行第一次在真实恢复流程里出现——
+`su-gate closed (domain=other su-visible=no; sucompat excludes uid 0 outside ksu
+domain)`（restore 域 `u:r:kernel:s0` → 与 §2.4 定案一致），
+`tools/suvtz/check_phaseb.sh` = **PASS=4 FAIL=0 UNKNOWN=2 / 6**（`PB-SUGATE`
+由 UNKNOWN 转 PASS；剩余两个 UNKNOWN 即上面说的幂等 append 块）；
+`check_accept.sh` = **PASS=17 FAIL=0 UNKNOWN=0 → OK**；40 探针
+`FAIL=0（另有已接受 3）PASS=37 INFO=0 runas=ok`；out-of-band `cksum` 三件
+仍逐字节一致（holder pid 28006，`n_side_stage=ENOENT`）。取证
+`docs/forensics/suvtz-w-sugate-8539f035/`。
 核对器：`bash tools/suvtz/check_phaseb.sh <outdir>`（6 行，全部是「W 路径真的
 被走到」的正向信号；FAIL = 静默回退 N，boot 仍可用但迁移未验证）。它与
 `tools/suvtz/check_accept.sh` 的 17 项分开计数，不改变验收项总数。
@@ -429,7 +439,7 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`）；**Phase B 物料迁移已验收**（`0c0704ba` / `cebb2e5`，fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` / `oplus_check_suppress-finitmod-ok-w` / out-of-band `cksum` 三件逐字节一致；取证 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`），**Phase C（删 N 副本成真隔离）待做** |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`）；**Phase B 物料迁移已验收**（`0c0704ba` / `cebb2e5`，fresh boot `c0a9c70b`：`staged ocsk=1 pub=1 pp=1` / `oplus_check_suppress-finitmod-ok-w` / out-of-band `cksum` 三件逐字节一致；取证 `docs/forensics/suvtz-w-phaseb-c0a9c70b/`）；**su-gate 门控 in-band 判据已实测**（fresh boot `8539f035`：`su-gate closed (domain=other …)` / `check_phaseb` PASS=4），**Phase C（删 N 副本成真隔离）待做** |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
@@ -449,15 +459,16 @@ N 侧 `cksum < $STAGE/<f>` 比对 crc 与字节数。这一步验的是「W 里�
   挂载点本身在 `N` 侧是空目录，见 §2.3）
 - 扫描器的判据是 `PASS`（app 域看不到某个具体对象）
 
-当前口径（2026-11-10，fresh boot `c0a9c70b` Phase B 验收轮复核后）：共 40 项。
+当前口径（2026-11-10，fresh boot `8539f035` su-gate 验收轮复核后）：共 40 项。
 
 - 无 `W` holder（未跑恢复流程）：`FAIL=0 (另有已接受 3) PASS=32 INFO=5`
   —— 5 个 `W` 探针全 INFO（**没有 W 就没有可验证的事实，给 PASS 属于 vacuous PASS**）
-- 有 `W` holder（fresh boot `194c5414` / `c0a9c70b`，`by=kernel` 生产 holder
-  实测，两轮同口径）：`FAIL=0 (另有已接受 3) PASS=37 INFO=0`
+- 有 `W` holder（fresh boot `194c5414` / `c0a9c70b` / `8539f035`，`by=kernel`
+  生产 holder 实测，三轮同口径）：`FAIL=0 (另有已接受 3) PASS=37 INFO=0`
 
-两轮原始产物：`docs/forensics/suvtz-w-194c5414/scan_194c5414.{txt,tsv}` 与
-`docs/forensics/suvtz-w-phaseb-c0a9c70b/scan_c0a9c70b.txt`（均有 holder）；
+原始产物：`docs/forensics/suvtz-w-194c5414/scan_194c5414.{txt,tsv}`、
+`docs/forensics/suvtz-w-phaseb-c0a9c70b/scan_c0a9c70b.txt` 与
+`docs/forensics/suvtz-w-sugate-8539f035/scan.txt`（均有 holder）；
 无 holder 口径见 boot `13b5a48a` 三态验证记录。
 
 其中 A1/A2/D1 是**过滤层**的已接受暴露面，不是结构性缺口。

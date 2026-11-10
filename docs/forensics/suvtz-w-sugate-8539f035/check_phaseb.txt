@@ -1,0 +1,12 @@
+== SUVTZ Phase B (W material migration) check ==
+outdir=/tmp/opencode/accept_watch4
+  postlock_restore.log     3159 bytes
+
+PASS    PB-STAGE   [8539f035 06:13:02] suvtz-w: staged ocsk=1 pub=1 pp=1 hotload=0
+PASS    PB-OCSK    [8539f035 06:13:02] oplus_check_suppress-finitmod-ok-w
+UNKNOWN PB-PUB     adb_keys 已含 postlock_bootstrap，本轮未走 append 路径
+UNKNOWN PB-PP      persistent_properties 已含该键，本轮未走 append 路径
+PASS    PB-SUGATE  [8539f035 06:13:00] suvtz-w: su-gate closed (domain=other su-visible=no; sucompat excludes uid 0 outside ksu domain)
+PASS    PB-HOTLOAD [8539f035 06:13:02] hotload-skipped-late-init-selfsufficient
+
+PASS=4 FAIL=0 UNKNOWN=2 总计=6

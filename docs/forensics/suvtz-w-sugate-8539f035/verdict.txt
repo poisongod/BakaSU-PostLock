@@ -1,0 +1,20 @@
+boot_after=8539f035
+== attempt 2 verdict ==
+boot=8539f035-d22f-42ab-b860-54c741990656 enforce=1
+postlock_rc=0
+modules=[oplus_check_suppress kernelsu]
+chain_root1=3 restore_ok=1 holder=1 mountpoint=1 nside_absent=1 warn_w=0 overlay_retired=1
+retire_line=[8539f035 06:13:08] suvtz: overlay-retired mounts=0
+su_gate_n=1 su_gate_line=[8539f035 06:13:00] suvtz-w: su-gate closed (domain=other su-visible=no; sucompat excludes uid 0 outside ksu domain)
+staged_n=4 staged_line=[8539f035 06:13:01] suvtz-w: staged oplus_check_suppress.ko
+-- suvtz-w lines --
+[8539f035 06:13:00] suvtz-w: su-gate closed (domain=other su-visible=no; sucompat excludes uid 0 outside ksu domain)
+[8539f035 06:13:00] suvtz-w: holder pid=28006 ns=mnt:[4026534130] mp=/data/local/tmp/.w by=kernel
+[8539f035 06:13:01] suvtz-w: mountpoint=yes
+[8539f035 06:13:01] suvtz-w: exec=yes
+[8539f035 06:13:01] suvtz-w: n-side-absent stage=ENOENT
+[8539f035 06:13:01] suvtz-w: staged oplus_check_suppress.ko
+[8539f035 06:13:01] suvtz-w: staged postlock_adbkey.pub
+[8539f035 06:13:02] suvtz-w: staged pp_adb_tcp.bin
+[8539f035 06:13:02] suvtz-w: staged ocsk=1 pub=1 pp=1 hotload=0
+-- overlay lines --
