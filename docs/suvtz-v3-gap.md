@@ -225,7 +225,38 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 ```
 
 探针结果决定下一轮是否按 §2.4 的「可迁 `W`」清单动手；在拿到 `exec=yes`
-之前不写迁移代码。
+之前**不把迁移补丁应用到真实文件**。
+
+**迁移补丁（干跑已通过，未应用、未装机）**：`tools/postlock.sh` 的迁移改动
+已完成并在**副本**上验证，真实文件保持原样（等 `exec=yes` 实测）。补丁形态：
+
+- **holder 段整体上移**到模块加载之前（原位置在 overlay 段之后），否则
+  「消费点在 holder 之前」的矛盾无法解决。
+- **`su` 回落必须门控**：上移后 holder 段执行时 `oplus_check_suppress` 尚未
+  加载，此时跑 `su` 会触发 OPLUS_ROOT_CHECK → `kevent_send_to_user:execve`
+  上报 → 弹窗 → 15s 强制重启。故新增 `WSUOK=1` 仅当
+  `[ -x /system/bin/su ] && [ -d /sys/module/oplus_check_suppress ]`，
+  holder 回落 / mountpoint 回落 / exec 回落三处一律走它；跳过时打
+  `suvtz-w: su-fallback-skipped (ocsk not loaded)`。同 boot 重跑时 ocsk
+  已加载 → 门控自然放行。
+- **填充 = 读 `N`、写 `W`**：`wns run $WPID /system/bin/cp -f <N 路径>
+  $WMP/stage/<名>`，不需要改 `wns.c`（W 是 N 的完整视图 + `.w` 上叠 tmpfs，
+  所以 `cp` 的源在 N 侧可见、目标落在 tmpfs）。每个文件填充后立刻用
+  `wns run … /system/bin/test -f` 回验，成功才置 `WMIG_*=1`。
+- **消费 = `W` 优先、`N` 兜底**（Phase B 保留 N 副本，WARN-only 可逆）：
+  ocsk/hotload 用 `timeout 30 $WNSBIN run $WPID $TMP/finitmod
+  $WMP/stage/<ko> 0 [arm=1]`；pubkey / protobuf 用 `wns run … cat` 且
+  重定向由 `N` 侧 shell 打开真文件（子进程继承 fd1 → 二进制无损）。
+  判据行：`suvtz-w: staged ocsk=1 pub=1 pp=1`、`hotload-finitmod-ok-w`、
+  `oplus_check_suppress-finitmod-ok-w`、`adb-keys-from-w`、`pp-from-w`。
+- **`sep_enforce1.txt` 不迁**：`ksud sepolicy apply <file>` 在 `N` 执行，
+  先拷出来再删等于瞬时暴露，不构成边界。
+
+干跑产物：`tools/postlock.sh` 61508 → 65860 字节（6 个 hunk：块上移 + 迁移
+填充、4 处消费点改写、旧位置删除），`bash -n` 通过、
+`tools/check_restore_heredoc.sh` 通过；生成器产出的 `restore.sh` 35042 字节
+/ 592 行（`sh -n` 由生成器内部校验通过）。**以上均为副本验证，真实
+`tools/postlock.sh`、assets `restore.sh`、APK 均未改动。**
 
 ### 2.5 迁移的代价
 
@@ -347,7 +378,7 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移未开工 —— 先等执行前提探针（`suvtz-w: exec=yes`，`1e3e4ef1`）的实测结果，见 §2.4 |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移**补丁已干跑验证通过、未应用** —— 等执行前提探针（`suvtz-w: exec=yes`，`1e3e4ef1`）的实测结果，见 §2.4 |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
