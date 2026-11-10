@@ -84,6 +84,37 @@ fi
 BOOT8=$(ab shell cat /proc/sys/kernel/random/boot_id 2>/dev/null | tr -d '\r' | cut -c1-8)
 [ -n "$BOOT8" ] || BOOT8='????????'
 
+# --- channel resilience (2026-11-10, v35 round 2) -----------------------
+# During the chain the device runs fork storms and the adb transport can
+# drop on its own: round 1 of the Phase B acceptance saw "error: closed"
+# immediately after DETACHED and then ~480s of "device offline" while
+# tailscaled stayed perfectly healthy (tsd_watch.log: no daemon restart, no
+# health failure).  adb never re-establishes a TCP transport by itself, so
+# the host round went blind and could not read a restore marker even if one
+# had been written.  Every long poll therefore re-connects first, and the
+# poll budget below is only consumed while the transport is up.
+CH_RECONNECTS=0
+ab_channel() {
+  local st
+  st=$(ab get-state 2>/dev/null | tr -d '\r' || true)
+  if [ "$st" = device ]; then return 0; fi
+  case "${SERIAL:-}" in
+    *:*)
+      "$ADB_BIN" disconnect "$SERIAL" >/dev/null 2>&1 || true
+      "$ADB_BIN" connect "$SERIAL" >/dev/null 2>&1 || true
+      ;;
+    *)
+      "$ADB_BIN" reconnect >/dev/null 2>&1 || true
+      ;;
+  esac
+  sleep 1
+  st=$(ab get-state 2>/dev/null | tr -d '\r' || true)
+  if [ "$st" != device ]; then return 1; fi
+  CH_RECONNECTS=$((CH_RECONNECTS + 1))
+  echo "  channel reconnected (n=$CH_RECONNECTS, state was down)"
+  return 0
+}
+
 # --- host artifacts ----------------------------------------------------
 step "check host artifacts"
 PRELOAD_SRC=$REPO/build/pfum10c48/bin/preload.so
@@ -991,6 +1022,7 @@ TRIGGER_SCRIPT=$STAGE/trigger.sh
 TRIG_B64=$(mktemp)
 printf '#!/system/bin/sh\nenv LD_PRELOAD=%s %s /system/bin/sh -c %s\n' \
   "$STAGE/preload.so" "$TRIGGER_ENV" "'echo CHAIN_EXIT_DONE'" | base64 -w0 > "$TRIG_B64"
+ab_channel || echo "WARN: channel down before trigger push"
 ab push "$TRIG_B64" $STAGE/trigger.b64 >/dev/null
 ab shell "base64 -d $STAGE/trigger.b64 > $TRIGGER_SCRIPT && chmod 755 $TRIGGER_SCRIPT" \
   || echo "WARN: trigger script write failed"
@@ -1005,22 +1037,35 @@ ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log;
 # removed together with the overlay, see fix76 below).
 step "wait for restore (KS_COLDSTART fork)"
 RESTORE_OK=0
-# 240x2s=480s: restore now also waits for the chain exit-tail, runs the
-# three ksud module events (~60s) and bounces zygote (~40s framework
-# restart) -- the old 180s was too tight for that tail.
-for _ in $(seq 1 240); do
+# Poll budget = 240 x 2s of *transport-up* time (the chain itself can leave
+# adb offline for minutes; see ab_channel above -- those seconds are not
+# charged to the budget, they are charged to CH_DOWN_TICKS instead, capped
+# at 900 ticks = 30min so a permanently dead channel still terminates).
+CH_DOWN_TICKS=0
+POLLS=0
+while [ "$POLLS" -lt 240 ] && [ "$CH_DOWN_TICKS" -lt 900 ]; do
   # fix76 (redo34): ONLY the OK line counts.  The old `[ -x /product/bin/su ]`
   # fallback matched the overlay restore had already mounted while restore
   # was still running its later steps -- verify raced ahead of the strict
   # block, read enforce=0 and died (false-positive pass).  The overlay is
   # retired as of 2026-11-09; the rule stays because any pre-marker side
   # effect would reintroduce the same race.
+  if ! ab_channel; then
+    CH_DOWN_TICKS=$((CH_DOWN_TICKS + 1))
+    if [ "$CH_DOWN_TICKS" = 1 ]; then
+      echo "  channel down; reconnecting (poll budget paused)"
+    fi
+    sleep 2
+    continue
+  fi
+  POLLS=$((POLLS + 1))
   if ab shell "grep -q POSTLOCK-RESTORE-OK /data/local/tmp/postlock_restore.log 2>/dev/null"; then
     RESTORE_OK=1
     break
   fi
   sleep 2
 done
+echo "  polled ${POLLS}/240 (channel reconnects=${CH_RECONNECTS}, down_ticks=${CH_DOWN_TICKS})"
 if [ "$RESTORE_OK" = 1 ]; then
   echo "  restore OK; tail:"
   ab shell "tail -8 /data/local/tmp/postlock_restore.log 2>/dev/null" | sed 's/^/    /' || true
@@ -1035,6 +1080,7 @@ fi
 # allow-listed via CONFIG_KSU_DEBUG, so execve("/system/bin/su") is rewritten
 # to the root ksud and yields uid=0 in the u:r:ksu:s0 domain) ---------------
 step "verify"
+ab_channel || echo "WARN: channel down before verify"
 if ! ab shell "/system/bin/su -c id" | grep -q "uid=0"; then
   echo "  [diag] su targets:"
   ab shell "ls -la /data/local/tmp/ksud /data/adb/ksud 2>/dev/null" | sed 's/^/    /' || true
