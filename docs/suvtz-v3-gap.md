@@ -252,11 +252,15 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 - **`sep_enforce1.txt` 不迁**：`ksud sepolicy apply <file>` 在 `N` 执行，
   先拷出来再删等于瞬时暴露，不构成边界。
 
-干跑产物：`tools/postlock.sh` 61508 → 65860 字节（6 个 hunk：块上移 + 迁移
-填充、4 处消费点改写、旧位置删除），`bash -n` 通过、
-`tools/check_restore_heredoc.sh` 通过；生成器产出的 `restore.sh` 35042 字节
-/ 592 行（`sh -n` 由生成器内部校验通过）。**以上均为副本验证，真实
-`tools/postlock.sh`、assets `restore.sh`、APK 均未改动。**
+**Phase B 已应用（2026-11-10，主仓 `0c0704ba` / app `cebb2e5`）**：
+`tools/postlock.sh` 61508 → 65860 字节（6 个 hunk：块上移 + 迁移填充、4 处
+消费点改写、旧位置删除），sha1 `c9099617…`；`bash -n` 与
+`tools/check_restore_heredoc.sh` 均通过；生成器产出的 assets `restore.sh`
+35042 字节 / 592 行 / sha1 `979a284f…`（`sh -n` 由生成器内部校验），
+`PAYLOAD_VERSION` = `v35-w-migrate-phaseb-20261110`，APK 已装机（vc84/1.84）。
+**待一次 host 侧驱动的 fresh boot 验收**补齐 Phase B 判据（`staged ocsk=1
+pub=1 pp=1`、`*-finitmod-ok-w`、`adb-keys-from-w`、`pp-from-w`、
+`su-fallback-skipped (ocsk not loaded)`）——在此之前只算「代码已落、未实测」。
 
 ### 2.5 迁移的代价
 
@@ -378,7 +382,7 @@ WARN-suvtz-w-exec           都进不去 —— 迁移按现形态不可行
 
 | 序 | 项 | 类型 | 依赖 | 状态 |
 |---|---|---|---|---|
-| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）。物料迁移**补丁已干跑验证通过、未应用** —— 等执行前提探针（`suvtz-w: exec=yes`，`1e3e4ef1`）的实测结果，见 §2.4 |
+| **1** | `W` 独立 mount namespace（+ restore-only 物料迁入 `/w/stage`） | **结构性隔离**（第 1 项） | C1/C2/C4/C7 | 原语已实测（`wns` 已编，N 侧全 `ENOENT` / W 侧全 `exists` / holder 退出无残留）；restore 集成已落码 `3150d75f`（holder 段 + `wns` stage push + 判据行 `suvtz-w:`），并已 **fresh boot `194c5414` 端到端验收通过**（`by=kernel` / `mountpoint=yes` / `n-side-absent` / 零 `WARN-suvtz-w-*`；扫描器 `PASS=37 INFO=0`）；扫描器 `W1`-`W5` 已落码（见 §7）；`exec` 探针已实测 `exec=yes`（`1e3e4ef1`，boot `9101e66c`，17/17 判据核对的 16 PASS + 1 UNKNOWN）；**Phase B 物料迁移已应用并装机**（`0c0704ba` / `cebb2e5`，见 §2.4），**待一次 host 侧 fresh boot 验收** |
 | **2** | ~~`ksu_kaslr` / `ksu_payload` 移入 `/w/state`~~ | ~~结构性~~ | — | **被域墙阻塞（不可做）**：这两个文件由链（`shell:s0`）写，而 `shell` 进不了 `kernel:s0` 的 `W`（§2.4）。`/w/state` 槽位保留给「restore 自己产生的状态」 |
 | **3** | 协议入口统一分发点 + 策略表 | 入口收敛（第 2 项） | 无 | 待做（影响面大） |
 | **4** | 结构化审计条目（固定字段） | 入口监控 | 3 | 待做 |
