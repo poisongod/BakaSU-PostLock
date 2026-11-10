@@ -175,6 +175,11 @@ WNS_SRC="$REPO/tools/wns/wns"
 [ -f "$WNS_SRC" ] || die "missing $WNS_SRC (run tools/wns/build.sh)"
 push_if_changed "$WNS_SRC" wns
 ab shell "chmod 755 $STAGE/wns" >/dev/null || true
+# Retired payload (2026-11-10): the self-built su daemon is gone and
+# restore.sh only calls /system/bin/su (sucompat rewrites the allow-listed
+# uid's execve), so a stale $STAGE/su is a dead executable entry.  Remove
+# it idempotently -- old boots still carry the file from earlier runs.
+ab shell "rm -f $STAGE/su" >/dev/null || true
 push_if_changed "$REPO/tools/sepolicy_enforce1.txt" sep_enforce1.txt
 # adb-loopback bootstrap (provision once, works from the next boot on):
 #   1. persist.adb.tcp.port=5555 makes adbd listen on TCP 5555 at boot --

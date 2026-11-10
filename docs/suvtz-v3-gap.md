@@ -224,6 +224,7 @@ SELinux 拒（shell→ksu、shell→kernel 均实测 `Permission denied`）。�
 |---|---|---|
 | `sucompat` | 内核 `sys_enter` 改写 allow-listed uid 的 `execve("/system/bin/su")` → `ksud` | ✅ 唯一文件入口。`stat` 解析到 ksud inode、`open` 回 `ENOENT`、`exec` 成功 |
 | ~~`/product/bin/su`~~ | 412B wrapper（overlay） | ✅ **2026-11-09 退役**（§4.2） |
+| ~~`$STAGE/su`~~ | 自研 su daemon 二进制（app payload / stage 目录里的可执行文件） | ✅ **2026-11-10 退役**：daemon 早已下岗，`restore.sh` 全文只用 `/system/bin/su`，该文件从未被 exec —— 属死文件入口。app `PAYLOAD`/`EXEC` 清单移除 + `assets/postlock/su` 删除 + deploy/`postlock.sh` 幂等 `rm -f $STAGE/su` |
 
 **判据来自 §2.2.3**：TrustZone 的唯一入口是**指令级**的（`smc #0`），在 Normal World
 的命名空间里不占位置。`sucompat` 的入口同样是「内核改写」而不是「文件存在」——
