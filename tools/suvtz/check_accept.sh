@@ -1,5 +1,5 @@
 #!/bin/bash
-# SUVTZ v3 fresh-boot acceptance criteria checker (16 criteria).
+# SUVTZ v3 fresh-boot acceptance criteria checker (17 criteria).
 #
 # Reads the evidence files produced by a fresh-boot acceptance run and prints
 # PASS/FAIL/UNKNOWN per criterion.  Expected inputs in <outdir>:
@@ -102,6 +102,19 @@ elif has "$REST" 'suvtz-w: n-side-absent'; then
 	row FAIL W-MP "有 n-side-absent 但无 mountpoint=yes（顺序异常）"
 else
 	row UNKNOWN W-MP "无 mountpoint 判据行"
+fi
+
+# exec probe (gap section 6 item 2 prerequisite): restore must be able to run
+# an arbitrary binary inside W.  mountpoint=yes already proves setns+execvp,
+# but this row names the capability that Phase B migration depends on.
+if has "$REST" 'suvtz-w: exec=yes'; then
+	row PASS W-EXEC "$(grep -m1 'suvtz-w: exec=' "$REST")"
+elif has "$REST" 'WARN-suvtz-w-exec'; then
+	row FAIL W-EXEC "$(grep -m1 'WARN-suvtz-w-exec' "$REST")"
+elif has "$REST" 'suvtz-w: n-side-absent'; then
+	row UNKNOWN W-EXEC "有 n-side-absent 但无 exec 行（本轮 restore 是旧版，无 exec 探针）"
+else
+	row UNKNOWN W-EXEC "无 exec 判据行"
 fi
 
 if has "$REST" 'suvtz-w: n-side-absent stage=ENOENT'; then
