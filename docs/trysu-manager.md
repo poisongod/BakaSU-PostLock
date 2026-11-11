@@ -138,7 +138,7 @@ BakaSU 管理器（`../BakaSU/manager`，248 个 Kotlin 文件，namespace
 |---|---|
 | `com.resukisu.resukisu`（已装 BakaSU 管理器） | 卸载；验收不再依赖它。若需对照，保留一个旧 boot 的截图即可 |
 | BakaSU 管理器的 Kotlin 源码（`../BakaSU/manager`） | **不 fork、不复制**。仅作「不要这么做」的参照；如需要某个 ioctl 的调用约定，看 `uapi/` 与 `userspace/ksud` |
-| `docs/vtzsu-design.md` §7 判据 | 保留（V0a 的 `su --vtz` 与管理器无关） |
+| `docs/trysu-implementation.md` §2 判据（V1–V10） | 保留（V0a 的 `su --vtz` 与管理器无关）；旧 `docs/vtzsu-design.md` 已全文作废，仅历史取证 |
 | SUVTZ 的 A1 探针（「管理器包可见」） | 语义更新：探针改为「TrySU 管理器包可见」，仍属已接受暴露面 |
 | `manager_sign.h` 里的 BakaSU 条目 | **保留**（不删，避免影响既有 `track_throne` 逻辑）；仅追加 TrySU 条目 |
 
