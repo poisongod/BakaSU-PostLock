@@ -1,0 +1,48 @@
+
+[11e3bdc8 21:33:57] ==> check host artifacts
+
+[11e3bdc8 21:33:57] ==> stage payloads at /data/local/tmp/ksu_boot
+[11e3bdc8 21:33:58] stage-unchanged preload.so
+[11e3bdc8 21:33:58] stage-unchanged kernelsu.ko
+[11e3bdc8 21:33:58] stage-unchanged finitmod
+[11e3bdc8 21:33:59] stage-pushed oplus_check_suppress.ko
+[11e3bdc8 21:33:59] stage-unchanged kernelsu_hotload_init.ko
+[11e3bdc8 21:33:59] stage-unchanged ksud
+[11e3bdc8 21:33:59] stage-unchanged wns
+[11e3bdc8 21:34:00] stage-unchanged sep_enforce1.txt
+
+[11e3bdc8 21:34:01] ==> build restore script (manager uid=10277)
+
+[11e3bdc8 21:34:02] ==> wait for system quiet (1-min load < 5.0)
+[11e3bdc8 21:35:35] quiet after 95s (load=4.69) -> GO
+
+[11e3bdc8 21:35:35] ==> trigger exploit (constructor blocks until rooted; then script runs as uid0)
+DETACHED
+
+[11e3bdc8 21:35:37] ==> wait for restore (KS_COLDSTART fork)
+  polled 69/240 (channel reconnects=0, down_ticks=0)
+  restore OK; tail:
+    [11e3bdc8 21:38:03] suvtz-b10: ksu_kaslr mode=600 (want 0600)
+    [11e3bdc8 21:38:03] suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)
+    [11e3bdc8 21:38:05] su-triage: dmesg + ksu_dbg params + root ksud probe captured
+    [11e3bdc8 21:38:05] sepolicy enforce1 rules applied
+    cmd: Can't find service: activity
+    [11e3bdc8 21:38:06] selinux strict: flipping (builtin-only markers follow)
+    [11e3bdc8 21:38:06] SELINUX-STRICT-OK enforce=1 probe=host-verify
+    [11e3bdc8 21:38:06] POSTLOCK-RESTORE-OK
+
+[11e3bdc8 21:38:09] ==> verify
+OK:
+  uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+  kernelsu 458752 0 - Live 0x0000000000000000 (OE)
+  daemon pid=
+  manager uid=10277  wrap.com.resukisu.resukisu= (must be empty)
+  WARN: app fd not confirmed — restart the app if the blue card is missing
+  driver: [  319.002905] (0)[32455:finitmod]KernelSU: Initialized with driver version: 35222, full_version: v4.2.0-rc3-5b76b884-dirty@BakaSU, ABI: aarch64, Work mode: LKM
+
+manual check: BakaSU blue card 工作中 Built-in, driver == manager version (v4.2.0-rc3 / 35252 / UAPI 6), 越狱模式 badge expected (真 late load), enforce=1
+
+[11e3bdc8 21:38:12] ==> SUVTZ scan (观测面回归)
+[11e3bdc8 21:38:24] suvtz: FAIL=0 (另有已接受 3)  PASS=37  INFO=0  总计=40  runas=ok
+[11e3bdc8 21:38:24] suvtz: report /tmp/opencode/suvtz/auto_11e3bdc8/scan_11e3bdc8.txt
+POSTLOCK_RC=0

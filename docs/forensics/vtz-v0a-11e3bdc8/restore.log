@@ -1,0 +1,45 @@
+[11e3bdc8 21:37:49] == restore start 2026-11-11 21:37:49 pid=32430 uid=0
+uid=0(root) gid=0(root) groups=0(root),1004(input),1007(log),1011(adb),1015(sdcard_rw),1028(sdcard_r),1078(ext_data_rw),1079(ext_obb_rw),3001(net_bt_admin),3002(net_bt),3003(inet),3006(net_bw_stats),3009(readproc),3011(uhid),3012 context=u:r:kernel:s0
+drwxrwx--x 69 system system  4096 2026-11-11 21:32 /data
+drwxr-x--x  5 root   root    3452 1973-04-16 01:41 /data/local
+drwxrwx--x  9 shell  shell  20480 2026-11-11 21:37 /data/local/tmp
+Permissive
+[11e3bdc8 21:37:49] chain already exited (reparented to init) - skip exit-wait
+[11e3bdc8 21:37:50] WARN-no-omk-bak
+[11e3bdc8 21:37:51] suvtz-w: su-gate closed (domain=other su-visible=no; sucompat excludes uid 0 outside ksu domain)
+[11e3bdc8 21:37:51] suvtz-w: holder pid=32510 ns=mnt:[4026534014] mp=/data/local/tmp/.w by=kernel
+[11e3bdc8 21:37:52] suvtz-w: sidecar pid=32510 inode=4026534014 mode=644
+[11e3bdc8 21:37:52] suvtz-w: mountpoint=yes
+[11e3bdc8 21:37:52] suvtz-w: exec=yes
+[11e3bdc8 21:37:52] suvtz-w: n-side-absent stage=ENOENT
+[11e3bdc8 21:37:52] suvtz-w: staged oplus_check_suppress.ko
+[11e3bdc8 21:37:53] suvtz-w: cksum ok oplus_check_suppress.ko 1995826726 238160
+[11e3bdc8 21:37:53] suvtz-w: staged postlock_adbkey.pub
+[11e3bdc8 21:37:53] suvtz-w: cksum ok postlock_adbkey.pub 2123509450 719
+[11e3bdc8 21:37:53] suvtz-w: staged pp_adb_tcp.bin
+[11e3bdc8 21:37:54] suvtz-w: cksum ok pp_adb_tcp.bin 2332106405 30
+[11e3bdc8 21:37:54] suvtz-w: staged ocsk=1 pub=1 pp=1 hotload=0
+[11e3bdc8 21:37:54] driver-already-loaded
+[11e3bdc8 21:37:54] hotload-skipped-late-init-selfsufficient
+wns: run ns=mnt:[4026534014] cmd=/data/local/tmp/finitmod
+[11e3bdc8 21:37:55] oplus_check_suppress-finitmod-ok-w
+[11e3bdc8 21:37:55] oplus_check_suppress-state: oplus_check_suppress-v14 arm=1 smod=960|ret.entry=0|entry=ffffffee278ea620|anchor tries=0 word=d4200080|dgx=ffffffee278fc0a4 fs=ffffffee2790b500 cfijt=ffffffee28d39e2c|kill.words @268=94004607 @a30=94004415|kill.scan[0] off=268 word=94004607 t=ffffffee278fc0a4|kill.scan[1] off=a30 word=94004415 t=ffffffee278fc0a4|kill.scan sites=2|ret.kill off=268 ret=0|kill.word.after=d4200080 patched=1|ret.kill off=a30 ret=0|kill.word.after=d4200080 patched=1|exec=ffffffee278ea898 kevent=ffffffee278eace0 cfijt=ffffffee28d238e4|rep.scan[0] off=1b8 word=940000a4|rep.scan[1] off=25c word=9400007b|rep.scan[2] off=3c0 word=94000022|rep.scan sites=3|ret.rep1 off=1b8 ret=0|ret.rep2 off=25c ret=0|rep armed=2||
+[11e3bdc8 21:37:57] kallsyms-ors: 0000000000000000 T oplus_root_check_succ|
+[11e3bdc8 21:37:59] kallsyms-oeb: 0000000000000000 T oplus_exec_block|
+[11e3bdc8 21:37:59] oplus_check_suppress-kill-armed
+[11e3bdc8 21:37:59] oplus_check_suppress-rep-armed
+[11e3bdc8 21:37:59] manager-appid=10277
+[11e3bdc8 21:38:00] WARN-phantom-settings
+[11e3bdc8 21:38:01] suvtz: overlay-retired mounts=0
+[11e3bdc8 21:38:01] suvtz-w: n-side-purged oplus_check_suppress.ko postlock_adbkey.pub pp_adb_tcp.bin
+[11e3bdc8 21:38:01] suvtz-w: n-side-kept kernelsu.ko finitmod preload.so ksud sep_enforce1.txt
+[11e3bdc8 21:38:02] su-driver-ksud-unchanged sha1=bbc7afcd9141d68d1aaf13b0dfd14981
+[11e3bdc8 21:38:03] suvtz-b10: ksu_kaslr mode=600 (want 0600)
+[11e3bdc8 21:38:03] suvtz-p1-1: dac hardened (tmp 0711 / stage 0700 / materials 0600-0700 / logs 0600)
+[11e3bdc8 21:38:05] su-triage: dmesg + ksu_dbg params + root ksud probe captured
+[11e3bdc8 21:38:05] sepolicy enforce1 rules applied
+cmd: Can't find service: activity
+[11e3bdc8 21:38:06] selinux strict: flipping (builtin-only markers follow)
+[11e3bdc8 21:38:06] SELINUX-STRICT-OK enforce=1 probe=host-verify
+[11e3bdc8 21:38:06] POSTLOCK-RESTORE-OK
+[host-verify] probe: uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0

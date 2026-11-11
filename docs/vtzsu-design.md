@@ -324,10 +324,10 @@ EL1 里敌对的部分用 ocsk 压制，**列为已知风险面，不列进「�
 
 | 判据 | 期望 | 取法（R#） | 状态 |
 |---|---|---|---|
-| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid`（R1） | ⚠️→✅ 原生写入失败（§7.1），手工写入后实测 `610 4026534169`，holder ns 同值 |
-| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == holder ns | 两次 `readlink`（R2/R9） | ✅ 实测两边 `mnt:[4026534169]` |
+| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid`（R1） | ✅ **原生写入**（§7.2）`32510 4026534014`、0644、holder ns 同值 |
+| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == holder ns | 两次 `readlink`（R2/R9） | ✅ 实测两边 `mnt:[4026534014]` |
 | 对照：不带开关仍在 N | `su -c 'readlink /proc/self/ns/mnt'` **不相等**（V0a 阶段这是正确结果） | R3/R9 | ✅ 实测 `mnt:[4026533362]` ≠ W |
-| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见（R4/R10） | ✅ 实测追加 `kind=enter`（本轮累计 8 条） |
+| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见（R4/R10） | ✅ 实测追加 `kind=enter`（本轮累计 5 条） |
 | N 侧不可见 | **N 侧**（shell 域）`ls /data/local/tmp/.w/log` → `ENOENT` | shell 域执行（R5） | ✅ `.w` 为空目录、`.w/log` `No such file or directory` |
 | 功能未退化 | `su --vtz -c 'ls /system /data /apex'` 正常 | —（R6） | ✅ `root/system/data/apex-ok`，`mods=200` |
 | `-M` 优先级 | `su -M --vtz -c …` 走 init ns（`-M` 覆盖） | 对照（R7） | ✅ 仍 `mnt:[4026533362]`（N） |
@@ -358,6 +358,52 @@ V0b（翻默认）之后再补一条：不带开关的 `su -c` 也读到 W 的 n
 - 观察侧两条限制（写进 `v0a_rows.sh` 头注释，避免下次误判）：
   shell 域读 `/proc/<pid>/ns/mnt` 与 `/proc/1/ns/mnt` 均被 SELinux 拒
   → holder/init 的 ns 一律经 `su` 读取。
+- **`suvtz-w: su-gate closed` 是预期，不是缺陷**（此前列为待澄清，现已定案）：
+  那一行探的是 **restore 自己**（`u:r:kernel:s0`）能否裸用 `su`。sucompat 只对
+  allow-listed uid 改写 `/system/bin/su` 的 stat/execve 语义，而 uid 0 仅在
+  `u:r:ksu:s0` 域内才被判为 allowed
+  （`policy/allowlist.c: __ksu_is_allow_uid_for_current -> is_ksu_domain()`）；
+  kernel 域两个条件都不满足，所以结构性关闭（源码核实见 `tools/postlock.sh`
+  该段注释，2026-11-10 boot `c0a9c70b`）。
+  `su --vtz` 是**shell 域（uid 2000，allowed）**发起，根本不走这条门 ——
+  R2 实测可进 W，两者不矛盾。日志用 `domain=` 字段区分：
+  `su-gate closed (domain=other …)` 属常态，`su-gate open (domain=ksu …)`
+  只在 restore 已经跑在 ksu 域时才可能出现。
+
+### 7.2 2026-11-11 原生轮（boot `11e3bdc8`）：生产侧修复生效，判据全绿
+
+一轮 fresh boot（`MAX_ATTEMPTS=1 FIRST_REBOOT=1`）即全通过，无人工介入：
+
+- **生产侧（本轮核心判据）**：restore 自己写出
+  `suvtz-w: sidecar pid=32510 inode=4026534014 mode=644`，
+  **无 `WARN-suvtz-w-sidecar-write`**；`suvtz-w: mountpoint=yes` /
+  `exec=yes` 同轮成立。即 §7.1 的 `\$TMP` 展开为空导致写 `/vtz_w.pid`
+  的缺陷已消失（修复 = 统一 host 展开）。
+- **消费侧**：R1–R10 全绿（`docs/forensics/vtz-v0a-11e3bdc8/rows.log`）：
+  R1 sidecar `32510 4026534014` 0644 + holder live ns 同值；
+  R2 `su --vtz` → `mnt:[4026534014]`、`uid=0 … context=u:r:ksu:s0`；
+  R3 对照 → `mnt:[4026533362]`；R4/R10 W 侧 `access.log` 累计 5 条
+  `kind=enter`；R5 N 侧 shell 域 `ENOENT`；R6 `/`、`/system`、`/data`、
+  `/apex` 全 ok、`/proc/version` 正常、`mods=200`；
+  R7 `su -M --vtz` → `mnt:[4026533362]`（`-M` 优先）；
+  R8 删 sidecar → rc=1 `no W registered` + `os error 2`，恢复后
+  `[32510 4026534014]`；R9 W 侧 root ns `4026534014` vs N 侧 root ns
+  `4026533362`。
+- **链与恢复**：`pipe-physrw-summary done=1 root=1` ×3、
+  `pselect route done calls=1 success=1`、`CHAIN_EXIT_DONE`；
+  `SELINUX-STRICT-OK enforce=1 probe=host-verify` + `POSTLOCK-RESTORE-OK`
+  双 OK 原生（21:38:06）；verify `uid=0 … u:r:ksu:s0` / `kernelsu Live` /
+  manager uid=10277 / `wrap.com.resukisu.resukisu` 空。
+- **SUVTZ**：`FAIL=0（另有已接受 3）PASS=37 INFO=0 runas=ok`。
+- **状态卡**：蓝卡「工作中 Built-in 越狱模式」、驱动 `(35222/6)` vs 管理器
+  `(35252/6)`、SuSFS v2.3.0、无红条（`ui_blue.png`）。
+- **稳定**：boot_id `11e3bdc8-529e-470f-a82b-cac252760175` 自链完成起
+  持续 ≥5 分钟不变（uptime 536s 复核），`enforce=1`。
+- 取证：`docs/forensics/vtz-v0a-11e3bdc8/`（`rows.log`、`restore.log`、
+  `postlock.log`、`chain_markers.log`、`boot.txt`、`ui_blue.png`）。
+
+**V0a 结论**：`su --vtz` 的进入路径在生产侧与消费侧同时成立，可作 V0b
+（默认进 W）的基线。
 
 ---
 
