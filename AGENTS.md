@@ -4,6 +4,11 @@ CVE-2026-43499 内核漏洞本地提权 + 内嵌 KernelSU。C 编写，构建产
 `preload.so`（aarch64 Android 共享库），通过 `LD_PRELOAD` 注入任意进程触发利用，
 成功后以 late-load 模式拉起 `ksud`。README 是权威文档，本文件只记录容易踩坑的点。
 
+> **文档权威（2026-11-12）**：架构结论一律以 `TrySU.md` 为准。旧的 SUVTZ / VtzSU
+> 体系文档（`SUVTZ.md`、`docs/suvtz-*.md`、`docs/vtzsu-design.md`）已**全文作废**，
+> 仅作历史取证；实现状态与判据见 `docs/trysu-implementation.md`。本文件是历史
+> 坑位记录，其中出现的旧文档引用是当时事实，不回改。
+
 ## 构建
 
 ```bash

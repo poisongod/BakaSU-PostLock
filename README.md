@@ -53,14 +53,17 @@ TrySU 体系有独立仓库 [`poisongod/TrySU`](https://github.com/poisongod/Try
 是 CVE 提权链与设备恢复的实施主仓**，`TrySU.md` 与 `docs/trysu-manager.md` 在此
 有同源副本（讨论现场），新增的体系化内容落独立仓。
 
-旧的两世界体系文档（`SUVTZ.md`、`docs/suvtz-v*.md`、`docs/suvtz-p0-baseline.md`、
-`docs/vtzsu-design.md`）已于 2026-11-11 **全部废弃**，文件保留作历史取证与实现
-细节参考；**结论一律以 `TrySU.md` 为准**。坐标转换要点：旧文档里的 `W`（私有
-mount ns、root 执行处）在新坐标下是 `VN`，新 `W` 是权限仲裁者——旧体系没有对应物。
+**旧文档统一作废（2026-11-12）**：`SUVTZ.md`、`docs/suvtz-v*.md`、
+`docs/suvtz-p0-baseline.md`、`docs/vtzsu-design.md` 属旧的「两世界 + (W,N,E,M)
+四元组」体系，现**全文作废**——不再作为任何设计、判据、验收或实现的依据，文件
+保留作历史取证与实现细节参考。**一切以 `TrySU.md` 为准**。坐标转换要点：旧文档
+里的 `W`（私有 mount ns、root 执行处）在新坐标下是 `VN`，新 `W` 是权限仲裁者
+——旧体系没有对应物。
 
-`TrySU.md` 描述的是**目标架构**，不是本仓库的现状。当前实现状态与差异清单见
-[`docs/vtzsu-design.md`](docs/vtzsu-design.md) §7–§8：现有代码只做到「`VN` 雏形
-（私有 mount ns 快照）+ 入口雏形（`su --vtz` 经单一入口请求服务）+ 事后记录」。
+`TrySU.md` 描述的是**目标架构**，不是本仓库的现状。当前实现状态与可执行判据见
+[`docs/trysu-implementation.md`](docs/trysu-implementation.md)：现有代码只做到
+「`VN` 雏形（私有 mount ns 快照）+ 入口雏形（`su --vtz` 经单一入口请求服务）+
+事后记录」，并列出十二公理的逐条诚实状态。
 
 **按公理十一，本环境不满足前置条件**：`W`（KernelSU 驱动）是 CVE-2026-43499
 提权后以 `late-load` 方式 `insmod` 的，启动链从未逐级验证过 `W`；无可信启动链，
@@ -81,8 +84,8 @@ SERIAL=<serial> PKG=<debuggable 包名> tools/suvtz/scan.sh   # 显式指定
 OUT=/tmp/suvtz tools/suvtz/scan.sh -q
 ```
 
-- 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`（已废弃）
-- 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`（已废弃）
+- 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`（已作废，仅历史取证）
+- 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`（已作废，仅历史取证）
 - 已显式裁决接受、但**仍计 FAIL**（显示 `FAIL*`）的项：`tools/suvtz/accepted.tsv`
 
 2026-11-07 真机基线（boot `a877caaf`，零参数）：`FAIL=0 (另有已接受 4)
