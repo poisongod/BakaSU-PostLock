@@ -1,0 +1,39 @@
+
+##### R1 sidecar
+content: [26603 4026534152]
+-rw-r--r-- 1 root root 17 2026-11-11 14:37 /data/local/tmp/vtz_w.pid
+pid=26603 inode=4026534152
+holder ns: 
+holder comm: cat: /proc/26603/comm: No such file or directory
+
+##### R2 session ns (su --vtz)
+/data/local/tmp/vtz_rows.sh[20]: su: inaccessible or not found
+
+##### R3 control ns (su, no flag)
+/data/local/tmp/vtz_rows.sh[23]: su: inaccessible or not found
+
+##### R4 W-side record
+/data/local/tmp/vtz_rows.sh[26]: su: inaccessible or not found
+
+##### R5 N side invisible (shell domain)
+total 0
+ls: /data/local/tmp/.w/log: No such file or directory
+cat: /data/local/tmp/.w/log/access.log: No such file or directory
+
+##### R6 functionality inside W
+/data/local/tmp/vtz_rows.sh[34]: su: inaccessible or not found
+
+##### R7 -M precedence over --vtz
+/data/local/tmp/vtz_rows.sh[37]: su: inaccessible or not found
+init ns: 
+
+##### R8 failure semantics (sidecar removed)
+rc=127
+/data/local/tmp/vtz_rows.sh[43]: su: inaccessible or not found
+restored=[26603 4026534152]
+
+##### R9 W-side root vs N-side root (domain/ns difference)
+/data/local/tmp/vtz_rows.sh[47]: su: inaccessible or not found
+
+##### R10 access.log kind counts
+/data/local/tmp/vtz_rows.sh[50]: su: inaccessible or not found

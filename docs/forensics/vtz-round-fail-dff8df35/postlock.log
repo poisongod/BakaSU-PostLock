@@ -1,0 +1,24 @@
+  channel reconnected (n=1, state was down)
+
+[dff8df35 14:56:14] ==> check host artifacts
+
+[dff8df35 14:56:15] ==> stage payloads at /data/local/tmp/ksu_boot
+[dff8df35 14:56:15] stage-unchanged preload.so
+[dff8df35 14:56:15] stage-unchanged kernelsu.ko
+[dff8df35 14:56:16] stage-unchanged finitmod
+[dff8df35 14:56:16] stage-pushed oplus_check_suppress.ko
+[dff8df35 14:56:17] stage-unchanged kernelsu_hotload_init.ko
+[dff8df35 14:56:19] stage-pushed ksud
+[dff8df35 14:56:19] stage-unchanged wns
+[dff8df35 14:56:20] stage-unchanged sep_enforce1.txt
+
+[dff8df35 14:56:21] ==> build restore script (manager uid=10277)
+
+[dff8df35 14:56:22] ==> wait for system quiet (1-min load < 5.0)
+[dff8df35 14:58:45] quiet after 135s (load=4.69) -> GO
+
+[dff8df35 14:58:46] ==> trigger exploit (constructor blocks until rooted; then script runs as uid0)
+DETACHED
+
+[dff8df35 14:58:47] ==> wait for restore (KS_COLDSTART fork)
+POSTLOCK_RC=143
