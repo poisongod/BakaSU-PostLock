@@ -319,26 +319,45 @@ EL1 里敌对的部分用 ocsk 压制，**列为已知风险面，不列进「�
 
 ## 7 V0 的可验证判据
 
-一次冷 boot + `tools/postlock.sh` 之后：
+一次冷 boot + `tools/postlock.sh` 之后，跑 `tools/suvtz/v0a_rows.sh`
+（== R1–R10）：
 
-| 判据 | 期望 | 取法 | 状态（boot `59eeb053`） |
+| 判据 | 期望 | 取法（R#） | 状态 |
 |---|---|---|---|
-| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid` | ✅ 实测 `26603 4026534152`，holder ns 同值 |
-| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == `readlink /proc/<holder>/ns/mnt` | 两次 `readlink` | ✅ 实测两边 `mnt:[4026534152]` |
-| 对照：不带开关仍在 N | `su -c 'readlink /proc/self/ns/mnt'` **不相等**（V0a 阶段这是正确结果） | 同上 | ✅ 实测 `mnt:[4026533362]` ≠ W |
-| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见 | ✅ 实测追加 `kind=enter`；删空 `log/` 后自动重建再写 |
-| N 侧不可见 | **N 侧**（shell 域）`ls /data/local/tmp/.w/log` → `ENOENT` | shell 域执行 | ✅ 实测 `No such file or directory`（W 侧写入后仍如此） |
-| 功能未退化 | `su --vtz -c 'ls /system /data /apex'` 正常 | — | ⬜ 未跑 |
-| `-M` 优先级 | `su -M --vtz -c …` 走 init ns（`-M` 覆盖） | 对照 | ⬜ 未跑 |
-| SUVTZ 回归 | 扫描器仍 `FAIL=0（已接受 3）PASS=37 INFO=0` | `tools/suvtz/scan.sh -q` | ⬜ 未跑（上次口径见 Phase C 轮） |
+| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid`（R1） | ⚠️→✅ 原生写入失败（§7.1），手工写入后实测 `610 4026534169`，holder ns 同值 |
+| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == holder ns | 两次 `readlink`（R2/R9） | ✅ 实测两边 `mnt:[4026534169]` |
+| 对照：不带开关仍在 N | `su -c 'readlink /proc/self/ns/mnt'` **不相等**（V0a 阶段这是正确结果） | R3/R9 | ✅ 实测 `mnt:[4026533362]` ≠ W |
+| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见（R4/R10） | ✅ 实测追加 `kind=enter`（本轮累计 8 条） |
+| N 侧不可见 | **N 侧**（shell 域）`ls /data/local/tmp/.w/log` → `ENOENT` | shell 域执行（R5） | ✅ `.w` 为空目录、`.w/log` `No such file or directory` |
+| 功能未退化 | `su --vtz -c 'ls /system /data /apex'` 正常 | —（R6） | ✅ `root/system/data/apex-ok`，`mods=200` |
+| `-M` 优先级 | `su -M --vtz -c …` 走 init ns（`-M` 覆盖） | 对照（R7） | ✅ 仍 `mnt:[4026533362]`（N） |
+| 失败语义 | 删 sidecar → 硬失败「no W registered」，rc≠0，恢复后复跑正常 | R8 | ✅ rc=1，`read …: No such file or directory (os error 2)` |
+| SUVTZ 回归 | 扫描器仍 `FAIL=0（已接受 3）PASS=37 INFO=0` | `tools/suvtz/scan.sh -q` | ✅ 同轮 `postlock.sh` 尾部 P2 自动扫描 |
 
-**判定口径**：V0a 成立 = 前 7 行全绿。第 8 行是回归门。
+**判定口径**：V0a 成立 = 上表全绿，**且 sidecar 那一行必须是 restore 自带路径
+写出的**（手工写入只能证明消费侧，不能证明生产侧；§7.1）。
 V0b（翻默认）之后再补一条：不带开关的 `su -c` 也读到 W 的 ns inode。
 
-> **2026-11-11 冒烟只跑了第 1–5 行**（人工逐条，非脚本），第 6–8 行留待
-> 正式轮（reboot + `tools/postlock.sh`）。若正式轮里「W 侧记录产生」失败而
-> 其余全绿，那是 §3.1 假设 2 命中（tmpfs 标签），记为**D5 记录缺失**，
-> 不是 D1 失败——两件事分开写。
+### 7.1 2026-11-11 正式轮（boot `e1559d68`）：消费侧全绿，生产侧有一处 bug
+
+- 链与恢复本身全绿：`root=1` ×3、`route success=1`、双 OK 原生、
+  `enforce=1`、`kernelsu` / `oplus_check_suppress` 加载。
+- **唯一缺陷在 sidecar 生产**：`restore` 打完
+  `suvtz-w: holder pid=610 ns=mnt:[4026534169] mp=/data/local/tmp/.w by=kernel`
+  后紧跟 `WARN-suvtz-w-sidecar-write`，`vtz_w.pid` 保留上一 boot 的
+  `26603 4026534152` → `su --vtz` 报「W holder pid 26603 is gone」。
+  根因 = heredoc 里 4 处写的是 `\$TMP/vtz_w.pid`（**设备侧**变量），
+  而 `restore.sh` 从未定义 `TMP=`（其余路径全是 host 展开的绝对路径）
+  → 展开为空 → `> /vtz_w.pid`（根目录只读）→ 写失败。
+  已改为 host 展开（`$TMP/vtz_w.pid`），生成物实测为
+  `> /data/local/tmp/vtz_w.pid`；root 直写该路径实测 `rc=0`。
+- 判据 R1–R10 在**手工写入正确 sidecar**（`610 4026534169` = 本轮真实
+  holder）后全绿，取证 `docs/forensics/vtz-v0a-e1559d68/rows.log`。
+- **待办**：下一轮冷 boot 复验原生写入行
+  `suvtz-w: sidecar pid=… inode=… mode=644`，届时上表首行才可改回 ✅。
+- 观察侧两条限制（写进 `v0a_rows.sh` 头注释，避免下次误判）：
+  shell 域读 `/proc/<pid>/ns/mnt` 与 `/proc/1/ns/mnt` 均被 SELinux 拒
+  → holder/init 的 ns 一律经 `su` 读取。
 
 ---
 

@@ -1,0 +1,53 @@
+
+##### R1 sidecar
+content: [610 4026534169]
+-rw-r--r-- 1 shell shell 15 2026-11-11 21:28 /data/local/tmp/vtz_w.pid
+pid=610 inode=4026534169
+holder ns: 
+holder comm: wns
+
+##### R2 session ns (su --vtz)
+session-ns=mnt:[4026534169]
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+
+##### R3 control ns (su, no flag)
+session-ns=mnt:[4026533362]
+
+##### R4 W-side record
+wlog-lines=6
+ts=1794403678 pid=3064 uid=0 ns=mnt:[4026534169] kind=enter
+ts=1794403722 pid=3152 uid=0 ns=mnt:[4026534169] kind=enter
+ts=1794403722 pid=3171 uid=0 ns=mnt:[4026534169] kind=enter
+
+##### R5 N side invisible (shell domain)
+total 0
+ls: /data/local/tmp/.w/log: No such file or directory
+cat: /data/local/tmp/.w/log/access.log: No such file or directory
+
+##### R6 functionality inside W
+root-ok
+system-ok
+data-ok
+apex-ok
+Linux version 5.4.254-qgki-g977b99b1fbb9
+mods=200
+
+##### R7 -M precedence over --vtz
+session-ns=mnt:[4026533362]
+init ns: 
+
+##### R8 failure semantics (sidecar removed)
+Error: vtz: enter W
+
+Caused by:
+    0: no W registered (read /data/local/tmp/vtz_w.pid)
+    1: No such file or directory (os error 2)
+rc=1
+restored=[610 4026534169]
+
+##### R9 W-side root vs N-side root (domain/ns difference)
+n-root-ns=mnt:[4026533362]
+
+##### R10 access.log kind counts
+8
+ts=1794403723 pid=3258 uid=0 ns=mnt:[4026534169] kind=enter

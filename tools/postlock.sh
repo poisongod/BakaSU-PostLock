@@ -460,7 +460,7 @@ else
     # A sidecar left from an earlier holder points at a dead pid, and
     # vtz_enter() refuses on any mismatch -- but deleting it keeps the error
     # honest ("no W registered") instead of "W holder is gone".
-    rm -f \$TMP/vtz_w.pid 2>/dev/null || true
+    rm -f $TMP/vtz_w.pid 2>/dev/null || true
     log WARN-suvtz-w-holder-missing
     if [ -s \$WLOG ]; then
       log "WARN-suvtz-w-hold-log: \$(tail -n3 \$WLOG 2>/dev/null | tr '\n' '|')"
@@ -486,12 +486,12 @@ else
     esac
     case "\$WNODE" in
       ''|*[!0-9]*)
-        rm -f \$TMP/vtz_w.pid 2>/dev/null || true
+        rm -f $TMP/vtz_w.pid 2>/dev/null || true
         log WARN-suvtz-w-sidecar-no-ns
         ;;
       *)
-        if echo "\$WPID \$WNODE" > \$TMP/vtz_w.pid 2>/dev/null &&
-           chmod 644 \$TMP/vtz_w.pid 2>/dev/null; then
+        if echo "\$WPID \$WNODE" > $TMP/vtz_w.pid 2>/dev/null &&
+           chmod 644 $TMP/vtz_w.pid 2>/dev/null; then
           log "suvtz-w: sidecar pid=\$WPID inode=\$WNODE mode=644"
         else
           log WARN-suvtz-w-sidecar-write
