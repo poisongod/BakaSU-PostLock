@@ -805,11 +805,45 @@ fi
 # manager installs it, but only once it has started (measured 2026-11-05:
 # /data/adb/ksud appeared when the manager first ran with root), so on a
 # fresh boot before any manager start every allow-listed 'su' would fall
-# back to the real exec and be refused.  Provision it here, and never
-# overwrite an existing install (the manager's copy is the release build).
-if [ -x $STAGE/ksud ] && [ ! -e /data/adb/ksud ]; then
-  cp -f $STAGE/ksud /data/adb/ksud 2>/dev/null && chmod 755 /data/adb/ksud 2>/dev/null \
-    && log su-driver-ksud-provisioned || log WARN-su-driver-ksud-cp
+# back to the real exec and be refused.  Provision it here.
+#
+# V0a (2026-11-11): "never overwrite" is no longer the right rule.  The VtzSU
+# entry is the su --vtz option, and that option exists only in the ksud built
+# from ../BakaSU with the V0a patch.  The manager provisions its own release
+# libksud.so at this path (measured 2026-11-11: 5955504B, sha1 1a45cddd,
+# byte-identical to the APK's lib/arm64/libksud.so), and a session asking for
+# W on that build dies in getopts -- honest, but it would quietly disable
+# V0a on exactly the devices where the manager has started first.  So the
+# rule is "make the file ours, or say why not":
+#   * identical sha1            -> nothing to do (idempotent re-runs)
+#   * different sha1            -> cp to .tmp, chmod, rename.  The rename is
+#                                  atomic and keeps running execs on their old
+#                                  inode, so the manager is not disturbed.
+#   * any failure               -> WARN only; the previous binary stays and
+#                                  su --vtz reports the truth instead of this
+#                                  script pretending W is reachable.
+# Note: this heredoc is unquoted, so device-side expansions are escaped; an
+# unescaped sha1sum substitution here would run on the host at generation
+# time (tools/check_restore_heredoc.sh gates exactly that).
+KS_DST=/data/adb/ksud
+KS_WANT=
+if [ -x $STAGE/ksud ]; then
+  KS_WANT=\$(sha1sum $STAGE/ksud 2>/dev/null | cut -d' ' -f1)
+fi
+if [ -n "\$KS_WANT" ]; then
+  KS_HAVE=\$(sha1sum \$KS_DST 2>/dev/null | cut -d' ' -f1)
+  if [ "\$KS_HAVE" = "\$KS_WANT" ]; then
+    log "su-driver-ksud-unchanged sha1=\${KS_WANT%????????}"
+  elif cp -f $STAGE/ksud \$KS_DST.tmp 2>/dev/null \
+       && chmod 755 \$KS_DST.tmp 2>/dev/null \
+       && mv -f \$KS_DST.tmp \$KS_DST 2>/dev/null; then
+    log "su-driver-ksud-installed sha1=\${KS_WANT%????????} replaced=\${KS_HAVE:-none}"
+  else
+    rm -f \$KS_DST.tmp 2>/dev/null
+    log "WARN-su-driver-ksud-cp kept=\${KS_HAVE:-none}"
+  fi
+else
+  log WARN-su-driver-ksud-stage-missing
 fi
 # --- SUVTZ P1-1: DAC hygiene (2026-11-03) -----------------------------
 # The P0 baseline (docs/suvtz-p0-baseline.md, 30 probes) measured what a
