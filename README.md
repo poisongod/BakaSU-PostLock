@@ -62,8 +62,9 @@ TrySU 体系有独立仓库 [`poisongod/TrySU`](https://github.com/poisongod/Try
 
 `TrySU.md` 描述的是**目标架构**，不是本仓库的现状。当前实现状态与可执行判据见
 [`docs/trysu-implementation.md`](docs/trysu-implementation.md)：现有代码只做到
-「`VN` 雏形（私有 mount ns 快照）+ 入口雏形（`su --vtz` 经单一入口请求服务）+
-事后记录」，并列出十二公理的逐条诚实状态。
+「`VN` 雏形（私有 mount ns 快照）+ `N`→`VN` 进入通道雏形（`su --vtz`，准入在内核
+驱动，**不是公理九的 `VN`→`W` 服务入口**）+ 事后记录」，`W` 侧尚无实现（不存在
+`VN`→`W` 的单一服务入口），并列出十二公理的逐条诚实状态。
 
 **按公理十一，本环境不满足前置条件**：`W`（KernelSU 驱动）是 CVE-2026-43499
 提权后以 `late-load` 方式 `insmod` 的，启动链从未逐级验证过 `W`；无可信启动链，
@@ -73,7 +74,7 @@ TrySU 体系有独立仓库 [`poisongod/TrySU`](https://github.com/poisongod/Try
 ### 观测面等价（SUVTZ，独立主题）
 
 提权成功之后，本机对第三方 app 的观测面应当与未提权的同型号设备等价。
-`tools/suvtz/scan.sh` 把这件事故成 35 条可执行探针（每条一次独立 adb 往返，
+`tools/suvtz/scan.sh` 把这件事故成 40 条可执行探针（每条一次独立 adb 往返，
 保留 rc 语义），判定只有三种：`PASS` / `FAIL` / `INFO`——
 **探针自己跑不成（exec 被拒、命令缺失）记 `INFO`，绝不记 `PASS`**。
 
