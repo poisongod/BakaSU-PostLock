@@ -4,9 +4,10 @@
 > **前置**：`docs/suvtz-v3-definition.md`（NL-1，SUVTZ 的判定标准）、
 > `docs/suvtz-v3-design.md`（DL-1，论证）。
 > **关系**：SUVTZ 定义「一个世界怎么算成立」；VtzSU 定义「一个 SU 怎么建在这个世界上」。
-> **状态**：设计为主。**V0a 代码已落地（2026-11-11），尚未设备实测**——
-> 落地部分见 §3.1 的实现清单，其余（判据、D4/D5 状态）仍然是设计口径。
-> 本文不含任何「已实测」表述；§3.1 只写「已编译、已提交」，不写「已验证」。
+> **状态**：设计为主。**V0a 代码已落地并设备冒烟（2026-11-11，boot `59eeb053`）**——
+> 冒烟证实的是 §7 的第 1–5 行（会话真在 W、W 侧记录产生、N 侧 `ENOENT`），
+> 第 6–8 行与 D4/D5 状态仍待正式轮。**冒烟 ≠ 判据全绿**：本文只有明确标注
+> boot 号的行才算实测，其余仍是设计口径。
 
 ---
 
@@ -161,39 +162,48 @@ allowlist。`wns` 仍然存在（restore 自用），但它不再是第一公民
 
 ---
 
-### 3.1 V0a 实现清单（代码已落地，未实测）
+### 3.1 V0a 实现清单（代码已落地；哪几条冒烟过了见下）
 
 | 位置 | 内容 |
 |---|---|
 | `../BakaSU/userspace/ksud/src/android/su.rs` | `opts.optflag("", "vtz", …)`；`let vtz = matches.opt_present("vtz")`；`if mount_master { … } else if vtz { vtz_enter()? }`（失败即**硬错误**，不回落 N）；`vtz_enter()` + `ns_inode(pid)` |
 | `tools/postlock.sh`（restore heredoc，holder 段） | 写完 `suvtz-w: holder pid=…` 后写 `/data/local/tmp/vtz_w.pid` = `<pid> <ns_inode>`，`chmod 644`；holder 缺失时 `rm -f` 该 sidecar（保证错误文案是「没有 W」而不是「W 掉了」）；ns 读不出数字时 `WARN-suvtz-w-sidecar-no-ns` |
-| `build/embed/ksud` | 换成本版（`sha1 4a0fbdc1…`），stage push 清单已含 |
+| `build/embed/ksud` | 换成本版（`sha1 bbc7afcd…`），stage push 清单已含 |
+| `tools/postlock.sh`（ksud 供给） | `/data/adb/ksud` 由「不存在才装」改为「sha1 不同即装」：cp 到 `.tmp` + `chmod 755` + 原子 `mv`（运行中的 exec 留在旧 inode，不打断管理器）；相同只记 `unchanged`；失败仅 WARN 保留旧二进制 —— 因为 `su --vtz` 只在本仓构建里存在，管理器那份 release 会让入口静默失效 |
 | app assets | `assets/postlock/ksud` 同步同 sha1 + `restore.sh` 重新生成（`tools/gen_app_restore.sh`）+ `PAYLOAD_VERSION` bump |
 
 **失败语义**（为什么必须硬失败）：sidecar 缺失 / pid ≤ 1 / ns inode 不匹配 /
 `setns` 被拒 —— 任一命中都直接退出。**静默回落 N 会让「我以为在 W 里」成为
 一个不可观测的假象**，而这恰好是本设计要消灭的东西。
 
-**已知未实测假设**（设备轮第一件事就是验这几条）：
+**两条前置假设 → 已实测成立（boot `59eeb053`，2026-11-11）**：
 
 1. `switch_mnt_ns(holder)` 在 `root_shell()` 的 `u:r:ksu:s0` 路径上可复现
-   ——Phase B 已在**同一域**用 `wns run` 跑通过 `setns`，但那是另一个调用点。
-2. `u:r:ksu:s0` 能否写 holder 的 tmpfs（`mode=0700` 且**没有** `context=` 选项，
-   inode 标签由 tmpfs 默认策略决定）。写不进去只会走 N 侧诊断行 + stderr 提示，
-   **不阻断进入 W**（记录失败 ≠ 进入失败，这两件事必须能分开观测）。
+   —— 实测 `su --vtz -c 'readlink /proc/self/ns/mnt'` = `mnt:[4026534152]`
+   = holder 的 ns；对照 `su -c` 同一时刻 = `mnt:[4026533362]`（N）。同 uid、
+   同域，唯一差异是 `--vtz`。
+2. `u:r:ksu:s0` 能写 holder 的 tmpfs（`mode=0700` 且**没有** `context=` 选项，
+   inode 标签由 tmpfs 默认策略决定）—— 实测 W 侧 `log/access.log` 正常追加
+   `kind=enter`；把 `log/` 删空后再跑 `su --vtz`，`create_dir_all` 重建目录并
+   写入成功，而同一时刻 N 侧 `ls .w/log/access.log` 仍是
+   `No such file or directory`。
+
+> 第 2 条只证明「写得进去」，**不证明「只有 W 写得进去」**——后者要靠内核侧
+> 收敛（V1）与 T1a，本阶段不承诺。
 
 ---
 
 | 条款 | V0 状态 | 成立的依据 | 仍然缺的 |
 |---|---|---|---|
-| D1′ 双世界 | ✅（SU 会话进 W 之后） | `switch_mnt_ns(holder)`，会话与 W 同一个 ns inode | — |
+| D1′ 双世界 | ✅（`--vtz` 会话进 W） | 实测：会话与 holder 同一个 ns inode（boot `59eeb053`） | 默认仍 N（V0b 才翻） |
 | D2′ 世界标记 | ✅ | ns inode 相等性，内核记账不可伪造 | — |
-| D3′ 隔离 | ✅（单向） | W 的 tmpfs 在 N 里无路径（`ENOENT`） | 反向不隔离（见 §5.1） |
+| D3′ 隔离 | ✅（单向） | 实测：W 的 tmpfs 在 N 里无路径（`ENOENT`），W 侧写入后 N 侧仍 `ENOENT` | 反向不隔离（见 §5.1） |
 | D4′ 唯一入口 | ⚠️ 弱成立 | 收敛到 `ksud` 单点 + allowlist | `wns` 仍是通用工具；内核 supercall 未收敛（V1） |
-| D5′ 入口监控 | ⚠️ 弱成立 | W 侧文件，N 不可读写 | N 不可验证（需 T1a） |
+| D5′ 入口监控 | ⚠️ 弱成立 | W 侧文件，N 不可读写（实测：W 可写 + N 侧不可见） | N 侧不可验证（需 T1a）；「只有 W 能写」未证 |
 
-> 上表是**设计推演**（「按这个设计成立时会是什么状态」），不是实测。
-> V0a 代码落地后、判据（§7）跑完之前，任何一格都不得对外表述为「已成立」。
+> D1′/D3′ 的「实测」**只覆盖 §7 第 1–5 行**在 boot `59eeb053` 跑过的部分；
+> 第 6–8 行（功能未退化 / `-M` 优先级 / SUVTZ 回归）尚未跑，
+> 因此不得据此把等级从 T0 往上抬。
 
 **判定顺序**（NL-1 §4）：先 D3 → 再 D4 → 最后 D5。
 V0 在 D3 上是**结构性**的（不是过滤层），所以即使 D4/D5 弱，这个体系的等级
@@ -305,23 +315,24 @@ EL1 里敌对的部分用 ocsk 压制，**列为已知风险面，不列进「�
 
 一次冷 boot + `tools/postlock.sh` 之后：
 
-| 判据 | 期望 | 取法 |
-|---|---|---|
-| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid` |
-| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == `readlink /proc/<holder>/ns/mnt` | 两次 `readlink` |
-| 对照：不带开关仍在 N | `su -c 'readlink /proc/self/ns/mnt'` **不相等**（V0a 阶段这是正确结果） | 同上 |
-| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见 |
-| N 侧不可见 | **N 侧**（shell 域）`ls /data/local/tmp/.w/log` → `ENOENT` | shell 域执行 |
-| 功能未退化 | `su --vtz -c 'ls /system /data /apex'` 正常 | — |
-| `-M` 优先级 | `su -M --vtz -c …` 走 init ns（`-M` 覆盖） | 对照 |
-| SUVTZ 回归 | 扫描器仍 `FAIL=0（已接受 3）PASS=37 INFO=0` | `tools/suvtz/scan.sh -q` |
+| 判据 | 期望 | 取法 | 状态（boot `59eeb053`） |
+|---|---|---|---|
+| sidecar 存在 | `<pid> <inode>`，且 `/proc/<pid>/ns/mnt` 的 inode 与之相等 | `cat /data/local/tmp/vtz_w.pid` | ✅ 实测 `26603 4026534152`，holder ns 同值 |
+| 会话在 W 里 | `su --vtz -c 'readlink /proc/self/ns/mnt'` == `readlink /proc/<holder>/ns/mnt` | 两次 `readlink` | ✅ 实测两边 `mnt:[4026534152]` |
+| 对照：不带开关仍在 N | `su -c 'readlink /proc/self/ns/mnt'` **不相等**（V0a 阶段这是正确结果） | 同上 | ✅ 实测 `mnt:[4026533362]` ≠ W |
+| W 侧记录产生 | `su --vtz -c 'cat /data/local/tmp/.w/log/access.log'` 有本次行 | 该路径在 W 里可见、在 N 里不可见 | ✅ 实测追加 `kind=enter`；删空 `log/` 后自动重建再写 |
+| N 侧不可见 | **N 侧**（shell 域）`ls /data/local/tmp/.w/log` → `ENOENT` | shell 域执行 | ✅ 实测 `No such file or directory`（W 侧写入后仍如此） |
+| 功能未退化 | `su --vtz -c 'ls /system /data /apex'` 正常 | — | ⬜ 未跑 |
+| `-M` 优先级 | `su -M --vtz -c …` 走 init ns（`-M` 覆盖） | 对照 | ⬜ 未跑 |
+| SUVTZ 回归 | 扫描器仍 `FAIL=0（已接受 3）PASS=37 INFO=0` | `tools/suvtz/scan.sh -q` | ⬜ 未跑（上次口径见 Phase C 轮） |
 
 **判定口径**：V0a 成立 = 前 7 行全绿。第 8 行是回归门。
 V0b（翻默认）之后再补一条：不带开关的 `su -c` 也读到 W 的 ns inode。
 
-> **截至 2026-11-11 本表一行都还没跑过**（V0a 只到「编译通过 + 已提交」）。
-> 跑的时候如果「W 侧记录产生」失败而其余全绿，那是 §3.1 的假设 2 命中
-> （tmpfs 标签），记为**D5 记录缺失**，不是 D1 失败——两件事分开写。
+> **2026-11-11 冒烟只跑了第 1–5 行**（人工逐条，非脚本），第 6–8 行留待
+> 正式轮（reboot + `tools/postlock.sh`）。若正式轮里「W 侧记录产生」失败而
+> 其余全绿，那是 §3.1 假设 2 命中（tmpfs 标签），记为**D5 记录缺失**，
+> 不是 D1 失败——两件事分开写。
 
 ---
 
