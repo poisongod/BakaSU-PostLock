@@ -4,7 +4,9 @@
 > **前置**：`docs/suvtz-v3-definition.md`（NL-1，SUVTZ 的判定标准）、
 > `docs/suvtz-v3-design.md`（DL-1，论证）。
 > **关系**：SUVTZ 定义「一个世界怎么算成立」；VtzSU 定义「一个 SU 怎么建在这个世界上」。
-> **状态**：全部为**设计**，V0 未实现、未实测。本文不含任何「已实测」表述。
+> **状态**：设计为主。**V0a 代码已落地（2026-11-11），尚未设备实测**——
+> 落地部分见 §3.1 的实现清单，其余（判据、D4/D5 状态）仍然是设计口径。
+> 本文不含任何「已实测」表述；§3.1 只写「已编译、已提交」，不写「已验证」。
 
 ---
 
@@ -159,7 +161,28 @@ allowlist。`wns` 仍然存在（restore 自用），但它不再是第一公民
 
 ---
 
-## 4 与 D1~D5 的映射
+### 3.1 V0a 实现清单（代码已落地，未实测）
+
+| 位置 | 内容 |
+|---|---|
+| `../BakaSU/userspace/ksud/src/android/su.rs` | `opts.optflag("", "vtz", …)`；`let vtz = matches.opt_present("vtz")`；`if mount_master { … } else if vtz { vtz_enter()? }`（失败即**硬错误**，不回落 N）；`vtz_enter()` + `ns_inode(pid)` |
+| `tools/postlock.sh`（restore heredoc，holder 段） | 写完 `suvtz-w: holder pid=…` 后写 `/data/local/tmp/vtz_w.pid` = `<pid> <ns_inode>`，`chmod 644`；holder 缺失时 `rm -f` 该 sidecar（保证错误文案是「没有 W」而不是「W 掉了」）；ns 读不出数字时 `WARN-suvtz-w-sidecar-no-ns` |
+| `build/embed/ksud` | 换成本版（`sha1 4a0fbdc1…`），stage push 清单已含 |
+| app assets | `assets/postlock/ksud` 同步同 sha1 + `restore.sh` 重新生成（`tools/gen_app_restore.sh`）+ `PAYLOAD_VERSION` bump |
+
+**失败语义**（为什么必须硬失败）：sidecar 缺失 / pid ≤ 1 / ns inode 不匹配 /
+`setns` 被拒 —— 任一命中都直接退出。**静默回落 N 会让「我以为在 W 里」成为
+一个不可观测的假象**，而这恰好是本设计要消灭的东西。
+
+**已知未实测假设**（设备轮第一件事就是验这几条）：
+
+1. `switch_mnt_ns(holder)` 在 `root_shell()` 的 `u:r:ksu:s0` 路径上可复现
+   ——Phase B 已在**同一域**用 `wns run` 跑通过 `setns`，但那是另一个调用点。
+2. `u:r:ksu:s0` 能否写 holder 的 tmpfs（`mode=0700` 且**没有** `context=` 选项，
+   inode 标签由 tmpfs 默认策略决定）。写不进去只会走 N 侧诊断行 + stderr 提示，
+   **不阻断进入 W**（记录失败 ≠ 进入失败，这两件事必须能分开观测）。
+
+---
 
 | 条款 | V0 状态 | 成立的依据 | 仍然缺的 |
 |---|---|---|---|
@@ -168,6 +191,9 @@ allowlist。`wns` 仍然存在（restore 自用），但它不再是第一公民
 | D3′ 隔离 | ✅（单向） | W 的 tmpfs 在 N 里无路径（`ENOENT`） | 反向不隔离（见 §5.1） |
 | D4′ 唯一入口 | ⚠️ 弱成立 | 收敛到 `ksud` 单点 + allowlist | `wns` 仍是通用工具；内核 supercall 未收敛（V1） |
 | D5′ 入口监控 | ⚠️ 弱成立 | W 侧文件，N 不可读写 | N 不可验证（需 T1a） |
+
+> 上表是**设计推演**（「按这个设计成立时会是什么状态」），不是实测。
+> V0a 代码落地后、判据（§7）跑完之前，任何一格都不得对外表述为「已成立」。
 
 **判定顺序**（NL-1 §4）：先 D3 → 再 D4 → 最后 D5。
 V0 在 D3 上是**结构性**的（不是过滤层），所以即使 D4/D5 弱，这个体系的等级
@@ -292,6 +318,10 @@ EL1 里敌对的部分用 ocsk 压制，**列为已知风险面，不列进「�
 
 **判定口径**：V0a 成立 = 前 7 行全绿。第 8 行是回归门。
 V0b（翻默认）之后再补一条：不带开关的 `su -c` 也读到 W 的 ns inode。
+
+> **截至 2026-11-11 本表一行都还没跑过**（V0a 只到「编译通过 + 已提交」）。
+> 跑的时候如果「W 侧记录产生」失败而其余全绿，那是 §3.1 的假设 2 命中
+> （tmpfs 标签），记为**D5 记录缺失**，不是 D1 失败——两件事分开写。
 
 ---
 

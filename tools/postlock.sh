@@ -457,6 +457,10 @@ else
     if [ -n "\$WPID" ]; then WBY=ksu; fi
   fi
   if [ -z "\$WPID" ]; then
+    # A sidecar left from an earlier holder points at a dead pid, and
+    # vtz_enter() refuses on any mismatch -- but deleting it keeps the error
+    # honest ("no W registered") instead of "W holder is gone".
+    rm -f \$TMP/vtz_w.pid 2>/dev/null || true
     log WARN-suvtz-w-holder-missing
     if [ -s \$WLOG ]; then
       log "WARN-suvtz-w-hold-log: \$(tail -n3 \$WLOG 2>/dev/null | tr '\n' '|')"
@@ -471,6 +475,29 @@ else
     fi
     if [ -z "\$WNS" ]; then WNS=unknown; fi
     log "suvtz-w: holder pid=\$WPID ns=\$WNS mp=\$WMP by=\$WBY"
+    # VtzSU V0a entry authority (the "su --vtz" path).  The reader is a root
+    # session that lands in the ksu domain, not this one, so the sidecar is published
+    # 0644 as "<holder_pid> <ns_inode>".  The inode is a *check*, never a
+    # path: vtz_enter() re-derives the namespace from /proc and refuses on
+    # mismatch, so a stale sidecar costs a refusal and never a wrong ns.
+    WNODE=
+    case "\$WNS" in
+      'mnt:['*']') WNODE=\$(printf '%s' "\$WNS" | tr -cd '0-9') ;;
+    esac
+    case "\$WNODE" in
+      ''|*[!0-9]*)
+        rm -f \$TMP/vtz_w.pid 2>/dev/null || true
+        log WARN-suvtz-w-sidecar-no-ns
+        ;;
+      *)
+        if echo "\$WPID \$WNODE" > \$TMP/vtz_w.pid 2>/dev/null &&
+           chmod 644 \$TMP/vtz_w.pid 2>/dev/null; then
+          log "suvtz-w: sidecar pid=\$WPID inode=\$WNODE mode=644"
+        else
+          log WARN-suvtz-w-sidecar-write
+        fi
+        ;;
+    esac
     if \$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP >/dev/null 2>&1; then
       log "suvtz-w: mountpoint=yes"
     elif [ "\$WSUOK" = 1 ] && /system/bin/su -c "\$WNSBIN run \$WPID /system/bin/mountpoint -q \$WMP" >/dev/null 2>&1; then
