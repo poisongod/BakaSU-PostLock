@@ -190,8 +190,9 @@ TrySU 用三世界 `(W, N, VN)` 描述「整个系统怎么组织」。
 | 实现件 | 三世界坐标 | 对应公理 | 强度 |
 |---|---|---|---|
 | `tools/wns` holder（私有 mount ns + tmpfs + `pause` 常驻） | `VN` 的**雏形** | 公理三 | 仅「一个执行视图」，不是 `N` 的虚拟映射 |
-| `su --vtz`（`ksud/src/android/su.rs` 的 `vtz_enter()`） | `VN → W` 入口的**雏形** | 公理八 | 只有一条路径，准入表不统一 |
-| W 侧 `access.log` 的 `kind=enter` 行 | 入口监控的**雏形** | 公理八 | 事后追加，**不满足「生效前求值」** |
+| `su --vtz`（`ksud/src/android/su.rs` 的 `vtz_enter()`） | **进入 `VN` 的入口雏形**（`N → VN` 方向） | 公理三 / 六 | 只有一条路径；它是一个入口，不是权限仲裁 |
+| `sucompat` 鉴权 + 内核 supercall / ioctl（`reboot` magic、`prctl` 0xdeadbeef、`[ksu_driver]` fd） | `VN → W` 的**事实入口** | 公理八 / 九 | **入口不唯一**：同一件事有五条以上独立路径，故公理八不成立 |
+| W 侧 `access.log` 的 `kind=enter` 行 | 进入事件的**事后记录** | 公理八 | 事后追加，**不满足「生效前求值」** |
 | SUSFS 九项 feature | `VN` 内**输出过滤层** | 公理七的**非**满足形式 | 过滤 ≠ 结构隔离 |
 | `oplus_check_suppress`（ocsk） | `VN` 内**同特权级对抗** | — | 它的存在本身就是公理一不满足的证据 |
 | restore（`kernel:s0`，由 `KS_COLDSTART` fork） | 恢复流程在 `VN` 之外 | 公理十 | 唯一一条方向正确的既有实现 |
@@ -219,11 +220,11 @@ TrySU 用三世界 `(W, N, VN)` 描述「整个系统怎么组织」。
 |---|---|---|
 | 一（W 存在） | ❌ **不成立** | 权限与执行同域（EL1）。`ocsk` 的存在即证明：同特权级敌对代码只能靠 kprobe 对抗，谈不上「`W` 管理 `N`」 |
 | 二（N 存在） | ❌ **不成立** | 全部普通代码跑在 `N` 实体上；`VN` 只是 `N` 的一个视图 |
-| 三（VN 存在） | ⚠️ **雏形** | 私有 mount ns 已实现（`tools/wns`，boot `9101e66c` 端到端 `by=kernel`）；但非强虚拟化映射，且不可被破坏后由 `N` 恢复 |
+| 三（VN 存在） | ⚠️ **雏形** | 私有 mount ns 已在生产路径端到端成立：`suvtz-w: holder … by=kernel` + `mountpoint=yes` + `n-side-absent`（fresh boot `194c5414`，复现于 `8539f035`），`exec=yes` 另见 boot `9101e66c`；但非强虚拟化映射（见 `DEVIATION-2`），且不可被破坏后由 `N` 恢复 |
 | 四（权限边界） | ❌ **不成立** | `VN` 内 uid 0 与 `W` 同内核特权，无结构性边界 |
 | 五（正常边界） | ❌ **不成立** | 见 DEVIATION-2 |
 | 六（执行边界） | ❌ **不成立** | 见 DEVIATION-1；且 `N` 承载全部普通代码 |
-| 七（结构隔离） | ⚠️ **部分** | `N` 侧对 `VN` 客体的路径解析为 `ENOENT`（boot `59eeb053` 三件物料验收）；但其余观测面靠 SUSFS 过滤，属过滤层 |
+| 七（结构隔离） | ⚠️ **部分** | 迁入 `VN` 的三件物料（`oplus_check_suppress.ko` / `postlock_adbkey.pub` / `pp_adb_tcp.bin`）在 `N` 侧的路径解析为 `ENOENT`，设备侧独立复核均 `ABSENT`（fresh boot `59eeb053` 的 Phase C）。但这只覆盖三件物料；其余观测面仍靠 SUSFS 过滤，属过滤层而非结构隔离 |
 | 八（唯一入口） | ❌ **不成立** | 入口事实上不唯一：`sucompat` execve 改写、`ksud debug su` 管道、`libksud.so` 的 `reboot` magic、`ksu_debug_manager_appid` 参数写、SUSFS 命令族各自独立 |
 | 九（单向信任） | ⚠️ **部分** | 入口协议不按调用方声明放行（方向正确），但无「不暴露 `W` 状态」的结构保证 |
 | 十（可恢复） | ⚠️ **部分** | restore 在 `VN` 之外（`kernel:s0`）执行，方向正确；但恢复目标目前是「模块与挂载」，不是「`VN` 完整性」 |
