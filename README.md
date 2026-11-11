@@ -45,8 +45,13 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 ### 架构哲学（TrySU）
 
 [`TrySU.md`](TrySU.md) 是本项目的架构定位文档：**TrySU 是 KernelSU 的下游架构型
-特殊衍生分支**，用三世界（`W` 权限世界 / `N` 正常世界 / `VN` 虚拟正常世界）加十条
-公理描述系统如何组织，总命题是「权限归 `W`，正常归 `N`，执行归 `VN`」。
+特殊衍生分支**，用三世界（`W` 权限世界 / `N` 正常世界 / `VN` 虚拟正常世界）加十二
+条公理描述系统如何组织，总命题是「权限归 `W`，正常归 `N`，执行归 `VN`」。
+
+TrySU 体系有独立仓库 [`poisongod/TrySU`](https://github.com/poisongod/TrySU)
+（`../TrySU`）：哲学文档、将来的 TrySU 管理器与之配套内核分支都在那里。**本仓库
+是 CVE 提权链与设备恢复的实施主仓**，`TrySU.md` 与 `docs/trysu-manager.md` 在此
+有同源副本（讨论现场），新增的体系化内容落独立仓。
 
 旧的两世界体系文档（`SUVTZ.md`、`docs/suvtz-v*.md`、`docs/suvtz-p0-baseline.md`、
 `docs/vtzsu-design.md`）已于 2026-11-11 **全部废弃**，文件保留作历史取证与实现
