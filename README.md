@@ -42,6 +42,21 @@ Supports generating `target.h` from `(xbl_config.img / vendor_boot.img) + boot.i
 > app 域自检这一个验收载体能力。恢复流程统一由 `tools/postlock.sh` 在冷 boot
 > 完成。详见 `AGENTS.md` 的「PostLock-Boot 冻结为 legacy」一节。
 
+### 架构哲学（TrySU）
+
+[`TrySU.md`](TrySU.md) 是本项目的架构定位文档：**TrySU 是 KernelSU 的下游架构型
+特殊衍生分支**，用三世界（`W` 权限世界 / `N` 正常世界 / `VN` 虚拟正常世界）加十条
+公理描述系统如何组织，总命题是「权限归 `W`，正常归 `N`，执行归 `VN`」。
+
+旧的两世界体系文档（`SUVTZ.md`、`docs/suvtz-v*.md`、`docs/suvtz-p0-baseline.md`、
+`docs/vtzsu-design.md`）已于 2026-11-11 **全部废弃**，文件保留作历史取证与实现
+细节参考；**结论一律以 `TrySU.md` 为准**。坐标转换要点：旧文档里的 `W`（私有
+mount ns、root 执行处）在新坐标下是 `VN`，新 `W` 是权限仲裁者——旧体系没有对应物。
+
+`TrySU.md` §13 是逐条公理的真实判定：现有代码只做到「`VN` 雏形 + 入口雏形 +
+事后记录」，公理一（`W` 具备独立强制力）等结构性条款**尚不成立**。这不是待办
+列表，是当前架构级缺口——补 feature 不能解决。
+
 ### 观测面等价（SUVTZ，独立主题）
 
 提权成功之后，本机对第三方 app 的观测面应当与未提权的同型号设备等价。
@@ -56,8 +71,8 @@ SERIAL=<serial> PKG=<debuggable 包名> tools/suvtz/scan.sh   # 显式指定
 OUT=/tmp/suvtz tools/suvtz/scan.sh -q
 ```
 
-- 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`
-- 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`
+- 设计取舍、观测面清单、X 类成对探针：`docs/suvtz-v3-design.md`（已废弃）
+- 真机基线、每项 FAIL 的成因与成本：`docs/suvtz-p0-baseline.md`（已废弃）
 - 已显式裁决接受、但**仍计 FAIL**（显示 `FAIL*`）的项：`tools/suvtz/accepted.tsv`
 
 2026-11-07 真机基线（boot `a877caaf`，零参数）：`FAIL=0 (另有已接受 4)
