@@ -21,6 +21,21 @@ restore 段做两件事，互不干扰：
 
 即：**`su` 会话走 `tsu`，restore/host 的调试 CLI 仍用 Rust ksud**。两者都不改内核。
 
+### 替换落点的连带影响（V0b，已处理/待实测分列）
+
+- **ksud 子命令不再在落点上**：`/data/adb/ksud` 是 `tsu` 之后，任何
+  `… /data/adb/ksud <subcommand>`（susfs CLI / 模块管理 / boot patch / magica）
+  都不成立。风险已定位并处理：`tools/susfs/accept.sh` 的 ksud 候选表原先
+  `-x` 即选，会把 14KB 的 `tsu` 当 ksud 用 → 全量 susfs 命令假 FAIL；现改为
+  **末位候选 + 大小闸门（>1MB 才算 ksud）**，并把 Rust 版
+  `/data/local/tmp/ksud` 提到第二位。
+- **restore 自身不受影响**：verify / wrapper / stage 全走 `/data/local/tmp/ksud`
+  （Rust），且 `su` 相关（`/system/bin/su -c …`）只用到 `-c`，`tsu` 支持。
+- **未实测**：libsu 风格客户端（BakaSU 管理器）无参 `su` + 管道命令的行为。
+  `tsu` 无参时直接 exec `sh`（无 frame 协议、无 `-i`），历史 ANR 那一族是
+  旧自研 daemon 的事件；本轮不以此为判据，也不在 T0–T7 覆盖范围内，故如实
+  标注为未知，而非假定可用。
+
 ## 为什么不用 Rust ksud 当执行体
 
 `tsu` 只做四件事：解析 `argv` →（可选）进 VN → exec 目标 shell →（`--trysu-status`）

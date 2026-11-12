@@ -147,11 +147,24 @@ detect_channel() {
 		fi
 	fi
 
+	# V0b (2026-11-12) 起 /data/adb/ksud 是 TrySU 执行体 tsu（纯 Zig 14816B，
+	# 只解析 argv / 可选进 VN / exec 目标 shell，**没有 susfs 子命令**），
+	# 所以它只能作为最后一个候选、且必须过大小的闸门（ksud 4~6MB，tsu 14KB）：
+	# 直接 `-x` 判定会把 tsu 当 ksud 用，全量 susfs 命令变成假 FAIL。
 	local k
-	for k in /product/bin/ksud /data/adb/ksud /data/local/tmp/ksud; do
+	for k in /product/bin/ksud /data/local/tmp/ksud /data/adb/ksud; do
 		if RR_ok "test -x $k"; then
-			KSUD_CLI=$k
-			break
+			local sz
+			sz=$(RR "stat -c %s $k" | tr -d ' \r\n')
+			case "$sz" in
+			'' | *[!0-9]*) : ;;
+			*)
+				if [ "$sz" -gt 1000000 ]; then
+					KSUD_CLI=$k
+					break
+				fi
+				;;
+			esac
 		fi
 	done
 	[ -n "$KSUD_CLI" ] || die "找不到可执行的 ksud"
