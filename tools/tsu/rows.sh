@@ -28,6 +28,9 @@ bad()  { F=$((F+1)); echo "FAIL  $*"; }
 info() { I=$((I+1)); echo "INFO  $*"; }
 # su 的 stderr 一起抓，失败语义要能被看见
 suc()  { su "$@" 2>&1; }
+# --trysu-status 的行格式是 "  key=value"（不是 "key: value"），
+# 解析一律走这个函数，别用 awk -F': *'（会恒返回空 -> 假 FAIL）。
+val()  { printf '%s\n' "$ST" | sed -n "s/^[[:space:]]*$1=//p" | head -n 1 | sed 's/[[:space:]].*$//'; }
 # 按完整 cmdline 找进程（comm 被内核截到 15 字符，pidof 包名不可靠）
 pids() { ps -A -o PID,ARGS 2>/dev/null | grep -F "$1" | grep -v grep | awk '{print $1}'; }
 
@@ -114,10 +117,13 @@ say "T3 权能审计（su --trysu-status）"
 if [ "$HAZ_SU" = 1 ]; then
   ST=$(suc --trysu-status)
   echo "$ST"
-  CAP=$(echo "$ST" | awk -F': *' '/CapEff/{print $2; exit}')
-  SEC=$(echo "$ST" | awk -F': *' '/Seccomp/{print $2; exit}')
-  NNP=$(echo "$ST" | awk -F': *' '/NoNewPrivs/{print $2; exit}')
+  CAP=$(val CapEff)
+  SEC=$(val Seccomp)
+  NNP=$(val NoNewPrivs)
+  CTXS=$(val context)
+  MNS=$(val mnt_ns)
   echo "CapEff=$CAP NoNewPrivs=$NNP Seccomp=$SEC"
+  echo "context(status)=$CTXS mnt_ns(status)=$MNS"
   case "$CAP" in
     '') bad "T3 status 无 CapEff 行" ;;
     *[!0]*) ok "T3 CapEff=$CAP（非零）" ;;
@@ -127,6 +133,17 @@ if [ "$HAZ_SU" = 1 ]; then
     0) ok "T3b Seccomp=0（su 会话未被 seccomp 限制）" ;;
     '') bad "T3b status 无 Seccomp 行" ;;
     *) bad "T3b Seccomp=$SEC（非 0，链原语会受影响）" ;;
+  esac
+  # 自述 context 与 T2 的实测 id 输出互为旁证（读不到记 INFO，不判 PASS）
+  case "$CTXS" in
+    '') info "T3c status 无 context 行" ;;
+    *"u:r:ksu:s0"*) ok "T3c status 自述 context=$CTXS" ;;
+    *) info "T3c status 自述 context=$CTXS（与 T2 不符时以 T2 实测为准）" ;;
+  esac
+  DFD=$(val driver_fd)
+  case "$DFD" in
+    '' | '<none>'*) info "T3d driver_fd=$DFD（sucompat 路径不装 fd，属预期；T1b 看管理器进程）" ;;
+    *) ok "T3d driver_fd=$DFD" ;;
   esac
 else
   info "T3 跳过（无 su）"
