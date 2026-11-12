@@ -5823,3 +5823,41 @@ cargo build --release --target aarch64-linux-android
 **未做**：新 ko 未上机（需冷 boot 跑 `tools/postlock.sh`）；上机后判据 =
 dmesg `manager pkg:` 含 `io.trysu.manager` + `track_throne` 加冕 + 管理器拿到
 `[ksu_driver]` fd。双管理器（BakaSU + TrySU）并存靠 `apk_sign_keys[]` 两条目。
+
+### 管理器侧（纯 Zig）本轮进展与两个已实测缺陷（2026-11-12）
+
+管理器工程在 `../TrySU/manager`（`zig build` 一条命令出 APK，无 Gradle/无 dex/无 C）。
+所有「实测」均在**后台虚拟屏**（scrcpy `--new-display`）完成，物理屏全程是用户的
+`tv.danmaku.bili`，未被抢焦点。
+
+- **两个真实缺陷（已修，`4ab106c`）**：① 首帧 SIGSEGV —— `ui.zig` 把栈上临时量的
+  切片存进了 `Builder`，异步绘制时栈已失效；修法是所有胶囊文本复制进 `pill_pool`。
+  ② 换纹理后中文乱码/重叠 —— `setTextTexture` 换绑纹理前没有 `flush()`，
+  前一批文字顶点带着新纹理重画。
+- **InputQueue 生命周期 + 跨实例重建（已实测，同进程 pid 三轮）**：`onDestroy` 后
+  系统销毁 InputQueue，此时再 `detachLooper` = `FORTIFY: pthread_mutex_lock called
+  on a destroyed mutex`。修法 = 指针与 `gone` 标记合并进**单个原子**（低位标记、
+  指针 8 字节对齐），渲染线程只按一份快照决策，绝不 detach 已销毁队列。同时新增
+  `g_alive`：`onCreate` 先置 `g_quit` 等老线程退出（≤1s），超时则**复用老线程**
+  服务新窗口，绝不起第二个线程共用同一套 GL 资源。虚拟屏 displayId 8→9→10→11
+  三轮重建零崩溃、四页与滚动正常。
+- **签名链路闸门（`54007a9`）**：`tools/check_manager_cert.sh` + `zig build check-cert`。
+  内核加冕只认「证书 DER 长度 + SHA-256」，同一张证书必须四处同源：keystore 真身
+  → `manager_sign.h` 的 `EXPECTED_SIZE_TRYSU`/`EXPECTED_HASH_TRYSU` → 已编译
+  `kernelsu.ko` 的 `.rodata` 字符串（防「改了头文件没重编」）→ APK 实际签名证书
+  （`apksigner --print-certs`）。当前四段全绿（788B / `ff490cfc…94d7c2` /
+  ko `b2a3f166…` / APK 同证书）；负向用例（hash 改一位）rc=1 并指出是头文件与 ko
+  两段漂移；`STRICT=1` 下缺文件即失败。缺文件默认 SKIP，不进默认构建。
+- **仍未上机（两条欠账不变）**：主仓 `build/embed/kernelsu.ko`（TrySU 加冕版
+  `b2a3f166…`）与新 `ksud`（`4ffa6ccf…`，默认包名 `io.trysu.manager`）都只在仓库里，
+  设备仍跑旧 ko `e78ec0c6`。上机判据见上节，需一次冷 boot + `tools/postlock.sh`。
+
+**虚拟屏操作纪律（本轮踩坑）**：scrcpy 必须
+`cmd.exe /c "set ANDROID_ADB_SERVER_PORT=5038& scrcpy.exe …"`（`&` 紧贴值，WSL 环境
+变量不转发给 Windows 进程）+ `setsid nohup … </dev/null &`；软件编码器只能
+`c2.android.avc.encoder`（硬件 `c2.qti.avc.encoder` 在虚拟屏 `CodecException`）；
+`--record=NUL` 必须配 `--record-format=mkv`；每次退出会残留
+`com.genymobile.scrcpy.Server` + 虚拟屏登记，需 `pkill -9 -f com.genymobile.scrcpy.Server`
+清理，重建后 displayId 递增。**判「黑屏」先看 activity 是否真起来**
+（`dumpsys activity activities` 的 `sz=0 visible=false` / `mHasContent=false`），
+不要先怀疑渲染。
