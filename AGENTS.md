@@ -5779,3 +5779,47 @@ android.intent.category.LAUNCHER 1` 之后变 `5:freezer:/thaw`。
   `ls -l` 看到 0600 不代表 chmod 修复失效——判据是 app 侧状态是否 `DONE:`。
 - **重启后 tailnet adb 需 3 轮 `disconnect`+`connect`**（`already connected` ≠
   可用），脚本里固定做 60 轮带 `get-state` 校验的轮询。
+
+## TrySU：第二管理器加冕 + 纯 Zig 控制面（2026-11-12）
+
+体系文档在 `../TrySU`（`TrySU.md` 为唯一权威，`docs/trysu-manager.md` 为工程形态）。
+本节只记录主仓侧改了什么、踩了什么坑。
+
+**产物（`build/embed/`，已 commit）**：
+
+| 文件 | sha1 | 说明 |
+|---|---|---|
+| `kernelsu.ko` | `b2a3f1667ebf79981ee7f2c5e29fbe469496401f` | `manager_sign.h` 追加 `EXPECTED_SIZE_TRYSU 0x314` / `EXPECTED_HASH_TRYSU "ff490cfc…"`，`apk_sign.c` 的 `apk_sign_keys[]` 追加条目；`tools/check_ko_und.sh` → OK；版本串仍 35222/6 |
+| `ksud` | `4ffa6ccfcb29ce88cec62fdd1c15208c74cbb48a` | 4225432B，默认包名 `io.trysu.manager`（`src/android/cli.rs:116`、`build.rs:370`），二进制内 `resukisu` 命中 0；版本串 `4.2.0-rc3-51-g5b76b884 (uapi: 6)` / 35222 |
+
+旧 ko 备份 `/tmp/opencode/kernelsu_prev_e78ec0c6.ko`；旧 ksud `bbc7afcd…`（4107432B）。
+
+**管理器密钥（`../TrySU/tools/trysu-manager/keys/trysu.jks`，别名 `trysu`，口令
+`trysu-manager`）**：证书 DER **788B = 0x314**，SHA-256
+`ff490cfca4271b33bf41c4ed9d26fe1eaf09749d7adba487200df78ffc94d7c2`。内核加冕只认这两项
+（长度 + 证书 SHA-256），与包名无关。
+
+**ksud 交叉编译（本机可复现，第 4 次才成）**：三个前置缺一即失败——cc-rs 找不到
+`aarch64-linux-android-ar`、`build.rs:218` 无法汇编 `src/lkm_image_bootstrap.S`、
+bindgen 报 `/usr/include/linux/ioctl.h:5:10: fatal error: 'asm/ioctl.h' file not found`。
+可用的环境组合（`RUSTC_BOOTSTRAP=1` 绕 `E0554`）：
+
+```bash
+NDK=$HOME/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/bin
+SYS=$HOME/android-ndk-r29/toolchains/llvm/prebuilt/linux-x86_64/sysroot
+RUSTC_BOOTSTRAP=1 ANDROID_NDK_HOME=$HOME/android-ndk-r29 \
+BINDGEN_EXTRA_CLANG_ARGS="--target=aarch64-linux-android26 --sysroot=$SYS \
+  -I$SYS/usr/include -I$SYS/usr/include/aarch64-linux-android" \
+CC_aarch64_linux_android=$NDK/aarch64-linux-android26-clang \
+CXX_aarch64_linux_android=$NDK/aarch64-linux-android26-clang++ \
+AR_aarch64_linux_android=$NDK/llvm-ar RANLIB_aarch64_linux_android=$NDK/llvm-ranlib \
+CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/aarch64-linux-android26-clang \
+cargo build --release --target aarch64-linux-android
+```
+
+**校验换上的 ksud 是否含新包名**：`grep -c 'io.trysu.manager'` 对二进制是 1
+（GNU `strings` 把相邻串拼成一条，`>io.trysu.managerg` 属正常）。
+
+**未做**：新 ko 未上机（需冷 boot 跑 `tools/postlock.sh`）；上机后判据 =
+dmesg `manager pkg:` 含 `io.trysu.manager` + `track_throne` 加冕 + 管理器拿到
+`[ksu_driver]` fd。双管理器（BakaSU + TrySU）并存靠 `apk_sign_keys[]` 两条目。
