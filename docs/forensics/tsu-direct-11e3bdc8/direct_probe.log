@@ -1,0 +1,69 @@
+
+##### 环境
+uid=0 ctx=u:r:ksu:s0
+bin=/data/local/tmp/tsu
+bin_sha1=05d486e6fff01817caafa9f8f35f44812d5c2c2d
+ns_now=mnt:[4026533362] ns_init=mnt:[4026533362]
+
+##### D1 自述版本
+rc=0 out=tsu 0.3.0 
+PASS  D1 --trysu-version -> tsu 0.3.0
+
+##### D2 权能自述（--trysu-status）
+tsu 0.3.0 (TrySU su 落点 · 纯 Zig · 无 libc)
+  uid=0 euid=0
+  pid=21037
+  context=u:r:ksu:s0
+  mnt_ns=mnt:[4026533362]
+  CapEff=0000003fffffffff
+  NoNewPrivs=0
+  Seccomp=0
+  vn_pid=32510 vn_ns_inode=4026534014 (sidecar 就位；--trysu-vn 可进入)
+  driver_fd=<none> (本进程没有 [ksu_driver] 句柄)
+  argv0=/data/local/tmp/tsu
+PASS  D2 CapEff=0000003fffffffff（非零）
+PASS  D2b Seccomp=0
+PASS  D2c context=u:r:ksu:s0
+PASS  D2d mnt_ns 自述与实测一致（mnt:[4026533362]）
+INFO  D2e driver_fd=<none>（直调 root shell 未经 ksud 的 fd 安装路径，属预期）
+
+##### D3 -c 执行身份
+rc=0 out=uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0 
+PASS  D3 -c id -> uid=0 + ksu 域
+
+##### D4 argv 透传（$0/$1）
+rc=0 out=A=xx B=yy 
+PASS  D4 $0/$1 原样透传
+PASS  D4b -s /system/bin/sh 生效
+PASS  D4c 退出码透传（rc=7）
+
+##### D5 真进入 VN（--vtz）
+sidecar=[32510 4026534014]
+rc=0 out=mnt:[4026534014]  want=mnt:[4026534014]
+PASS  D5 --vtz 会话在 VN（inode 4026534014）
+PASS  D5b VN 内可见 .w（holder tmpfs 生效）
+PASS  D5c VN 内保持 uid=0
+log: kind=enter ts=2026-11-12T03:41:23Z pid=21094 uid=0 ns=4026534014 ctx=u:r:ksu:s0 via=sidecar tsu=0.3.0|kind=enter ts=2026-11-12T03:41:23Z pid=21095 uid=0 ns=4026534014 ctx=u:r:ksu:s0 via=sidecar tsu=0.3.0|
+PASS  D5d access.log 记下 kind=enter via=sidecar
+PASS  D5e --trysu-ns 32510 落在同一 ns
+PASS  D5f access.log 区分 via=ns-explicit
+
+##### D6 -M 优先级（init ns 高于 --vtz）
+rc=0 out=mnt:[4026533362]  init=mnt:[4026533362]
+PASS  D6 -M 覆盖 --vtz，落在 init ns
+
+##### D7 fail-closed
+PASS  D7 -M + --trysu-ns 冲突直接失败（rc=2）
+PASS  D7b -l 报「未实现的 su 用法」（rc=2）
+PASS  D7c 无 sidecar 时 fail-closed 且保留 no W registered（rc=2）
+PASS  D7d sidecar inode 不符时回读校验生效（rc=2）
+sidecar restored=[32510 4026534014]
+PASS  D7e 演练后 sidecar 已还原且 tsu 正常
+
+##### D8 与内核/系统约定的一致性
+PASS  D8 --status 别名可用
+kernel_ksud_path=10277
+INFO  D8b 落点替换与内核加冕属冷 boot 判据（T0/T1），本脚本不判
+
+===== tsu direct probe: PASS=22 FAIL=0 INFO=2 =====
+RESULT: OK

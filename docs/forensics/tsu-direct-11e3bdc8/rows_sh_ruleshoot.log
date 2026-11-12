@@ -1,0 +1,367 @@
+
+##### 环境
+boot_reason=reboot,shell
+selinux=Enforcing
+su -c id -> uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+
+##### T0 部署落点 /data/adb/ksud
+sha1=1a45cdddc4be4ff8003a990220455b278eb086eb
+-rwxr-xr-x 2 root root 5955504 2026-11-11 21:39 /data/adb/ksud
+FAIL  T0 落点不是 tsu（sha1=1a45cdddc4be4ff8003a990220455b278eb086eb）
+rust-ksud sha1=bbc7afcd9141d68d1aaf13b0dfd149813cdf8398
+PASS  T0b 分工成立（/data/local/tmp/ksud 仍是 Rust build）
+su --trysu-version -> Unrecognized option: 'trysu-version'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+FAIL  T0c 落点不是 tsu 0.3.0：Unrecognized option: 'trysu-version'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+
+##### T1 内核侧加冕
+manager pid=32626
+dmesg bytes=2065224
+INFO  T1 dmesg 未见 io.trysu.manager（环形缓冲可能已滚掉；以驱动 fd 为准）
+manager ksu_driver fd count=0
+FAIL  T1b 管理器进程没有 [ksu_driver] 句柄（未加冕 / 进程早于模块加载）
+
+##### T2 落点身份（su -c id）
+PASS  T2 uid=0 且 SELinux 域 u:r:ksu:s0
+
+##### T3 权能审计（su --trysu-status）
+Unrecognized option: 'trysu-status'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+CapEff= NoNewPrivs= Seccomp=
+FAIL  T3 status 无 CapEff 行
+FAIL  T3b status 无 Seccomp 行
+
+##### T4 真进入 VN（su --vtz）
+sidecar: [32510 4026534014]
+session-ns=Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context want=mnt:[4026534014]
+FAIL  T4 会话不在 sidecar 指定的 ns：Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+FAIL  T4b VN 内身份异常：Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+
+##### T5 -M 优先级（高于 --vtz）
+init-ns=mnt:[4026533362]  -M+--vtz=Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+FAIL  T5 -M 未落在 init ns：Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context != mnt:[4026533362]
+
+##### T6 入口记录（VN 侧 access.log）
+Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+FAIL  T6 access.log 无 kind=enter 行
+INFO  T6b 未见 via=sidecar（-M / --trysu-ns 路径会是别的 via）
+N 侧 su 视角: ls: /data/local/tmp/.w/log: No such file or directory
+INFO  T6c N 侧可见性仅作观测记录（不判 PASS/FAIL）
+
+##### T7 回归（host 侧后续）
+-- 发现 /data/local/tmp/vtz_rows.sh，R1-R10 输出如下 --
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+rc=255
+restored=[32510 4026534014]
+
+##### R9 W-side root vs N-side root (ns difference)
+Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+n-root-ns=mnt:[4026533362]
+
+##### R10 access.log kind counts
+Unrecognized option: 'vtz'
+KernelSU
+
+Usage: su [options] [-] [user [argument...]]
+
+Options:
+    -c, --command COMMAND
+                        pass COMMAND to the invoked shell
+    -h, --help          display this help message and exit
+    -l, --login         pretend the shell to be a login shell
+    -p, --preserve-environment 
+                        preserve the entire environment
+    -s, --shell SHELL   use SHELL instead of the default /system/bin/sh
+    -v, --version       display version number and exit
+    -V                  display version code and exit
+    -M, --mount-master  force run in the global mount namespace
+    -g, --group GROUP   Specify the primary group
+    -G, --supp-group GROUP
+                        Specify a supplementary group. The first specified
+                        supplementary group is also used as a primary group if
+                        the option -g is not specified.
+    -W, --no-wrapper    don't use ksu fd wrapper
+        --ksu-no-new-privs 
+                        Prevent this process (and its children) from privilege
+                        re-escalation via KernelSU
+    -Z, --context CONTEXT
+                        Specify the SELinux context
+
+===== tsu rows: PASS=2 FAIL=9 INFO=3 =====
+RESULT: FAIL

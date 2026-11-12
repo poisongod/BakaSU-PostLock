@@ -55,9 +55,44 @@ artifact-size / binary-trace / elf-type / elf-interp / elf-needed），任一不
 | INTERP | 无 |
 | NEEDED | 无 |
 
+## 判据脚本（两层，别混用）
+
+| 脚本 | 前提 | 覆盖 | 现状 |
+|---|---|---|---|
+| `rows.sh` | **冷 boot + `postlock.sh`**（落点已是 `tsu`、ko 已加冕） | T0–T7：落点 sha1、内核 `manager pkg:`、`su -c id`、`--vtz` 进 VN、`-M` 优先级、`access.log`、回归 | 待冷 boot。当前落点仍是 Rust ksud / 旧 ko，按设计会判 T0/T2/T4/T5 FAIL——**那是诚实结果，不是脚本缺陷** |
+| `direct_probe.sh` | 只要本 boot 有 root（`su -c`） | D1–D8：以 `uid=0` + `u:r:ksu:s0` 直调 `tsu`，验自述/权能/argv/真进 VN/`-M`/`access.log`/fail-closed | **已跑通，PASS=22 FAIL=0 INFO=2**（boot `11e3bdc8`） |
+
+为什么分两层：T0/T1 是「部署 + 内核加冕」，只有冷 boot 能给；T2–T6 是「`tsu`
+收到契约凭证后是否做对」，而 `su -c` 直调给的就是同一套凭证（`uid=0`、
+`u:r:ksu:s0`、`CapEff` 非零、`Seccomp=0`）。所以先用直调把语义钉死，冷 boot
+只验交付链路。
+
+```sh
+# 落点模式（冷 boot 后）
+su -c 'sh /data/local/tmp/tsu_rows.sh'
+
+# 直调模式（任意有 root 的 boot）
+adb push tools/tsu/direct_probe.sh /data/local/tmp/
+adb shell "su -c 'sh /data/local/tmp/tsu_direct_probe.sh'"
+```
+
+**直调模式验证了什么（实测，boot `11e3bdc8`）**：`--vtz` 真进 `VN`
+（`mnt:[4026534014]` == sidecar inode，`via=sidecar`）、`--trysu-ns <pid>`
+第二条入口（`via=ns-explicit`）、`-M` 优先于 `--vtz`（回到 init ns）、
+`access.log` 两行 `kind=enter`、四条 fail-closed（参数冲突 / `-l` / 无 sidecar
+`no W registered` / sidecar inode 不符）全部 exit 2 且不假装成功。
+
+**直调模式不能声称的**：① 未经内核 `KSUD_PATH` 交付 argv（T0/T1 才验）；
+② 直调进程 `driver_fd=<none>`（本版 `tsu` 不读驱动 fd，但落点处 fd 就位仍属 T1）；
+③ `access.log` 在 VN 侧 tmpfs，随 holder 销毁——设计如此。
+取证：`docs/forensics/tsu-direct-11e3bdc8/`。
+
 ## 纪律
 
 - **不要手改这个二进制**，也不要手改 `build.sh` 里的镜像来源。
 - 改了 `tsu` 就同时提交 `../TrySU`（源码）与主仓（镜像）；两边 sha1 必须一致。
 - 设备侧换二进制需要一次冷 boot + `tools/postlock.sh`（restore 窗口才能写
   `/data/adb`，它 0700 root 属主）。
+- **不要为了「验一下」直接替换 `/data/adb/ksud`**：它同时是唯一 root 入口
+  （`/system/bin/su` 与之同 inode），`tsu` 若有问题会连回滚通道一起丢
+  （`/data/adb` 0700 root）。要验语义用 `direct_probe.sh` 直调 `/data/local/tmp/tsu`。
