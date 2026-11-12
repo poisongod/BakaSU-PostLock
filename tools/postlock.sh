@@ -200,6 +200,21 @@ KSUD_SRC="$REPO/build/embed/ksud"
 [ -f "$KSUD_SRC" ] || die "missing $KSUD_SRC (embedded ksud blob)"
 push_if_changed "$KSUD_SRC" ksud
 ab shell "chmod 755 $STAGE/ksud" >/dev/null || true
+# TrySU executor (2026-11-12): the su落点 (/data/adb/ksud, kernel constant
+# KSUD_PATH) is what sucompat execs after raising creds -- argv untouched.
+# tsu is the pure-Zig replacement for that role: parse argv / optionally
+# enter VN / exec the target shell, nothing else.  The Rust ksud stays the
+# stage copy used by restore + host triage ($TMP/ksud), i.e. the swap can
+# never affect the verify chain.  Missing here is a WARN, not a die: the
+# restore block falls back to the Rust ksud, so su keeps working with an
+# honest "no VN support" instead of the whole recovery dying.
+TSU_SRC="$REPO/tools/tsu/tsu"
+if [ -f "$TSU_SRC" ]; then
+  push_if_changed "$TSU_SRC" tsu
+  ab shell "chmod 755 $STAGE/tsu" >/dev/null || true
+else
+  info "WARN: missing $TSU_SRC (run tools/tsu/build.sh); su落点 stays Rust ksud"
+fi
 # W world helper (2026-11-09): static aarch64 binary that owns the private
 # mount namespace holding W.  Committed artifact (tools/wns/wns), same
 # policy as the other stage payloads -- host pushes, restore execs from
@@ -822,22 +837,41 @@ fi
 #   * any failure               -> WARN only; the previous binary stays and
 #                                  su --vtz reports the truth instead of this
 #                                  script pretending W is reachable.
+# V0b (2026-11-12): this path now carries the TrySU executor when the host
+# staged it (tools/tsu/tsu: pure Zig, static-pie, no libc, no interpreter).
+# That is what this file IS -- sucompat execs exactly this path after raising
+# creds, argv untouched -- and tsu only parses argv / optionally enters VN /
+# execs the target shell.  Rust ksud's boot patch / module management / SUSFS
+# CLI / magica are unrelated privilege surface on this path.  Fallback order
+# stage/tsu -> stage/ksud; both missing = WARN and keep the old file (su then
+# fails honestly instead of this script pretending W is reachable).
+# $TMP/ksud (above) always stays the Rust build: restore itself, host triage
+# and the su wrapper exec that one, so this swap cannot affect the verify chain.
 # Note: this heredoc is unquoted, so device-side expansions are escaped; an
 # unescaped sha1sum substitution here would run on the host at generation
 # time (tools/check_restore_heredoc.sh gates exactly that).
 KS_DST=/data/adb/ksud
+KS_SRC=
+KS_KIND=none
+if [ -x $STAGE/tsu ]; then
+  KS_SRC=$STAGE/tsu
+  KS_KIND=tsu
+elif [ -x $STAGE/ksud ]; then
+  KS_SRC=$STAGE/ksud
+  KS_KIND=ksud
+fi
 KS_WANT=
-if [ -x $STAGE/ksud ]; then
-  KS_WANT=\$(sha1sum $STAGE/ksud 2>/dev/null | cut -d' ' -f1)
+if [ -n "\$KS_SRC" ]; then
+  KS_WANT=\$(sha1sum \$KS_SRC 2>/dev/null | cut -d' ' -f1)
 fi
 if [ -n "\$KS_WANT" ]; then
   KS_HAVE=\$(sha1sum \$KS_DST 2>/dev/null | cut -d' ' -f1)
   if [ "\$KS_HAVE" = "\$KS_WANT" ]; then
-    log "su-driver-ksud-unchanged sha1=\${KS_WANT%????????}"
-  elif cp -f $STAGE/ksud \$KS_DST.tmp 2>/dev/null \
+    log "su-driver-ksud-unchanged kind=\$KS_KIND sha1=\${KS_WANT%????????}"
+  elif cp -f \$KS_SRC \$KS_DST.tmp 2>/dev/null \
        && chmod 755 \$KS_DST.tmp 2>/dev/null \
        && mv -f \$KS_DST.tmp \$KS_DST 2>/dev/null; then
-    log "su-driver-ksud-installed sha1=\${KS_WANT%????????} replaced=\${KS_HAVE:-none}"
+    log "su-driver-ksud-installed kind=\$KS_KIND sha1=\${KS_WANT%????????} replaced=\${KS_HAVE:-none}"
   else
     rm -f \$KS_DST.tmp 2>/dev/null
     log "WARN-su-driver-ksud-cp kept=\${KS_HAVE:-none}"
