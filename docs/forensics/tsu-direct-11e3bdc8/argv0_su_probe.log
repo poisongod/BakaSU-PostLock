@@ -1,0 +1,23 @@
+=== 1) 建立 argv[0]=su 的软链（仅 /data/local/tmp，不碰 PATH 全局）
+lrwxrwxrwx 1 root root 19 2026-11-12 11:50 /data/local/tmp/su -> /data/local/tmp/tsu
+=== 2) 以 argv[0]=su 自述（PATH 前置，sh 按命令名 'su' 传 argv[0]）
+tsu 0.3.0 (TrySU su 落点 · 纯 Zig · 无 libc)
+  uid=0 euid=0
+  pid=24527
+  context=u:r:ksu:s0
+  mnt_ns=mnt:[4026533362]
+  CapEff=0000003fffffffff
+  NoNewPrivs=0
+  Seccomp=0
+  vn_pid=32510 vn_ns_inode=4026534014 (sidecar 就位；--trysu-vn 可进入)
+  driver_fd=<none> (本进程没有 [ksu_driver] 句柄)
+  argv0=su
+=== 3) 以 argv[0]=su 真进 VN
+mnt:[4026534014]
+uid=0(root) gid=0(root) groups=0(root) context=u:r:ksu:s0
+rc=0
+=== 4) 以 argv[0]=su 跑 -c 普通命令
+argv0-ok uid=0 ns=mnt:[4026533362]
+rc=0
+=== 5) 清理软链
+ls: /data/local/tmp/su: No such file or directory

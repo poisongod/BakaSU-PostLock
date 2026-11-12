@@ -81,6 +81,10 @@ adb shell "su -c 'sh /data/local/tmp/tsu_direct_probe.sh'"
 第二条入口（`via=ns-explicit`）、`-M` 优先于 `--vtz`（回到 init ns）、
 `access.log` 两行 `kind=enter`、四条 fail-closed（参数冲突 / `-l` / 无 sidecar
 `no W registered` / sidecar inode 不符）全部 exit 2 且不假装成功。
+另有一次 `argv[0]=su` 前置验证（`/data/local/tmp/su` 软链 + `PATH` 前置，
+模拟落点上 `argv[0]=="su"`）：自述 `argv0=su`、`--vtz` 仍进 `VN`、`-c` 仍留 `N`
+——`tsu` 从 `argv[1]` 起解析，**不依赖自己的名字**（取证
+`docs/forensics/tsu-direct-11e3bdc8/argv0_su_probe.log`）。
 
 **直调模式不能声称的**：① 未经内核 `KSUD_PATH` 交付 argv（T0/T1 才验）；
 ② 直调进程 `driver_fd=<none>`（本版 `tsu` 不读驱动 fd，但落点处 fd 就位仍属 T1）；
