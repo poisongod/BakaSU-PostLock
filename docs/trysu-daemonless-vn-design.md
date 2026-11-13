@@ -201,6 +201,30 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 
 V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 
+### 5.1 脚本落点与当前状态（2026-11-13，boot `ebd7d915`）
+
+| 脚本 | 覆盖 | 用法 |
+|---|---|---|
+| `tools/tsu/n_rows.sh` | N1–N11（设备侧，含 N8/N10b 的 ARM 门控） | push 后 `sh` 执行；只读默认，破坏性实验需 `N8_ARM=1` / `N10_ARM=1` |
+| `tools/tsu/n_accept.sh` | N12（`scan.sh -q`）+ 一键汇总与退出码 | `SERIAL=<serial> tools/tsu/n_accept.sh`（`--no-scan` 可跳过 N12） |
+
+当前实测（仍是 holder+sidecar 旧形态，P1 未实现）：
+
+```
+设备侧 PASS=6 FAIL=7 INFO=4
+  PASS  N2 N3 N4a N5 N9b N11
+  FAIL  N1 N4b N4c N6 N7 N9a N10a   ← 全部为预期靶子
+  INFO  N2b N8 N10b N12
+N12 scan.sh -q: FAIL=0（PASS=37，另有已接受 3）
+```
+
+判据设计上的两个注意点（均已写进脚本注释）：
+
+1. **N5 的前提是 holder 挂载点完好**。holder 的 tmpfs 挂载点目录若被外部删除，VN 内路径会
+   静默回落到 N 侧同名目录，N5 会假红（见 `docs/forensics/holder-mountpoint-deletion-ebd7d915.md`）。
+2. **N9a 有副作用**：`--trysu-ns 1` 会把审计写进 N 侧 `.w/log`（旧 tsu 落点固定），脚本在
+   N9a 后只清理 `log` 子目录、保留 `.w` 目录本身。
+
 ## 6 改造清单
 
 ### 6.1 代码
@@ -237,6 +261,8 @@ V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 2. **tsu 构造器**：unshare → rprivate → overlay → 材料校验注入 → 度量断言 → 审计 → exec；删除 `--trysu-ns` 与 sidecar 相关代码。
 3. **postlock.sh 改造**：删 holder/sidecar 段与 Phase C；新增 `/data/adb/trysu/` 的 material 布局与 manifest 生成。
 4. **判据脚本**：`rows.sh` 实现 N1–N12；V0a 脚本归档为历史基线。
+   → *（2026-11-13 完成）* 落点为 `tools/tsu/n_rows.sh` + `tools/tsu/n_accept.sh`；
+   `tools/tsu/rows.sh`（V0b/T0–T7）与 `tools/suvtz/v0a_rows.sh`（V0a）保留为历史基线。
 5. **冷 boot 验收**：一次冷 boot 收 N1–N12 + 回归三件套。
 
 ## 9 风险
