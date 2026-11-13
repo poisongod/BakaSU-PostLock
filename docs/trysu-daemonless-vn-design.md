@@ -16,6 +16,15 @@
 - 公理十二「原子重建映射 + 校验度量」——恢复应等价于下一次构造；
 - 公理三「W 代码集仅含隔离/仲裁/恢复」——holder 不属于三类。
 
+### 0.1 已决事项（2026-11-13）
+
+| 决策 | 结论 |
+|---|---|
+| 私有可写层 | **直接上 overlayfs**（lower=N 只读视图 + upper=tmpfs 可弃） |
+| `--trysu-ns <pid>` | **删除**（入口唯一：只留 `su --trysu-vn`） |
+| 材料注入 | 接受两段式：P1 tsu 注入+度量，P2 内核校验清单 |
+| manifest 位置 | `/data/adb/trysu/`（0700 root-only） |
+
 ## 1 设计总览
 
 ```
@@ -51,27 +60,42 @@ su --trysu-vn -c CMD                 （唯一入口，内核 sucompat 判定后
 ### 2.2 构造序列（tsu 内，`u:r:ksu:s0` uid 0）
 
 ```c
-unshare(CLONE_NEWNS);                                  // ② N 视图的复制
+unshare(CLONE_NEWNS);                                  // ② N 视图的复制（新 ns 继承 N 挂载表）
 mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);     // ③ 切断传播
-mount("tmpfs", VN_ROOT, "tmpfs", 0, "mode=0700");      // ④ P1 私有层
-// ⑤ 对每个材料：open(src, O_RDONLY) → 校验 sha256 → 写入 VN_ROOT/stage/ → chmod 0555
-// ⑥ 断言：mountinfo 含 VN_ROOT tmpfs；N 侧材料路径仍可读；manifest 全符
+// ④ overlay 私有层（P1 已决）：
+//    upper/work 建于 tmpfs（可弃），lower 指向 N 的当前视图（只读）
+//    形态 A：单 overlay on / → pivot_root 进 merged（边界最彻底）
+//    形态 B：per-mount overlay → 仅对声明可写路径建 overlay（兼容性更好）
+//    形态在 P1 首个实测闸门选定（见 2.3），选定前不写死代码
+// ⑤ 对每个材料：open(src, O_RDONLY) → 校验 sha256 → 写入 upper 对应路径 → chmod 0555
+// ⑥ 断言：mountinfo 中 VN 关键路径为 overlay；N 侧材料路径仍可读；manifest 全符
 // ⑦ 审计追加 → 失败即 _exit(2)
 setns 不需要：本进程就是新 ns 的第一个成员，直接 exec
 ```
 
 **注意**：不再需要 `setns`。旧形态是「外部进程进 holder 的 ns」，新形态是「构造者自己就是 VN 的第一个进程」——这是结构简化，也是「执行可弃」的直接体现。
 
-### 2.3 私有可写层选型
+### 2.3 私有可写层：overlayfs（P1 已决）
 
-| 方案 | 描述 | 优点 | 风险 |
+目标形态：**lower = N 的只读视图，upper/work = tmpfs（可弃），VN 根 = merged**。
+这是「忠实虚拟映射」的直接实现：N 提供只读基底，VN 的写全部落在可弃上层。
+
+P1 首个闸门先实测三种候选形态，择一写死：
+
+| 候选 | 描述 | 优点 | 风险 |
 |---|---|---|---|
-| **P1：tmpfs-only** | 与现状相同路径 `$TMP/.w`，但只在会话内存在；材料 bind 为只读 | 行为与 V0a 可逐条对照，改动最小 | 「N 的完整视图」只在挂载表层面继承，tmpfs 之外的写仍落 N |
-| **P2：overlayfs** | lower=N（只读视图），upper=tmpfs（可弃），VN 根为 merged | 「忠实映射 + 可写可弃」严格成立 | 需实测 GKI `CONFIG_OVERLAY_FS` 与 lower/upper 跨 fs 兼容 |
+| **A：单 overlay on `/`** | lower=`/` 的只读 bind，upper=tmpfs，`pivot_root` 进 merged | 边界最彻底，VN 根即 merged | Android 根挂载点结构复杂（/system、/data 为独立挂载），需递归处理 |
+| **B：per-mount overlay** | 只对声明可写路径（如 `/data/adb`、模块视图路径）建 overlay | 与现有模块 overlay 共存性好 | 「N 的完整视图」只对声明路径成立，需维护路径清单 |
+| **C：tmpfs 兜底** | 仅在 A/B 均不可行时启用（需回报批准） | 保底可交付 | 偏离「忠实映射」，回到 V0a 语义 |
 
-**推荐**：P1 先行（判据与旧基线可对照），P1.5 实测 overlay 后切 P2。切换点不影响判据 N1–N12 的口径（只影响 I2 的断言形式）。
+**实测闸门**（P1 第一步，不过闸不写构造代码）：
 
-### 2.4 材料来源（权威副本归 N）
+1. `cat /proc/filesystems | grep overlay` 与 `zgrep CONFIG_OVERLAY_FS /proc/config.gz`；
+2. 在私有 ns 内最小复现：tmpfs upper/work + lower 指向现行根，检查 mount 成功与 `mountinfo` 形态；
+3. 嵌套检查：VN overlay 的 lower 若本身是模块 overlay（Android 模块机制），验证 stacked overlay 行为（`xino`/`index` 需求）；
+4. 记录结论到 `docs/forensics/overlay-vn-<boot>.md`，A/B/C 择一后回填本文件。
+
+## 2.4 材料来源（权威副本归 N）
 
 - 路径：`/data/adb/trysu/material/`（0700 root-only）。
 - 内容：`oplus_check_suppress.ko`、`kernelsu_hotload_init.ko`（若启用）、`postlock_adbkey.pub`、`pp_adb_tcp.bin` 等 restore-only 资产。
@@ -90,7 +114,7 @@ setns 不需要：本进程就是新 ns 的第一个成员，直接 exec
 
 ### 3.2 P1 规则（无内核改动）
 
-1. **唯一入口**：`execve /system/bin/su` → 内核改写 → tsu。禁止其他进入 VN 的路径（`--trysu-ns` 保留但限 allow-list + 审计标记 `via=ns-explicit`）。
+1. **唯一入口**：`execve /system/bin/su` → 内核改写 → tsu。禁止其他进入 VN 的路径：**`--trysu-ns` 已删除（2026-11-13 裁决）**，`su --trysu-vn` 是唯一入口；tsu 的 `--help` 与 argv 解析同步移除该选项。
 2. **fail-closed**：材料缺失、manifest 不符、审计写失败、unshare/mount 失败——一律 `exit 2`，**不降级、不在 N 里执行**。
 3. **审计**：`/data/adb/trysu/audit.log`（0700 root）追加一行：
    ```
@@ -147,7 +171,7 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 | N6 | 无文件路标 | `/data/local/tmp/vtz_w.pid` 不存在 | 取代 V1/V8 |
 | N7 | 构造度量通过 | manifest 逐文件 PASS | 新增 |
 | N8 | 度量不符 fail-closed | 篡改材料副本 → rc=2，无 VN 产出 | 取代 V8 |
-| N9 | 入口 fail-closed | 非 allow-list 进程：stat ENOENT / 执行被拒 | 新增 |
+| N9 | 入口 fail-closed 且唯一 | 非 allow-list 进程：stat ENOENT / 执行被拒；`--trysu-ns` 不存在（传参即报错） | 新增 |
 | N10 | 审计记录 | audit.log 有本次 `via=self` entry；模拟写失败 → 构造失败 | 取代 V4 |
 | N11 | 功能未退化 | `/`、`/system`、`/data`、`/apex` 可读；模块视图正常 | V6 保留 |
 | N12 | 观测面回归 | `scan.sh -q` FAIL=0（W 类探针改 INFO 或新语义） | V10 改造 |
@@ -160,7 +184,7 @@ V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 
 | 文件 | 动作 |
 |---|---|
-| `TrySU/cli/src/main.zig` | `--trysu-vn` 改为**构造器**（unshare/rprivate/tmpfs/材料校验/度量/审计/exec）；删除 sidecar 读取（`vnHandle`/`VN_SIDECAR`）；审计落点改 `/data/adb/trysu/audit.log`；`--trysu-ns` 限 allow-list + 审计 |
+| `TrySU/cli/src/main.zig` | `--trysu-vn` 改为**构造器**（unshare/rprivate/overlay/材料校验/度量/审计/exec）；**删除 `--trysu-ns` 分支与 help 条目**；删除 sidecar 读取（`vnHandle`/`VN_SIDECAR`）；审计落点改 `/data/adb/trysu/audit.log` |
 | `tools/wns/wns.c` | `hold`/`run` 退役（保留 `private`/`stat` 诊断）；文档标注历史 |
 | `tools/postlock.sh` | 删 holder/sidecar 段（373–541）、Phase C（769–807）改「保留 N 权威副本」；新增 manifest 生成段；`SUVTZ_W_PURGE` 默认改 0 |
 | `tools/suvtz/rows.sh`、`v0a_rows.sh` | 新判据 N1–N12 脚本；V0a 脚本标记历史基线 |
@@ -179,23 +203,24 @@ V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 
 | 阶段 | 内容 | 上机验证 |
 |---|---|---|
-| **P1** | per-session 构造、删 holder/sidecar/Phase C、manifest 度量、fail-closed 审计、N 判据 | 一次冷 boot 即可验 N1–N12 |
-| P1.5 | overlayfs 可行性实测（I2 断言切换） | 同轮顺带 |
+| **P1** | **首步 overlay 实测闸门（2.3）** → per-session 构造、删 holder/sidecar/Phase C、manifest 度量、fail-closed 审计、N 判据 | 闸门 + 一次冷 boot 验 N1–N12 |
+| P1.5 | 选定形态（A/B）的边界细化与路径清单（若选 B） | 同轮顺带 |
 | P2 | 内核 token/nonce/计数器 + 审计 ring | 需要 ko 换代 |
 | P3 | 强虚拟化/硬件隔离域 | 超出本机范围 |
 
-## 8 待定决策（实施前确认）
+## 8 实施顺序（决策已定，2026-11-13）
 
-1. **私有层**：P1 用 tmpfs-only（推荐，行为可对照）还是直接上 overlay（风险高、收益大）？
-2. **材料注入者**：P1 由 tsu 注入 + 度量（可立即做）→ P2 内核校验清单，是否接受这个两段式？
-3. **`--trysu-ns <pid>`**：保留（限 allow-list + 审计）还是删除（更严格但失去调试通道）？
-4. **manifest 位置**：`/data/adb/trysu/`（推荐，0700 root）还是沿用 `$STAGE`（N 侧 0700 shell 属主，权限更弱）？
+1. **overlay 实测闸门**（2.3）：确认 `CONFIG_OVERLAY_FS`、最小复现、stacked 行为；A/B/C 择一，写入 `docs/forensics/`。
+2. **tsu 构造器**：unshare → rprivate → overlay → 材料校验注入 → 度量断言 → 审计 → exec；删除 `--trysu-ns` 与 sidecar 相关代码。
+3. **postlock.sh 改造**：删 holder/sidecar 段与 Phase C；新增 `/data/adb/trysu/` 的 material 布局与 manifest 生成。
+4. **判据脚本**：`rows.sh` 实现 N1–N12；V0a 脚本归档为历史基线。
+5. **冷 boot 验收**：一次冷 boot 收 N1–N12 + 回归三件套。
 
 ## 9 风险
 
 | 风险 | 缓解 |
 |---|---|
-| overlayfs 不可用/兼容差 | P1 用 tmpfs-only；实测后决定 P2 是否切换 |
+| overlayfs 不可用/兼容差 | 走 2.3 闸门的 C 兜底，**但须回报批准**（不默认降级） |
 | tsu 内 mount 需 CAP_SYS_ADMIN | 已具备（root + ksu 域）；失败 fail-closed |
 | 每会话开销 | unshare+mount+材料复制实测（材料约 MB 级，预计 ms 级）；大材料改 bind 只读替代复制 |
 | 兼容性：旧 `--vtz` 语义变化 | 无 sidecar 时自建而非报错；文档与 `--help` 同步 |
