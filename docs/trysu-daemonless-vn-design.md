@@ -129,6 +129,12 @@ P1 首个闸门先实测三种候选形态，择一写死：
 - 内容：`oplus_check_suppress.ko`、`kernelsu_hotload_init.ko`（若启用）、`postlock_adbkey.pub`、`pp_adb_tcp.bin` 等 restore-only 资产。
 - **反转 Phase C**：旧实现删 N 副本、VN 唯一持有 → 新实现 N 保有权威副本，VN 内是「只读、已度量、可弃」的注入。VN 被毁不影响恢复能力（公理十二）。
 - 链关键集（`kernelsu.ko`/`finitmod`/`preload.so`/`ksud`）维持现状留在 N。
+- **P1 第一版只度量、不注入**（2026-11-13 实测）：`tsu` 在构造前逐文件校验
+  sha256/mode/bytes，不符即 `deny` + exit 2；材料本身不复制进 VN。注入到
+  VN 内目标路径需要先定义「材料 → 目标路径」清单，留到 P1.5。
+- **manifest 由 postlock 在 restore 早期生成**（模块加载之前），只列
+  material 目录里实际存在的文件；当前 boot 若只剩部分材料，manifest
+  就只有对应行。`tsu` 对「缺失/空/不符」分别记 `absent`/`mismatch` 并拒绝。
 
 ## 3 能力式入口
 
@@ -166,8 +172,10 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 `/data/adb/trysu/manifest.sha256`（0700 root），行格式：
 
 ```
-<sha256>  <name>  <mode>  <bytes>
+<sha256>  <mode>  <bytes>  <name>
 ```
+
+（顺序与 `tools/tsu/n_rows.sh` N7 的解析一致；实现见 TrySU `cli/src/main.zig::verifyEntry`。）
 
 冷 boot 由 restore 在材料就位后生成。**生成即失败**（材料缺失）→ 记录 `WARN-manifest-incomplete`，P1 允许「关键集必须齐全、可选集缺失降级」——但**被构造消费的每个文件必须在校验清单内**。
 
@@ -213,15 +221,17 @@ V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 | `tools/tsu/n_rows.sh` | N1–N11（设备侧，含 N8/N10b 的 ARM 门控） | push 后 `sh` 执行；只读默认，破坏性实验需 `N8_ARM=1` / `N10_ARM=1` |
 | `tools/tsu/n_accept.sh` | N12（`scan.sh -q`）+ 一键汇总与退出码 | `SERIAL=<serial> tools/tsu/n_accept.sh`（`--no-scan` 可跳过 N12） |
 
-当前实测（仍是 holder+sidecar 旧形态，P1 未实现）：
+当前实测（2026-11-13，**daemonless 形态已落地**，boot `ebd7d915`）：
 
 ```
-设备侧 PASS=6 FAIL=7 INFO=4
-  PASS  N2 N3 N4a N5 N9b N11
-  FAIL  N1 N4b N4c N6 N7 N9a N10a   ← 全部为预期靶子
-  INFO  N2b N8 N10b N12
-N12 scan.sh -q: FAIL=0（PASS=37，另有已接受 3）
+设备侧 PASS=15 FAIL=0 INFO=2（form=daemonless；N8/N10b 破坏性实验均启用）
+  INFO  N4b（两次构造 inode 相同，内核复用编号；真正的判据是 N4c）
+  INFO  N12（由宿主 n_accept.sh 执行）
+N12 scan.sh -q: FAIL=0（PASS=32 / INFO=5 —— 无 holder 后 W 类探针自动降级为观测）
 ```
+
+历史对照（P1 未实现，holder+sidecar 形态）：PASS=6 FAIL=7 INFO=4，
+红灯 N1/N4b/N4c/N6/N7/N9a/N10a 全部是当时的预期靶子。
 
 判据设计上的两个注意点（均已写进脚本注释）：
 
@@ -266,7 +276,16 @@ N12 scan.sh -q: FAIL=0（PASS=37，另有已接受 3）
    → *（2026-11-13 完成）* 结论见 §2.3.1；`unshare -m` 隔离性已实证复核
    （`docs/forensics/ns-isolation-ebd7d915.md`）：**unshare 必须与 rprivate 成对**。
 2. **tsu 构造器**：unshare → rprivate → overlay → 材料校验注入 → 度量断言 → 审计 → exec；删除 `--trysu-ns` 与 sidecar 相关代码。
+   → *（2026-11-13 完成，有偏差）* TrySU `bfa6db7`，tsu `b183a2d4`。实际序列：
+   `unshare → rprivate → 度量 → tmpfs 骨架 → 28 个顶层目录 bind →
+   VN 内 /data/local/tmp 换 tmpfs → 审计 → chroot`。
+   **偏差一**：overlay 私有可写层未实现，VN 根是 tmpfs 骨架 + 分区只读 bind；
+   **偏差二**：材料只度量、未注入（见 §2.4）。两项都记为 P1.5 待办，
+   不改变已验收的隔离性结论（N1–N12 全绿）。
 3. **postlock.sh 改造**：删 holder/sidecar 段与 Phase C；新增 `/data/adb/trysu/` 的 material 布局与 manifest 生成。
+   → *（2026-11-13 完成）* W world 整体退役（不再起 holder、不写 sidecar、
+   不从 W 加载 .ko / 读 adb key / pp），Phase C 删除；restore 早期生成
+   material + manifest（WARN-only）。
 4. **判据脚本**：`rows.sh` 实现 N1–N12；V0a 脚本归档为历史基线。
    → *（2026-11-13 完成）* 落点为 `tools/tsu/n_rows.sh` + `tools/tsu/n_accept.sh`；
    `tools/tsu/rows.sh`（V0b/T0–T7）与 `tools/suvtz/v0a_rows.sh`（V0a）保留为历史基线。
