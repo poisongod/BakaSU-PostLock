@@ -95,6 +95,29 @@ P1 首个闸门先实测三种候选形态，择一写死：
 3. 嵌套检查：VN overlay 的 lower 若本身是模块 overlay（Android 模块机制），验证 stacked overlay 行为（`xino`/`index` 需求）；
 4. 记录结论到 `docs/forensics/overlay-vn-<boot>.md`，A/B/C 择一后回填本文件。
 
+### 2.3.1 实测结论（2026-11-13，boot `11e3bdc8`）
+
+| 项 | 结果 |
+|---|---|
+| overlayfs | 可用（builtin，`CONFIG_OVERLAY_FS=y`） |
+| tmpfs 作 upper | **不可行**（`CONFIG_TMPFS_XATTR` 未开，dmesg 明确报错） |
+| `/data`(f2fs) 作 upper/lower | **不可行**（`inline_data/inline_dentry/inlinecrypt`，overlayfs 报 not supported） |
+| `/metadata`(ext4) 作 upper | **可行，但仅 11MB**（容量闸门必需） |
+| loop ext4 镜像作 upper | 不可行（`losetup` 成功但 `mke2fs` I/O error、ext4 mount EINVAL） |
+| `lowerdir=/system` 的 merged 根 | 是 `/system` 内容，**不是 N 完整根**（chroot 失败的原因） |
+
+**结论：形态 B 具体化为**「tmpfs 骨架（VN 根）→ 分区 bind（/system /vendor /product /apex /data /proc /sys /dev）→ per-mount overlay 覆盖需要可写的系统分区（upper 在 `/metadata/trysu/<sess>`）→ `chroot` 进骨架」。
+
+**新增硬约束**：
+
+1. **容量闸门**：构造前检查 `/metadata` 可用空间 ≥ 阈值（建议 ≥8MB 预留，即 upper 用量上限 3MB），不足 fail-closed；
+2. **实验规则**见 `docs/forensics/overlay-probe-leak-11e3bdc8.md` §6（跨连接验证 ns 隔离、umount busy 禁 rm -rf、只在 reboot 可接受窗口实验）。
+
+> 上述结论来自一次探针事故（同一 boot 内挂载泄漏导致 `/system` 不可用，reboot 恢复）；
+> 复盘与证据见该 forensics 文档。**P1 实施前必须先在 reboot 可接受窗口复现并确认
+> `unshare -m` 的隔离性，否则构造器不得上机。**
+
+
 ## 2.4 材料来源（权威副本归 N）
 
 - 路径：`/data/adb/trysu/material/`（0700 root-only）。
