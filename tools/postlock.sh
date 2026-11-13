@@ -23,8 +23,12 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-APP=com.resukisu.resukisu
-ACT=org.bakasu.bakasu.ui.MainActivity
+# 2026-11-14: TrySU 管理器才是 W 的用户态控制面（docs/trysu-manager.md）。
+# 之前这里指向 BakaSU 管理器，导致 ksu_debug_manager_appid 写成 BakaSU 的
+# uid、TrySU 管理器永远拿不到 [ksu_driver]。BakaSU 管理器不卸载，靠内核
+# 签名表（track_throne）加冕，不受这个参数影响。
+APP=io.trysu.manager
+ACT=android.app.NativeActivity
 STAGE=/data/local/tmp/ksu_boot
 TMP=/data/local/tmp
 # SUVTZ P1-1: 0600 keeps the chain log (KASLR base + pvo in clear text) out
