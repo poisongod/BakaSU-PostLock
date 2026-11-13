@@ -33,7 +33,7 @@ $A push "$ROOT/tools/tsu/n_rows.sh" /data/local/tmp/tsu_n_rows.sh >/dev/null 2>&
 }
 
 echo "== 设备侧 N1–N11 =="
-OUT=$($A shell 'sh /data/local/tmp/tsu_n_rows.sh' 2>&1 | tr -d '\r')
+OUT=$($A shell "N8_ARM=${N8_ARM:-0} N10_ARM=${N10_ARM:-0} sh /data/local/tmp/tsu_n_rows.sh" 2>&1 | tr -d '\r')
 echo "$OUT"
 NR_P=$(printf '%s\n' "$OUT" | grep -c '^PASS ')
 NR_F=$(printf '%s\n' "$OUT" | grep -c '^FAIL ')

@@ -34,6 +34,7 @@
 #   脚本头部会打印形态探测结果，避免把靶子误读成回归。
 T=/data/local/tmp
 MAT=/data/adb/trysu
+# manifest 行格式：<sha256> <mode-octal> <bytes> <name>（与 tsu 的解析顺序一致）
 MAN=$MAT/manifest.sha256
 AUD=$MAT/audit.log
 S=$T/vtz_w.pid
@@ -214,11 +215,11 @@ if [ "$HAZ_SU" = 1 ]; then
   else
     echo "manifest lines=$(wc -l <"$T/n_man.txt")"
     N7N=0; N7BAD=0; N7MISS=0
-    while read -r sha name mode bytes; do
+    while read -r sha mode bytes name; do
       [ -z "$sha" ] && continue
       case "$sha" in \#*) continue ;; esac
       N7N=$((N7N+1))
-      f=$MAT/$name
+      f=$MAT/material/$name
       if ! suc -c "test -f '$f'" >/dev/null 2>&1; then
         N7MISS=$((N7MISS+1)); echo "  missing: $name"; continue
       fi
@@ -255,22 +256,22 @@ if [ "${N8_ARM:-0}" != 1 ]; then
 elif [ "$HAZ_SU" != 1 ] || [ ! -s "$T/n_man.txt" ]; then
   info "N8 前置不足（无 su 或无 manifest）"
 else
-  VICTIM=$(awk 'NF>=4 && $1 !~ /^#/ {print $2; exit}' "$T/n_man.txt")
+  VICTIM=$(awk 'NF>=4 && $1 !~ /^#/ {print $4; exit}' "$T/n_man.txt")
   if [ -z "$VICTIM" ]; then
     info "N8 manifest 无可用样本行"
   else
-    VF=$MAT/$VICTIM
+    VF=$MAT/material/$VICTIM
     BK=$T/n8_backup.bin
     suc -c "cp '$VF' '$BK' && chmod 0644 '$BK'"
     # 恢复函数挂在 EXIT 上，任何分支退出都不会留下被篡改的材料
     restore8() { suc -c "cp '$BK' '$VF'" >/dev/null 2>&1; }
     trap 'restore8' EXIT
     suc -c "printf X >> '$VF'"
-    OUT8=$(suc --trysu-vn -c 'echo SHOULD-NOT-PRINT' 2>&1)
-    echo "tampered=$VICTIM output=[$(printf '%s' "$OUT8" | head -c 120)]"
+    OUT8=$(suc --trysu-vn -c 'echo SHOULD-NOT-PRINT' 2>&1); RC8=$?
+    echo "tampered=$VICTIM rc=$RC8 output=[$(printf '%s' "$OUT8" | head -c 120)]"
     case "$OUT8" in
       *SHOULD-NOT-PRINT*) bad "N8 材料被篡改后仍构造成功（fail-open）" ;;
-      *) ok "N8 篡改后构造被拒/未产出" ;;
+      *) if [ "$RC8" = 2 ]; then ok "N8 篡改后 rc=2 且无 VN 产出（fail-closed）"; else info "N8 篡改后被拒但 rc=$RC8（期望 2）"; fi ;;
     esac
     suc -c "cp '$BK' '$VF'" 2>/dev/null
     trap - EXIT
@@ -346,7 +347,21 @@ fi
 if [ "${N10_ARM:-0}" != 1 ]; then
   info "N10b 写失败实验未启用（N10_ARM=1 才执行）"
 else
-  info "N10b 需 P1 实现后启用（audit 落点尚不存在）"
+  # audit.log 换成目录：openat(O_WRONLY) 必失败（EISDIR），
+  # root 的 CAP_DAC_OVERRIDE 也绕不过"对目录做写打开"。这是唯一能在
+  # root 域里稳定制造写失败的形态（chmod 0400 对 root 无效）。
+  BK10=/data/local/tmp/n10b_audit_bak
+  suc -c "cp -f $AUD $BK10 2>/dev/null; rm -f $AUD; mkdir -p $AUD" >/dev/null 2>&1
+  restore10() { suc -c "rmdir $AUD 2>/dev/null; cp -f $BK10 $AUD 2>/dev/null" >/dev/null 2>&1; }
+  trap 'restore10' EXIT
+  OUT10=$(suc --trysu-vn -c 'echo SHOULD-NOT-PRINT' 2>&1); RC10=$?
+  echo "audit-dir rc=$RC10 output=[$(printf '%s' "$OUT10" | head -c 100)]"
+  case "$OUT10" in
+    *SHOULD-NOT-PRINT*) bad "N10b 审计写失败后仍构造成功（fail-open）" ;;
+    *) if [ "$RC10" = 2 ]; then ok "N10b 审计写失败 → rc=2 且未进入 VN"; else info "N10b rc=$RC10（期望 2）"; fi ;;
+  esac
+  restore10
+  trap - EXIT
 fi
 
 # 清理旧 tsu 留在 N 侧的审计残留。
