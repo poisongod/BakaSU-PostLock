@@ -21,11 +21,12 @@
 #   * su 只在 ocsk 加载 + allow-list 窗口安全，恢复链之外勿跑。
 #
 # 形态说明（重要）：
-#   P1 实现前设备仍是「holder + sidecar」旧形态。此时下列判据预期 FAIL，
-#   它们是靶子而不是回归：
-#     N1（有 holder）、N2b（无 via=self 审计）、N4b（复用同一 ns）、
-#     N4c（holder 常驻持有 ns）、N6（sidecar 存在）、N7（无 manifest）、
-#     N9a（--trysu-ns 仍可用）、N10a（无 audit.log）。
+#   脚本用 holder 是否存在区分两种形态，并据此给出预期红：
+#     form=legacy（holder 在）   → N1/N2b/N4b/N4c/N6/N7/N9a/N10a 通常红（P1 靶子）
+#     form=daemonless（无 holder）→ 只有 N7（manifest/度量未实现）预期红
+#   P1 构造器落地后设备应为 daemonless：--trysu-vn 由 tsu 自建 VN，
+#   不读 sidecar、不需要 holder。若 daemonless 下 N1/N6 仍红，说明恢复链
+#   还在起 holder/写 sidecar（postlock.sh 未改造）。
 #   N5 的观测方法：清掉上一轮 .w/log（只删 log，保留 .w 目录），再执行一次
 #   --trysu-vn，然后看 N 侧是否出现 .w/log。holder 挂载点完好时它应 PASS；
 #   若 N5 红，先查 holder 的 tmpfs 挂载点是否被删（见 docs/forensics/
@@ -93,7 +94,7 @@ fi
 say "N2 会话在 VN 且自持"
 NS_N=$(suc -c 'readlink /proc/1/ns/mnt')
 NS_VN=$(suc --trysu-vn -c 'readlink /proc/self/ns/mnt')
-SPID=$(suc --trysu-vn -c 'sed -n "s/^Pid:[[:space:]]*//p" /proc/self/status 2>/dev/null')
+SPID=$(suc --trysu-vn -c 'echo $$' 2>/dev/null | tr -cd '0-9')
 echo "N-ns=$NS_N  session-ns=$NS_VN  session-pid=$SPID"
 if [ -z "$NS_VN" ]; then
   bad "N2 --trysu-vn 无 ns 输出（入口不可用或未构造）"
@@ -104,14 +105,15 @@ elif [ "$NS_VN" = "$NS_N" ]; then
 else
   ok "N2 会话 ns=$NS_VN 与 N($NS_N) 不同"
 fi
-# N2b：自持 = 构造者 pid == 会话 pid（以 audit 的 create 记录为证）
-CREATE=$(suc -c "cat $AUD 2>/dev/null" | grep 'kind=create' | tail -n 1)
+# N2b：自持 = 构造者 pid == 会话 pid（以 audit 的 via=self 记录为证；
+# 构造器 exec 前后 pid 不变，所以两者相等才说明「VN 是本次会话自建的」）
+CREATE=$(suc -c "tail -n 20 $AUD 2>/dev/null" | grep 'via=self' | tail -n 1)
 if [ -z "$CREATE" ]; then
-  info "N2b 无 audit create 记录（P1 审计未实现，无法验证自持）"
+  info "N2b 无 via=self 审计记录（未构造 / 审计未落，无法验证自持）"
 else
   CPID=$(printf '%s\n' "$CREATE" | sed -n 's/.*[[:space:]]pid=\([0-9]*\).*/\1/p')
   if [ -z "$SPID" ] || [ -z "$CPID" ]; then
-    info "N2b create 记录或会话 pid 缺失：create=[$CREATE] session-pid=[$SPID]"
+    info "N2b 审计或会话 pid 缺失：audit=[$CREATE] session-pid=[$SPID]"
   elif [ "$CPID" = "$SPID" ]; then
     ok "N2b 构造者 pid == 会话 pid（$CPID）"
   else
@@ -151,18 +153,25 @@ else
     ok "N4a 会话 pid $PIDA 退出后已消亡"
   fi
 fi
-if [ -z "$NSA" ] || [ -z "$NSB" ]; then
-  info "N4b ns 缺失（A=[$NSA] B=[$NSB]）"
-elif [ "$NSA" = "$NSB" ]; then
-  bad "N4b 两次构造复用同一 ns（$NSA）——存在常驻持有者"
-else
-  ok "N4b 两次构造 ns 不同（$NSA -> $NSB）"
-fi
+HOLDCNT=0
 if [ -n "$NSA" ]; then
   HOLDCNT=$(suc -c 'for p in /proc/[0-9]*/ns/mnt; do readlink "$p" 2>/dev/null; done' | grep -Fc "mnt:$NSA")
   echo "ns $NSA 仍被持有: ${HOLDCNT:-0} 个进程"
+fi
+if [ -z "$NSA" ] || [ -z "$NSB" ]; then
+  info "N4b ns 缺失（A=[$NSA] B=[$NSB]）"
+elif [ "$NSA" != "$NSB" ]; then
+  ok "N4b 两次构造 ns 不同（$NSA -> $NSB）"
+elif [ "${HOLDCNT:-0}" -eq 0 ]; then
+  # 第一次会话已退出、ns 已销毁；内核复用 inode 编号是正常行为，
+  # 不能据此判「常驻持有者」。真正的判据是 N4c（无存活持有者）。
+  info "N4b 两次 inode 相同（$NSA）但旧 ns 无存活持有者 → 内核复用编号，非失败"
+else
+  bad "N4b 两次复用同一 ns 且旧 ns 仍被 ${HOLDCNT} 个进程持有"
+fi
+if [ -n "$NSA" ]; then
   if [ "${HOLDCNT:-0}" -eq 0 ]; then
-    ok "N4c 旧 ns 无进程持有"
+    ok "N4c 旧 ns 无进程持有（会话退出即消亡）"
   else
     bad "N4c 旧 ns $NSA 仍被 ${HOLDCNT} 个进程持有"
   fi

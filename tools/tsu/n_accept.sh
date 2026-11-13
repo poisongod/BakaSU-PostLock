@@ -67,11 +67,16 @@ else
 fi
 
 TOT_F=$((NR_F + SCAN_F))
+FORM=$(printf '%s\n' "$OUT" | sed -n 's/.*form=\([a-z]*\).*/\1/p' | head -n 1)
 echo
-echo "===== N1–N12 验收: 设备侧 PASS=$NR_P FAIL=$NR_F INFO=$NR_I | N12=$SCAN_STATUS ====="
+echo "===== N1–N12 验收: 设备侧 PASS=$NR_P FAIL=$NR_F INFO=$NR_I | form=${FORM:-?} | N12=$SCAN_STATUS ====="
 if [ "$TOT_F" -eq 0 ]; then
   echo "RESULT: OK"
   exit 0
 fi
-echo "RESULT: FAIL（预期红见 n_rows.sh 头部「形态说明」：P1 未实现前 N1/N4b/N4c/N6/N7/N9a/N10a 必然红）"
+if [ "$FORM" = daemonless ]; then
+  echo "RESULT: FAIL（daemonless 形态下仅 N7=manifest/度量未实现 属预期红）"
+else
+  echo "RESULT: FAIL（legacy 形态：N1/N2b/N4b/N4c/N6/N7/N9a/N10a 属预期红；见 n_rows.sh 头部）"
+fi
 exit 1
