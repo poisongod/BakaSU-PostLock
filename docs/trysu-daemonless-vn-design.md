@@ -108,6 +108,12 @@ P1 首个闸门先实测三种候选形态，择一写死：
 
 **结论：形态 B 具体化为**「tmpfs 骨架（VN 根）→ 分区 bind（/system /vendor /product /apex /data /proc /sys /dev）→ per-mount overlay 覆盖需要可写的系统分区（upper 在 `/metadata/trysu/<sess>`）→ `chroot` 进骨架」。
 
+> **已落地（2026-11-13，tsu `5863c515`）**：对 `/system /system_ext /vendor /product /odm`
+> 建 per-mount overlay，upper/work 在 `/metadata/trysu/<pid>/<name>/`；
+> 构造前 `statfs(/metadata)` 闸门（可用 < 8MB 即 exit 2）。实测 VN 内
+> `/system`、`/vendor` 可写，写入落 upper、N 侧不可见、全局挂载泄漏 0
+> （N13 四项全绿）。冷 boot 由 postlock 清空 `/metadata/trysu/*`。
+
 **新增硬约束**：
 
 1. **容量闸门**：构造前检查 `/metadata` 可用空间 ≥ 阈值（建议 ≥8MB 预留，即 upper 用量上限 3MB），不足 fail-closed；
@@ -184,7 +190,7 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 | # | 不变量 | 判据 |
 |---|---|---|
 | I1 | 构造时材料哈希符合 manifest | 逐文件 sha256 比对，任一不符 → 拒构造 |
-| I2 | VN 私有层确为 tmpfs/overlay | VN 内 `mountinfo` 查 VN_ROOT |
+| I2 | VN 私有层确为 tmpfs/overlay | VN 内 `/system` 的 `mountinfo` 行含 ` - overlay `；VN 根为 tmpfs |
 | I3 | 注入材料只读 | VN 内 `stat -c %a` 为 0555/0444，或重算哈希 |
 | I4 | N 保有权威副本 | 构造后 N 侧材料路径仍可读且哈希不变 |
 | I5 | 审计落盘 | audit.log 有本次 entry |
@@ -195,7 +201,7 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 - 本环境无硬件信任根：度量能防「非 root 篡改」，**不能防 root 级篡改**。
 - 与公理十一一致：隔离命题在本机不成立；本设计只把「完整性」从口号变为可执行断言，不宣称结构性保证。
 
-## 5 判据 N1–N12（替代 V1–V10）
+## 5 判据 N1–N13（替代 V1–V10）
 
 | # | 判据 | 期望 | 与旧判据关系 |
 |---|---|---|---|
@@ -211,6 +217,7 @@ ioctl(driver_fd, TRYSU_CONSUME_VN, &req) → 0 | -EPERM（单次、过期、计�
 | N10 | 审计记录 | audit.log 有本次 `via=self` entry；模拟写失败 → 构造失败 | 取代 V4 |
 | N11 | 功能未退化 | `/`、`/system`、`/data`、`/apex` 可读；模块视图正常 | V6 保留 |
 | N12 | 观测面回归 | `scan.sh -q` FAIL=0（W 类探针改 INFO 或新语义） | V10 改造 |
+| N13 | 私有可写层生效 | VN 内 `/system` 为 overlay 且可写；写入不落 N；upper 在 `/metadata/trysu/<pid>/` | 新增（P1.5） |
 
 V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 
@@ -218,15 +225,16 @@ V7（-M 优先）/V9（inode 对照）保留为 N11/N3 的子项。
 
 | 脚本 | 覆盖 | 用法 |
 |---|---|---|
-| `tools/tsu/n_rows.sh` | N1–N11（设备侧，含 N8/N10b 的 ARM 门控） | push 后 `sh` 执行；只读默认，破坏性实验需 `N8_ARM=1` / `N10_ARM=1` |
+| `tools/tsu/n_rows.sh` | N1–N11 + N13（设备侧，含 N8/N10b 的 ARM 门控） | push 后 `sh` 执行；只读默认，破坏性实验需 `N8_ARM=1` / `N10_ARM=1` |
 | `tools/tsu/n_accept.sh` | N12（`scan.sh -q`）+ 一键汇总与退出码 | `SERIAL=<serial> tools/tsu/n_accept.sh`（`--no-scan` 可跳过 N12） |
 
 当前实测（2026-11-13，**daemonless 形态已落地**，boot `ebd7d915`）：
 
 ```
-设备侧 PASS=15 FAIL=0 INFO=2（form=daemonless；N8/N10b 破坏性实验均启用）
+设备侧 PASS=19 FAIL=0 INFO=2（form=daemonless；N8/N10b 破坏性实验均启用）
   INFO  N4b（两次构造 inode 相同，内核复用编号；真正的判据是 N4c）
   INFO  N12（由宿主 n_accept.sh 执行）
+  N13 四项：/system 可写、挂载为 overlay、写入不落 N、upper 在 /metadata
 N12 scan.sh -q: FAIL=0（PASS=32 / INFO=5 —— 无 holder 后 W 类探针自动降级为观测）
 ```
 
@@ -279,9 +287,11 @@ N12 scan.sh -q: FAIL=0（PASS=32 / INFO=5 —— 无 holder 后 W 类探针自�
    → *（2026-11-13 完成，有偏差）* TrySU `bfa6db7`，tsu `b183a2d4`。实际序列：
    `unshare → rprivate → 度量 → tmpfs 骨架 → 28 个顶层目录 bind →
    VN 内 /data/local/tmp 换 tmpfs → 审计 → chroot`。
-   **偏差一**：overlay 私有可写层未实现，VN 根是 tmpfs 骨架 + 分区只读 bind；
-   **偏差二**：材料只度量、未注入（见 §2.4）。两项都记为 P1.5 待办，
-   不改变已验收的隔离性结论（N1–N12 全绿）。
+   ~~**偏差一**：overlay 私有可写层未实现~~ → **P1.5 已补（tsu `5863c515`）**：
+   `/system /system_ext /vendor /product /odm` 建 per-mount overlay，upper/work 在
+   `/metadata/trysu/<pid>/`，容量闸门 8MB，N13 四项全绿。
+   **偏差二仍在**：材料只度量、未注入（见 §2.4）。注入落点待定——`/data` 是 f2fs
+   不能作 overlay lower，tmpfs 覆盖 `/data/adb` 会丢失现有模块视图，需要单独设计。
 3. **postlock.sh 改造**：删 holder/sidecar 段与 Phase C；新增 `/data/adb/trysu/` 的 material 布局与 manifest 生成。
    → *（2026-11-13 完成）* W world 整体退役（不再起 holder、不写 sidecar、
    不从 W 加载 .ko / 读 adb key / pp），Phase C 删除；restore 早期生成

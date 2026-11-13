@@ -23,7 +23,7 @@
 # 形态说明（重要）：
 #   脚本用 holder 是否存在区分两种形态，并据此给出预期红：
 #     form=legacy（holder 在）   → N1/N2b/N4b/N4c/N6/N7/N9a/N10a 通常红（P1 靶子）
-#     form=daemonless（无 holder）→ 只有 N7（manifest/度量未实现）预期红
+#     form=daemonless（无 holder）→ 无预期红（N7/N13 已落地；N8/N10b 需 ARM）
 #   P1 构造器落地后设备应为 daemonless：--trysu-vn 由 tsu 自建 VN，
 #   不读 sidecar、不需要 holder。若 daemonless 下 N1/N6 仍红，说明恢复链
 #   还在起 holder/写 sidecar（postlock.sh 未改造）。
@@ -411,6 +411,39 @@ clean_w() {
   suc -c 'rm -f /data/local/tmp/.w/log/access.log 2>/dev/null; rmdir /data/local/tmp/.w/log 2>/dev/null' >/dev/null 2>&1
   return 0
 }
+
+# ---------------------------------------------------------------- N13
+say "N13 私有可写层（per-mount overlay，upper 在 /metadata）"
+if [ "$HAZ_SU" = 1 ]; then
+  D13=$T/n13_out.txt
+  suc --trysu-vn -c 'echo pid=$$; readlink /proc/self/ns/mnt; touch /system/.trysu-n13 && echo write=ok; grep -E "^[0-9]+ [0-9]+ [0-9]+:[0-9]+ / /system " /proc/self/mountinfo | head -n1' >"$D13" 2>&1
+  P13=$(sed -n 's/^pid=//p' "$D13" | tr -cd '0-9' | head -c 12)
+  if grep -q '^write=ok' "$D13"; then
+    ok "N13 VN 内 /system 可写"
+  else
+    bad "N13 VN 内 /system 不可写（overlay 未生效）"
+  fi
+  if grep -q ' - overlay ' "$D13"; then
+    ok "N13 /system 挂载形态是 overlay"
+  else
+    bad "N13 /system 不是 overlay（仍是只读 bind）"
+  fi
+  if suc -c 'test -e /system/.trysu-n13' >/dev/null 2>&1; then
+    bad "N13 VN 内写入泄漏到 N 的 /system"
+  else
+    ok "N13 VN 写入未落到 N 的 /system"
+  fi
+  if [ -n "$P13" ] && suc -c "test -f /metadata/trysu/$P13/system/upper/.trysu-n13" >/dev/null 2>&1; then
+    ok "N13 upper 落在 /metadata/trysu/$P13/system/upper"
+  else
+    bad "N13 upper 落点缺失（pid=${P13:-?}）"
+  fi
+  if [ -n "$P13" ]; then
+    suc -c "rm -rf /metadata/trysu/$P13 /data/local/tmp/trysu-vn-$P13" >/dev/null 2>&1
+  fi
+else
+  info "N13 跳过（无 su）"
+fi
 
 # ---------------------------------------------------------------- N12
 say "N12 观测面回归"

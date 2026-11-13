@@ -69,7 +69,7 @@ fi
 TOT_F=$((NR_F + SCAN_F))
 FORM=$(printf '%s\n' "$OUT" | sed -n 's/.*form=\([a-z]*\).*/\1/p' | head -n 1)
 echo
-echo "===== N1–N12 验收: 设备侧 PASS=$NR_P FAIL=$NR_F INFO=$NR_I | form=${FORM:-?} | N12=$SCAN_STATUS ====="
+echo "===== N1–N13 验收: 设备侧 PASS=$NR_P FAIL=$NR_F INFO=$NR_I | form=${FORM:-?} | N12=$SCAN_STATUS ====="
 if [ "$TOT_F" -eq 0 ]; then
   echo "RESULT: OK"
   exit 0

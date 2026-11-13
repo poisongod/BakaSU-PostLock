@@ -413,6 +413,16 @@ rm -f \$TMP/vtz_w.pid 2>/dev/null || true
 if [ -d \$TMP/.w ] && ! mountpoint -q \$TMP/.w 2>/dev/null; then
   rmdir \$TMP/.w 2>/dev/null || true
 fi
+# P1.5: per-mount overlay 的 upper 在 /metadata/trysu/<pid>/。overlay 的
+# upper 是普通 ext4 文件，会话退出不会自动删除，冷 boot 是唯一能证明
+# 「没有活会话」的时点，因此在这里整体清空（VN 根空目录同理）。
+MAVAIL=$(df -k /metadata 2>/dev/null | awk 'NR==2{print $4}')
+log "trysu: metadata-avail=\${MAVAIL:-?}KB (overlay gate=8192KB)"
+if [ -d /metadata/trysu ]; then
+  rm -rf /metadata/trysu/* 2>/dev/null || true
+  log "trysu: overlay-upper-cleared"
+fi
+rm -rf /data/local/tmp/trysu-vn-* 2>/dev/null || true
 log "suvtz-w: retired (per-session VN; no holder/sidecar)"
 if grep -q ^kernelsu /proc/modules; then log driver-already-loaded; else $TMP/finitmod $TMP/kernelsu.ko 0 || log WARN-finitmod-failed; fi
 # kernelsu_hotload_init (hotload companion) is no longer needed: kernelsu.ko

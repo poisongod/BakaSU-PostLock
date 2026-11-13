@@ -64,18 +64,20 @@ execve(shell)
 
 ## 4 与设计的偏差（诚实标注）
 
-1. **overlay 私有可写层未实现**。设计 §2.3 定的是「lower = N 只读视图，
-   upper/work 在 `/metadata`（11MB 闸门），VN 根 = merged」。实际 P1 第一版
-   用 **tmpfs 骨架 + 分区只读 bind**，`/system` 等在 VN 内仍只读；
-   `/data/local/tmp` 用 tmpfs 单独给了可写可弃。隔离性与「写不落 N」
-   已由 N5/N11 验收，但「VN 内可写系统分区」这一能力还没有。
-2. **材料只度量、未注入**。设计 §2.2 ⑤ 要求校验后写入 upper 对应路径；
-   实际只做校验（拒绝构造），不复制材料。注入需要先定义
-   「材料 → VN 内目标路径」清单（`restore-only` 资产的目标位置），
-   留到 P1.5。
+1. ~~overlay 私有可写层未实现~~ → **P1.5 已补（tsu `5863c515`）**。
+   对 `/system /system_ext /vendor /product /odm` 建 per-mount overlay：
+   upper/work 在 `/metadata/trysu/<pid>/<name>/{upper,work}`，构造前
+   `statfs(/metadata)` 闸门（可用 < 8MB → exit 2）。实测：5 个分区
+   `mountinfo` 均为 ` - overlay `、rw；VN 内写 `/system`、`/vendor` 成功；
+   写入只出现在 upper，N 侧 `ls /system/.trysu-n13` ENOENT；全局挂载泄漏 0；
+   审计 `overlay=5`。N13 四项全绿。
+   冷 boot 由 postlock 清空 `/metadata/trysu/*` 与 `/data/local/tmp/trysu-vn-*`。
+2. **材料只度量、未注入**（唯一剩余偏差）。设计 §2.2 ⑤ 要求校验后写入
+   upper 对应路径；实际只做校验（拒绝构造），不复制材料。注入落点需要
+   单独设计：`/data` 是 f2fs（overlay 不支持），tmpfs 覆盖 `/data/adb`
+   会丢失现有模块视图，且「restore-only 资产在 VN 内的目标路径」清单未定。
 
-两项都不影响已验收的判据，但**不能宣称「P1 完整落地」**——
-准确说法是「P1 的隔离/生命周期/度量部分落地，私有可写层与注入留待 P1.5」。
+因此准确说法：**P1 的隔离、生命周期、度量、私有可写层已落地；材料注入待定**。
 
 ## 5 恢复链变更（`tools/postlock.sh`）
 
@@ -90,10 +92,13 @@ execve(shell)
 
 ## 6 已知残留 / 待办
 
-- `/data/local/tmp/trysu-vn-<pid>` 空目录会在会话退出后残留（挂载已随 ns
-  销毁）。当前不做跨会话回收（避免误删活会话），可在 postlock 里做
-  「非挂载点且为空」的批量 rmdir。
-- P1.5：overlay 私有可写层（`/metadata` 容量闸门 + 清理）、材料注入清单。
+- `/data/local/tmp/trysu-vn-<pid>` 空目录与 `/metadata/trysu/<pid>/`
+  （overlay upper）在会话退出后残留。冷 boot 由 postlock 整体清空；
+  同 boot 内不跨会话回收（避免误删活会话）。会话内的 upper 用量上限
+  由 8MB 闸门间接约束，但**单会话写满 11MB 时 overlay 会返回 ENOSPC**——
+  这是可接受的行为（写失败而不是写穿到 N）。
+- 材料注入落点设计（见 §4 偏差二）。
+- 冷 boot 验证尚未做。
 - `tools/tsu/rows.sh`（V0b/T0–T7）已不适用于 daemonless 形态，保留为
   历史基线；验收一律用 `tools/tsu/n_accept.sh`。
 - 冷 boot 验证尚未做（本 boot 是手工退役 holder 后验收的）。
