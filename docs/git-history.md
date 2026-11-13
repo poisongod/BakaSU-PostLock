@@ -438,3 +438,12 @@ f2c26147 2026-07-26 tools: add resilient target generator fallback
 14d25b63 2026-07-26 init
 8a258e97 2026-07-26 Initial commit
 ```
+
+## 快照后续（a9df15f3 之后的提交）
+
+> 快照本质是时点截取；此后新增提交追加于此，完整流水以 `git log` 为准。
+
+```
+8012334f 2026-11-13 docs: git 历史全量快照(399 提交) — 两手准备之文件侧
+b29a9701 2026-11-13 chore: 移除 440KB AGENTS.md 注入源并隔离底账 — 根治配额事故
+```
