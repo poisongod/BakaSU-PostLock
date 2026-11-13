@@ -114,8 +114,13 @@ P1 首个闸门先实测三种候选形态，择一写死：
 2. **实验规则**见 `docs/forensics/overlay-probe-leak-11e3bdc8.md` §6（跨连接验证 ns 隔离、umount busy 禁 rm -rf、只在 reboot 可接受窗口实验）。
 
 > 上述结论来自一次探针事故（同一 boot 内挂载泄漏导致 `/system` 不可用，reboot 恢复）；
-> 复盘与证据见该 forensics 文档。**P1 实施前必须先在 reboot 可接受窗口复现并确认
-> `unshare -m` 的隔离性，否则构造器不得上机。**
+> 复盘与证据见该 forensics 文档。
+>
+> **隔离性复核（2026-11-13，boot `ebd7d915`，已完成）**：`unshare -m` 单独使用会因
+> root mount 仍属 `shared:1` 而把 mount 传播回初始 ns（已复现）；`unshare` 后紧跟
+> `mount(NULL,"/",NULL,MS_REC|MS_PRIVATE,NULL)` 则完全隔离（退出后全局 `final-clean`）。
+> **构造器硬要求：unshare 与 rprivate 必须成对，禁止任何「只 unshare」路径；
+> 构造器内 mount 失败一律 fail-closed。** 记录见 `docs/forensics/ns-isolation-ebd7d915.md`。
 
 
 ## 2.4 材料来源（权威副本归 N）
@@ -258,6 +263,8 @@ N12 scan.sh -q: FAIL=0（PASS=37，另有已接受 3）
 ## 8 实施顺序（决策已定，2026-11-13）
 
 1. **overlay 实测闸门**（2.3）：确认 `CONFIG_OVERLAY_FS`、最小复现、stacked 行为；A/B/C 择一，写入 `docs/forensics/`。
+   → *（2026-11-13 完成）* 结论见 §2.3.1；`unshare -m` 隔离性已实证复核
+   （`docs/forensics/ns-isolation-ebd7d915.md`）：**unshare 必须与 rprivate 成对**。
 2. **tsu 构造器**：unshare → rprivate → overlay → 材料校验注入 → 度量断言 → 审计 → exec；删除 `--trysu-ns` 与 sidecar 相关代码。
 3. **postlock.sh 改造**：删 holder/sidecar 段与 Phase C；新增 `/data/adb/trysu/` 的 material 布局与 manifest 生成。
 4. **判据脚本**：`rows.sh` 实现 N1–N12；V0a 脚本归档为历史基线。
@@ -271,6 +278,7 @@ N12 scan.sh -q: FAIL=0（PASS=37，另有已接受 3）
 |---|---|
 | overlayfs 不可用/兼容差 | 走 2.3 闸门的 C 兜底，**但须回报批准**（不默认降级） |
 | tsu 内 mount 需 CAP_SYS_ADMIN | 已具备（root + ksu 域）；失败 fail-closed |
+| **mount 传播泄漏**（`/` 是 shared:1） | **unshare 后必须立刻 `MS_REC\|MS_PRIVATE`**，禁止只 unshare；已实证（`ns-isolation-ebd7d915.md`），构造器里该序列不可省略、不可降级 |
 | 每会话开销 | unshare+mount+材料复制实测（材料约 MB 级，预计 ms 级）；大材料改 bind 只读替代复制 |
 | 兼容性：旧 `--vtz` 语义变化 | 无 sidecar 时自建而非报错；文档与 `--help` 同步 |
 | 审计写失败阻断启动 | 这是设计选择（fail-closed）；若影响可用性，登记为「可接受降级」需显式批准 |

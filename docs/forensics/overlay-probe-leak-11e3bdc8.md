@@ -35,10 +35,12 @@
    ```
 4. 结果：`/system` 被「自指 + upper 已删」的 overlay 覆盖，`/system/*` 全部 `Permission denied`。
 
-**待复现确认的根因**（reboot 后必须验证）：`su -c "unshare -m ..."` 在该设备上
-是否真正创建了独立 mount namespace。若挂载在全局可见，则 `unshare -m`
-（toybox）与 Rust ksud `su -c` 的组合不可信，所有挂载实验必须改为
-「先验证隔离，再操作」。
+**根因（2026-11-13 boot `ebd7d915` 复现确认）**：`unshare -m` 只创建新 mount
+namespace，新 ns 的 root mount 仍是 `shared:1` peer group 的成员——在其中
+`mount` 会按 shared 语义**传播回初始 ns**。因此 probe6 的 tmpfs/bind/overlay
+全部泄漏到全局；清理失败后 `rm -rf` 又删了 overlay 的 upper，放大为
+`/system` 自指 overlay。**两个因素缺一不可**：传播泄漏（根因）+ 删挂载点/upper
+（放大器）。实证与正确序列见 `docs/forensics/ns-isolation-ebd7d915.md`。
 
 ## 4 影响与未损证明
 
@@ -66,6 +68,6 @@
 
 ## 7 后续
 
-- [ ] reboot 后复现 `unshare -m` 隔离性，结论回填本文 §3。
+- [x] reboot 后复现 `unshare -m` 隔离性（boot `ebd7d915`，见 `ns-isolation-ebd7d915.md`）。
 - [ ] 把上述硬规则并入 `docs/trysu-daemonless-vn-design.md` §9 风险与实施顺序。
 - [ ] overlay 闸门结论（upper=/metadata 11MB、per-mount + chroot）回填设计文档 §2.3。
