@@ -135,6 +135,26 @@
 | 工具 | 状态 |
 |---|---|
 | `tools/postlock.sh` | 恢复链入口（冷 boot 一条命令）；V0a 判据的生产侧就在它的 restore 段里 |
+| `tools/chain/entry.sh` | **shell 域全链唯一入口**（device-side）：`postlock.sh` 与 PostLock app 的「执行恢复链」共用同一份；两边只负责部署 stage + 写 `chain.env` |
 | `tools/suvtz/scan.sh` | 观测面 40 探针（`PASS` / `FAIL` / `INFO` + 已接受登记），与架构坐标无关，继续使用 |
 | `tools/suvtz/v0a_rows.sh` | §2 判据的可执行版（脚本名历史命名） |
 | `tools/suvtz/accepted.tsv` | 已显式裁决接受的暴露面登记表；接受不改判 `PASS` |
+
+### 5.1 shell 域全链的唯一入口
+
+`tools/chain/entry.sh` 是设备侧**唯一**实现，版本标记 `CHAIN_ENTRY_VERSION=1`。
+
+调用方（主仓 `tools/postlock.sh`、PostLock app 的 `ShellChain`）只做三件事：
+
+1. 把 stage 物料放到 `/data/local/tmp/ksu_boot/`（`preload.so` / `ksud` / `finitmod` /
+   `kernelsu.ko` / `restore.sh` …）；
+2. 写 `$STAGE/chain.env`（**只放本次覆盖项**，如 `SUVTZ_CHAIN_LOG_MODE`、
+   `KS_RUN_KSUD_EVENTS`、`KS_LAYOUT_PVO/VM`）；
+3. 执行 `sh $STAGE/chain_entry.sh start`，等 stdout 出现 `DETACHED`。
+
+基线环境、日志权限、现场清理、`nohup` detach、`KS_COLDSTART` 载体全部在入口脚本里，
+两边不再各写一份 `trigger.sh` 生成逻辑。两侧都会断言 `CHAIN_ENTRY_VERSION`，
+一边新一边旧时直接失败而不是带病起链。
+
+app 侧副本在 `PostLock-Boot/postlock-app/app/src/main/assets/postlock/chain_entry.sh`，
+是主仓文件的逐字节副本：**改动必须先改主仓再复制**，并在两仓同时 bump 版本。

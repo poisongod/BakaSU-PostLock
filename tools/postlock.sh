@@ -185,6 +185,13 @@ push_if_changed() {  # <local-path> <stage-basename>
 }
 
 push_if_changed "$PRELOAD_SRC" preload.so
+# 唯一入口（2026-11-14 裁决）：shell 域全链脚本，PostLock app 的「执行恢复链」
+# 也用同一份 —— 两边不再各写 trigger.sh 生成逻辑。
+push_if_changed "$REPO/tools/chain/entry.sh" chain_entry.sh
+ENTRY_VER=$(ab shell "sed -n 's/^CHAIN_ENTRY_VERSION=//p' $STAGE/chain_entry.sh 2>/dev/null" | tr -d '\r' | head -1)
+# 空值 = adb 侧读不到（transport 抖动），不在这里误杀；非空则必须精确匹配。
+[ -z "$ENTRY_VER" ] || [ "$ENTRY_VER" = "1" ] \
+  || die "chain_entry.sh 版本不匹配（got '$ENTRY_VER', want 1）——先重新 push 主仓 tools/chain/entry.sh"
 push_if_changed "$KO_SRC" kernelsu.ko
 push_if_changed "$FIN_SRC" finitmod
 push_if_changed "$OCSK_SRC" oplus_check_suppress.ko
@@ -938,69 +945,38 @@ if ab shell "test -x $SU" >/dev/null 2>&1; then
   fi
 fi
 
-TRIGGER_ENV="KS_LOG_SYNC=1 KS_PSELECT_BSS_LOCK=1 KS_CFGFS_LOG=1 KS_PAYLOAD_SCAN=1 KSNITCH_VERBOSE=1"
-# Aligned with run_fops.sh's proven CHAIN_ENV (2026-10-19): both were
-# missing here.  KS_PSELECT_FOPS_VOFF=1 cancels the measured +1 content
-# shift (run7 pc decode; VOFF=0 panicked at SET_NAME in run5/6/7) and
-# KS_RECLAIM_DETERMINISTIC=1 pins the reclaim order.  PVO stays unset on
-# purpose: the chain measures it fresh, and a stale value from another
-# boot fails the physmap window check (round 60 ran root=1 with the
-# static fallback in effect -- the window check passes without PVO).
-TRIGGER_ENV="$TRIGGER_ENV KS_RECLAIM_DETERMINISTIC=1 KS_PSELECT_FOPS_VOFF=1"
-TRIGGER_ENV="$TRIGGER_ENV KSUD_DST=$STAGE/ksud KSUD_NO_PARENT_INSTALL=1 SU_INSTALL=0"
-# KS_COLDSTART carrier (root.c:1545): forked sh runs restore.sh uid0 after
-# self-patch setuid(0) AND finitmod kernelsu.ko both succeed.  Caveat: on a
-# boot where kernelsu.ko is ALREADY loaded the finitmod exits EEXIST and
-# the restore is skipped -- this path is for fresh boots (postlock's
-# real scenario); boot-internal recovery must reboot first anyway.
-TRIGGER_ENV="$TRIGGER_ENV KS_COLDSTART=$STAGE/restore.sh KS_FINITMOD=$STAGE/finitmod KS_KO=$STAGE/kernelsu.ko"
-TRIGGER_ENV="$TRIGGER_ENV KS_PIPE_SLABS=15 KS_PAYLOAD_BASE_FILE=$STAGE/skbdelta"
-# host-side pass-through for restore gates (fix61): export
-# KS_RUN_KSUD_EVENTS=1 / KS_BOUNCE_ZYGOTE=1 before invoking this script
-# to enable them for this round only; unset keeps restore's default (off).
-if [ -n "${KS_RUN_KSUD_EVENTS:-}" ]; then TRIGGER_ENV="$TRIGGER_ENV KS_RUN_KSUD_EVENTS=$KS_RUN_KSUD_EVENTS"; fi
-if [ -n "${KS_BOUNCE_ZYGOTE:-}" ]; then TRIGGER_ENV="$TRIGGER_ENV KS_BOUNCE_ZYGOTE=$KS_BOUNCE_ZYGOTE"; fi
-if ab shell "test -x $SU" >/dev/null 2>&1; then
-  # only meaningful while a su binary exists (APatch era); empty/absent
-  # after relock the preload falls back to direct writes and fails safe
-  TRIGGER_ENV="$TRIGGER_ENV KS_TRACEFS_SUDO=$SU"
-fi
-if [ -n "$PVO" ]; then
-  # 0x prefix: keeps the value unambiguous regardless of the parser's
-  # base (bare leading-zero strings were once read as octal -> pvo=7).
-  TRIGGER_ENV="$TRIGGER_ENV KS_LAYOUT_PVO=0x$PVO KS_LAYOUT_VM=0x$VMEM"
-fi
-# KS_PIPE_SLABS=15: this trigger runs as shell with the stock
-# fs/pipe-user-pages-soft=16384 (no root yet to raise it); the default
-# 64-slab drain/reclaim set would hit F_SETPIPE_SZ and pr_error-kill the
-# bootstrap sh.  The root script above raises the soft cap afterwards for
-# any later regression run in the same boot.
-# /system/bin/sh, NOT toybox sh: this device's toybox has no sh builtin.
-# Chain stdout goes to a f2fs file: without it a failed trigger leaves
-# zero forensics (round 61: tail -80 on the adb stream was all we got,
-# the window-phase rows were gone).  The restore itself runs inside the
-# chain via KS_COLDSTART -- the -c string is only the constructor's
-# carrier process, so it is a one-liner again.
+# --- 唯一入口：chain.env（只放覆盖项）+ 共用 entry.sh --------------------
+# 基线环境在 $STAGE/chain_entry.sh 的 build_env 里；这里只写「本次运行」的
+# 可选覆盖，键名与 app 的 ShellChain 完全一致。
 CHAIN_OUT=/data/local/tmp/postlock_chain.log
-# DETACHED via a device-side script file: a synchronous ab shell dies with
-# host timeouts and leaves the chain half-way through the route -- dangling
-# fops state that panics on the next misc open (AGENTS; round c23b8a27->
-# e4eaa672).  Inlining `setsid nohup ... &` into the adb shell line raced
-# adbd's session teardown: the background job never exec'd and even
-# $CHAIN_OUT stayed absent (2026-10-23).  Writing trigger.sh first (base64
-# to dodge quoting) and nohup-ing IT is the run_fops.sh pattern that
-# survived every round.
-TRIGGER_SCRIPT=$STAGE/trigger.sh
-TRIG_B64=$(mktemp)
-printf '#!/system/bin/sh\nenv LD_PRELOAD=%s %s /system/bin/sh -c %s\n' \
-  "$STAGE/preload.so" "$TRIGGER_ENV" "'echo CHAIN_EXIT_DONE'" | base64 -w0 > "$TRIG_B64"
-ab_channel || echo "WARN: channel down before trigger push"
-ab push "$TRIG_B64" $STAGE/trigger.b64 >/dev/null
-ab shell "base64 -d $STAGE/trigger.b64 > $TRIGGER_SCRIPT && chmod 755 $TRIGGER_SCRIPT" \
-  || echo "WARN: trigger script write failed"
-rm -f "$TRIG_B64"
-ab shell "rm -f $STAGE/skbdelta $CHAIN_OUT /data/local/tmp/postlock_restore.log; : > $CHAIN_OUT; chmod $CHAIN_LOG_MODE $CHAIN_OUT; nohup sh $TRIGGER_SCRIPT >> $CHAIN_OUT 2>&1 < /dev/null & echo DETACHED" \
-  || echo "WARN: detach failed (see $CHAIN_OUT)"
+SUDO_HINT=""
+if ab shell "test -x $SU" >/dev/null 2>&1; then
+  # 只有 APatch 时代 su 还在时才有意义；relock 后为空，preload 自己回落
+  SUDO_HINT="$SU"
+fi
+
+step "write chain.env (overrides only)"
+CHAIN_ENV_LOCAL="$REPO/build/work/chain.env"
+mkdir -p "$(dirname "$CHAIN_ENV_LOCAL")"
+: > "$CHAIN_ENV_LOCAL"
+echo "SUVTZ_CHAIN_LOG_MODE=$CHAIN_LOG_MODE" >> "$CHAIN_ENV_LOCAL"
+if [ -n "${KS_RUN_KSUD_EVENTS:-}" ]; then echo "KS_RUN_KSUD_EVENTS=$KS_RUN_KSUD_EVENTS" >> "$CHAIN_ENV_LOCAL"; fi
+if [ -n "${KS_BOUNCE_ZYGOTE:-}" ]; then echo "KS_BOUNCE_ZYGOTE=$KS_BOUNCE_ZYGOTE" >> "$CHAIN_ENV_LOCAL"; fi
+if [ -n "$PVO" ]; then
+  # 0x 前缀：避免解析方按八进制读掉前导零
+  echo "KS_LAYOUT_PVO=0x$PVO" >> "$CHAIN_ENV_LOCAL"
+  echo "KS_LAYOUT_VM=0x$VMEM" >> "$CHAIN_ENV_LOCAL"
+fi
+if [ -n "$SUDO_HINT" ]; then echo "KS_TRACEFS_SUDO=$SUDO_HINT" >> "$CHAIN_ENV_LOCAL"; fi
+ab push "$CHAIN_ENV_LOCAL" "$STAGE/chain.env" >/dev/null || die "push chain.env failed"
+rm -f "$CHAIN_ENV_LOCAL"
+
+step "trigger shell-domain chain (shared entry)"
+ENTRY_OUT=$(ab shell "sh $STAGE/chain_entry.sh start" 2>&1 | tr -d '\r' || true)
+case "$ENTRY_OUT" in
+  *DETACHED*) info "chain detached (chain_entry v1)" ;;
+  *) die "chain_entry start failed: $ENTRY_OUT" ;;
+esac
 
 # --- wait for the async KS_COLDSTART restore -----------------------------
 # The restore forks inside the chain (root.c coldstart fork) and keeps
